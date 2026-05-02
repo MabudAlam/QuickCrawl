@@ -165,6 +165,64 @@ class QuickCrawlClient:
         result = self._cli_call(args)
         return result.get("links", [])
 
+    def search(
+        self,
+        query: str,
+        formats: list[str] | None = None,
+        region: str = "us-en",
+        safesearch: str = "moderate",
+        scrape: bool = False,
+        render_js: bool = False,
+        **kwargs: Any,
+    ) -> list[dict]:
+        """Search the web and optionally scrape results.
+
+        Args:
+            query: Search query string.
+            formats: Output formats for scraped pages (default: ["markdown"]).
+            region: Region code for search results (e.g., "us-en", "gb-en").
+            safesearch: SafeSearch mode: "moderate", "strict", "off".
+            scrape: Whether to scrape content from each result URL.
+            render_js: Force JavaScript rendering when scraping.
+            **kwargs: Additional arguments passed to the CLI.
+
+        Returns:
+            List of search result dicts with title, url, description, and optional scraped content.
+        """
+        args = ["search", query]
+
+        if formats:
+            args.extend(["--formats", ",".join(formats)])
+        if region and region != "us-en":
+            args.extend(["--region", region])
+        if safesearch and safesearch != "moderate":
+            args.extend(["--safesearch", safesearch])
+        if scrape:
+            args.append("--scrape")
+        if render_js:
+            args.append("--render-js")
+
+        for key, value in kwargs.items():
+            if isinstance(value, bool):
+                if value:
+                    args.append(f"--{key.replace('_', '-')}")
+            elif isinstance(value, (list, tuple)):
+                args.extend([f"--{key.replace('_', '-')}", ",".join(str(v) for v in value)])
+            else:
+                args.extend([f"--{key.replace('_', '-')}", str(value)])
+
+        if self._api_url:
+            data = self._http_post("/v1/search", {
+                "query": query,
+                "formats": formats or ["markdown"],
+                "region": region,
+                "safesearch": safesearch,
+            })
+            return data.get("results", [])
+
+        result = self._cli_call(args)
+        return result.get("results", [])
+
     def close(self) -> None:
         """No-op for CLI mode. Kept for API compatibility with MCP mode."""
         pass
