@@ -81,9 +81,9 @@ detect_platform() {
   fi
 
   if [ "$PLATFORM" = "win32" ]; then
-    ASSET="${BINARY}_${VERSION}_${PLATFORM}-${ARCH_LABEL}.zip"
+    ASSET="${BINARY}_${VERSION}_${PLATFORM}_${ARCH_LABEL}.zip"
   else
-    ASSET="${BINARY}_${VERSION}_${PLATFORM}-${ARCH_LABEL}.tar.gz"
+    ASSET="${BINARY}_${VERSION}_${PLATFORM}_${ARCH_LABEL}.tar.gz"
   fi
 }
 
