@@ -6,7 +6,7 @@
 
 ### 🚀 Web Scraping API for AI Agents — Scrape, crawl, and map websites with a single binary.
 
-**Playground:** [Try it online](https://quickcrawl.com/playground)
+**Playground:** [Try it online](https://quickcrawl-production-814a.up.railway.app/playground)
 
 [![Go](https://img.shields.io/badge/Go_1.21+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
 [![Gin](https://img.shields.io/badge/Gin-009688?style=for-the-badge&logo=gin&logoColor=white)](https://gin-gonic.com/)
@@ -55,6 +55,19 @@ Tested against Firecrawl v2.5 on the same dataset:
 | Avg Scrape Latency | **1,841.9ms** | 4,048ms |
 | Self-hosting | Single binary | Multi-container (~4GB+) |
 | Cost / 1K scrapes | **$0** (self-hosted) | $9 |
+
+
+### Quality Metrics
+
+| Metric | Value |
+|--------|-------|
+| Content Recall | 44.03% |
+| Noise Rejection | 86.65% |
+| Content Matches | 376 |
+| Noise Leaks | 114 |
+
+
+
 
 ### Use Cases
 
@@ -416,41 +429,6 @@ quickcrawl/
 | **MCP SDK** | Model Context Protocol server |
 | **slog** | Structured logging |
 
----
-
-## 📊 Benchmark
-
-### Scrape — 1,000 URLs (concurrency: 10, timeout: 30s)
-
-| Metric | Value |
-|--------|-------|
-| Coverage | 85.4% (854/1000) |
-| Mean Latency | 1841.9ms |
-| Median Latency | 1362.6ms |
-| P95 Latency | 4436.4ms |
-| P99 Latency | 12839.3ms |
-
-### Quality Metrics
-
-| Metric | Value |
-|--------|-------|
-| Content Recall | 44.03% |
-| Noise Rejection | 86.65% |
-| Content Matches | 376 |
-| Noise Leaks | 114 |
-
-### Error Summary
-
-| Error | Count |
-|-------|-------|
-| 403 Forbidden | 49 |
-| 404 Not Found | 26 |
-| 429 Too Many Requests | 5 |
-| 500 Internal Server Error | 3 |
-| 406 Error | 3 |
-| Could not reach (DNS/connection) | 5 |
-
----
 
 ## 🧪 Playground UI
 
@@ -487,13 +465,6 @@ docker build -f infra/Dockerfile.playground -t quickcrawl-playground .
 docker run -p 3000:3000 quickcrawl-playground
 ```
 
-Or pull from GitHub Packages:
-
-```bash
-docker pull ghcr.io/mabudalam/quickcrawl/server:latest
-docker run -p 3000:3000 ghcr.io/mabudalam/quickcrawl/server:latest
-```
-
 ### Railway
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/9gVVr1?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -505,14 +476,3 @@ docker run -p 3000:3000 ghcr.io/mabudalam/quickcrawl/server:latest
 
 ---
 
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-**Built with ❤️ using Go**
-
-</div>

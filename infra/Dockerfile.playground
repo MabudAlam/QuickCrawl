@@ -2,7 +2,7 @@
 FROM node:25 AS deps
 
 WORKDIR /app/playground
-COPY package.json ./
+COPY playground/package.json ./
 RUN npm install --legacy-peer-deps
 
 # Build stage
@@ -10,7 +10,7 @@ FROM node:25 AS builder
 
 WORKDIR /app/playground
 COPY --from=deps /app/playground/node_modules ./node_modules
-COPY . .
+COPY playground/ .
 ARG NEXT_PUBLIC_BASE_URL
 ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
 RUN ./node_modules/.bin/next build
@@ -20,7 +20,8 @@ FROM node:25 AS runner
 
 WORKDIR /app/playground
 
-ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_BASE_URL
+ENV NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
