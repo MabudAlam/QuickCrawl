@@ -216,6 +216,7 @@ See [`python/examples/`](python/examples/):
 - [`04_formats.py`](python/examples/04_formats.py) — Multiple output formats
 - [`05_cloud.py`](python/examples/05_cloud.py) — Connect to deployed server
 - [`06_search.py`](python/examples/06_search.py) — Web search with scraping
+- [`perplexity.py`](python/examples/perplexity.py) — Perplexity-style AI research agent with Google ADK
 
 ---
 
