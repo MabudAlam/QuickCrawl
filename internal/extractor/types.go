@@ -1,0 +1,85 @@
+// Package extractor provides content extraction from HTML.
+// It converts raw HTML into various output formats (Markdown, plain text, etc.)
+// and can extract metadata, chunk text, and filter results.
+package extractor
+
+import (
+	"github.com/MabudAlam/quickcrawl/internal/types"
+)
+
+// ExtractOptions contains all parameters for content extraction.
+// All fields are optional except RawHTML or RawBytes must be provided.
+type ExtractOptions struct {
+	// RawHTML is the raw HTML content to extract from
+	RawHTML string
+
+	// RawBytes contains raw bytes for PDF processing
+	RawBytes []byte
+
+	// SourceURL is the URL the content came from (used for link resolution)
+	SourceURL string
+
+	// StatusCode is the HTTP status code from the fetch
+	StatusCode int
+
+	// RenderedMode indicates how the content was rendered (e.g., "http", "pdf")
+	RenderedMode *string
+
+	// TimeTaken is the time taken to fetch the content in milliseconds
+	TimeTaken uint64
+
+	// Formats specifies which output formats to generate
+	Formats []types.OutputFormat
+
+	// OnlyMainContent instructs extraction to focus on main content areas
+	OnlyMainContent bool
+
+	// IncludeTags filters to only include these HTML tags
+	IncludeTags []string
+
+	// ExcludeTags removes these HTML tags from content
+	ExcludeTags []string
+
+	// CSSSelector extracts content from elements matching this selector
+	CSSSelector *string
+
+	// XPath extracts content from elements matching this XPath expression
+	XPath *string
+
+	// ChunkStrategy specifies how to split text into chunks
+	ChunkStrategy *types.ChunkStrategy
+
+	// Query is the search query for filtering chunks
+	Query *string
+
+	// FilterMode specifies the ranking algorithm (BM25 or cosine)
+	FilterMode *types.FilterMode
+
+	// TopK returns only the top K scored chunks
+	TopK *int
+}
+
+// ExtractedMetadata contains page metadata extracted from HTML.
+// All fields are pointers to allow distinguishing between empty and unset values.
+type ExtractedMetadata struct {
+	// Title is the page title from <title> tag
+	Title *string
+
+	// Description is the meta description content
+	Description *string
+
+	// Language is the page language from html lang attribute
+	Language *string
+
+	// OGTitle is the Open Graph title
+	OGTitle *string
+
+	// OGDescription is the Open Graph description
+	OGDescription *string
+
+	// OGImage is the Open Graph image URL
+	OGImage *string
+
+	// CanonicalURL is the canonical URL from link rel="canonical"
+	CanonicalURL *string
+}

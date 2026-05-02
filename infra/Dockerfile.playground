@@ -1,0 +1,40 @@
+# Dependencies stage
+FROM node:25 AS deps
+
+WORKDIR /app/playground
+COPY package.json ./
+RUN npm install --legacy-peer-deps
+
+# Build stage
+FROM node:25 AS builder
+
+WORKDIR /app/playground
+COPY --from=deps /app/playground/node_modules ./node_modules
+COPY . .
+ARG NEXT_PUBLIC_BASE_URL
+ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+RUN ./node_modules/.bin/next build
+
+# Runtime stage
+FROM node:25 AS runner
+
+WORKDIR /app/playground
+
+ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/playground/public ./public
+COPY --from=builder /app/playground/.next/standalone ./
+COPY --from=builder /app/playground/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3001
+
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]

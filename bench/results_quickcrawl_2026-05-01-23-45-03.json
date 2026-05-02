@@ -1,0 +1,35 @@
+{
+  "server": "http://localhost:3000",
+  "total": 1000,
+  "concurrency": 10,
+  "timeout_s": 30,
+  "coverage": {
+    "success": 854,
+    "failed": 146,
+    "success_rate": 85.4
+  },
+  "latency_ms": {
+    "mean": 1841.9,
+    "median": 1362.6,
+    "p95": 4436.4,
+    "p99": 12839.3
+  },
+  "quality": {
+    "content_recall": 44.03,
+    "noise_rejection": 86.65,
+    "content_matches": 376,
+    "noise_leaks": 114
+  },
+  "errors": {
+    "Target returned 403 Forbidden": 49,
+    "Target returned 404 Not Found": 26,
+    "Target returned 429 Too Many Requests": 5,
+    "Target returned 500 Internal Server Erro": 3,
+    "Target returned 406 Error": 3,
+    "Could not reach https://www.ci.bellefont": 1,
+    "Get \"https://www.pocketyoga.com/pose/Loc": 1,
+    "Could not reach https://www.nike.com/w/a": 1,
+    "Could not reach https://cowboystatedaily": 1,
+    "Could not reach https://www.theskinclini": 1
+  }
+}

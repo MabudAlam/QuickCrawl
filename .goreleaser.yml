@@ -1,0 +1,96 @@
+version: 2
+
+env:
+  - GO111MODULE=on
+
+builds:
+  - id: quickcrawl-server
+    binary: quickcrawl-server
+    main: ./cmd/server
+    dir: .
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=""
+
+  - id: quickcrawl-mcp
+    binary: quickcrawl-mcp
+    main: ./cmd/mcp
+    dir: .
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=""
+
+archives:
+  - id: quickcrawl-server-archive
+    ids:
+      - quickcrawl-server
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: zip
+    files:
+      - quickcrawl.toml
+      - "*.md"
+
+  - id: quickcrawl-mcp-archive
+    ids:
+      - quickcrawl-mcp
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: zip
+    files:
+      - quickcrawl.toml
+      - "*.md"
+
+checksum:
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+release:
+  github:
+    owner: MabudAlam
+    name: quickcrawl
+  draft: true
+  prerelease: auto
+  header: |
+    ## Docker Images (GHCR)
+
+    | Image | Pull Command |
+    | ----- | ----------- |
+    | quickcrawl-server | `docker pull ghcr.io/mabudalam/quickcrawl/quickcrawl-server:{{ .Tag }}` |
+    | quickcrawl-playground | `docker pull ghcr.io/mabudalam/quickcrawl/quickcrawl-playground:{{ .Tag }}` |
+
+  footer: |
+    ## Links
+
+    - [Docker Hub](https://github.com/MabudAlam/quickcrawl/pkgs/contaiNer/quickcrawl%2Fquickcrawl-server)
+    - [Report an issue](https://github.com/MabudAlam/quickcrawl/issues)
+
+nfpms:
+  - id: default
+    ids:
+      - quickcrawl-server
+    package_name: quickcrawl
+    vendor: MabudAlam
+    homepage: https://github.com/MabudAlam/quickcrawl
+    maintainer: MabudAlam
+    description: Web scraping API for AI agents
+    license: MIT
+    formats:
+      - deb
+      - rpm

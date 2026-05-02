@@ -1,0 +1,197 @@
+#!/bin/sh
+# QuickCrawl installer — downloads the latest release binary for your platform.
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
+#   wget -qO- https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
+#
+# Options (environment variables):
+#   QUICKCRAWL_VERSION=v0.1.0   Install a specific version instead of latest
+#   QUICKCRAWL_INSTALL_DIR=~/.local/bin   Custom install directory
+#   QUICKCRAWL_BINARY=quickcrawl-mcp  Binary to install (quickcrawl-server or quickcrawl-mcp)
+#   GITHUB_TOKEN=ghp_...     Avoid GitHub API rate limits
+
+set -eu
+
+REPO="MabudAlam/quickcrawl"
+INSTALL_DIR="${QUICKCRAWL_INSTALL_DIR:-/usr/local/bin}"
+BINARY="${QUICKCRAWL_BINARY:-quickcrawl-server}"
+
+# --- helpers ----------------------------------------------------------------
+
+BOLD="$(tput bold 2>/dev/null || printf '')"
+BLUE="$(tput setaf 4 2>/dev/null || printf '')"
+GREEN="$(tput setaf 2 2>/dev/null || printf '')"
+RED="$(tput setaf 1 2>/dev/null || printf '')"
+RESET="$(tput sgr0 2>/dev/null || printf '')"
+
+info()      { printf '%s==>%s %s\n' "${BLUE}${BOLD}" "${RESET}" "$*"; }
+success()   { printf '%s==>%s %s\n' "${GREEN}${BOLD}" "${RESET}" "$*"; }
+err()       { printf '%serror:%s %s\n' "${RED}${BOLD}" "${RESET}" "$*" >&2; exit 1; }
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || err "'$1' is required but not found"
+}
+
+# --- detect downloader ------------------------------------------------------
+
+download() {
+  if command -v curl >/dev/null 2>&1; then
+    curl --fail --location --silent --show-error \
+         --proto '=https' --tlsv1.2 \
+         --output "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget --https-only --quiet --output-document="$2" "$1"
+  else
+    err "curl or wget is required"
+  fi
+}
+
+# --- detect platform --------------------------------------------------------
+
+detect_platform() {
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+
+  case "$OS" in
+    Darwin)  PLATFORM="darwin" ;;
+    Linux)   PLATFORM="linux"  ;;
+    MINGW*|MSYS*|CYGWIN*) PLATFORM="win32" ;;
+    *)       err "Unsupported OS: $OS. Try: go install github.com/MabudAlam/quickcrawl/cmd/server" ;;
+  esac
+
+  # Rosetta 2 detection — uname returns x86_64 under Rosetta on Apple Silicon
+  if [ "$PLATFORM" = "darwin" ] && [ "$ARCH" = "x86_64" ]; then
+    if sysctl -n sysctl.proc_translated 2>/dev/null | grep -q '^1$'; then
+      info "Rosetta 2 detected — installing native arm64 binary"
+      ARCH="arm64"
+    fi
+  fi
+
+  case "$ARCH" in
+    x86_64|amd64)  ARCH_LABEL="x64"   ;;
+    aarch64|arm64) ARCH_LABEL="arm64"  ;;
+    *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cmd/server" ;;
+  esac
+
+  # musl libc detection — pre-built binaries require glibc
+  if [ "$PLATFORM" = "linux" ]; then
+    if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
+      err "musl libc detected (Alpine Linux?). Pre-built binaries require glibc. Try: go install"
+    fi
+  fi
+
+  if [ "$PLATFORM" = "win32" ]; then
+    ASSET="${BINARY}-${PLATFORM}-${ARCH_LABEL}.zip"
+  else
+    ASSET="${BINARY}-${PLATFORM}-${ARCH_LABEL}.tar.gz"
+  fi
+}
+
+# --- fetch latest version ---------------------------------------------------
+
+get_version() {
+  if [ -n "${QUICKCRAWL_VERSION:-}" ]; then
+    VERSION="$QUICKCRAWL_VERSION"
+    return
+  fi
+
+  AUTH_HEADER=""
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+  fi
+
+  QUICKCRAWL_TMPFILE="$(mktemp)"
+  if command -v curl >/dev/null 2>&1; then
+    if [ -n "$AUTH_HEADER" ]; then
+      curl -fsSL -H "$AUTH_HEADER" \
+        "https://api.github.com/repos/${REPO}/releases/latest" > "$QUICKCRAWL_TMPFILE" 2>/dev/null || true
+    else
+      curl -fsSL \
+        "https://api.github.com/repos/${REPO}/releases/latest" > "$QUICKCRAWL_TMPFILE" 2>/dev/null || true
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if [ -n "$AUTH_HEADER" ]; then
+      wget --header="$AUTH_HEADER" --quiet \
+        -O "$QUICKCRAWL_TMPFILE" "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true
+    else
+      wget --quiet \
+        -O "$QUICKCRAWL_TMPFILE" "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true
+    fi
+  else
+    rm -f "$QUICKCRAWL_TMPFILE"
+    err "curl or wget is required"
+  fi
+
+  if grep -q '"rate limit"' "$QUICKCRAWL_TMPFILE" 2>/dev/null; then
+    rm -f "$QUICKCRAWL_TMPFILE"
+    err "GitHub API rate limit exceeded. Set GITHUB_TOKEN or use: QUICKCRAWL_VERSION=v0.1.0"
+  fi
+
+  VERSION=$(grep '"tag_name"' "$QUICKCRAWL_TMPFILE" | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+  rm -f "$QUICKCRAWL_TMPFILE"
+  [ -n "$VERSION" ] || err "Could not determine latest version. Use: QUICKCRAWL_VERSION=v0.1.0"
+}
+
+# --- download & install -----------------------------------------------------
+
+install() {
+  URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+  QUICKCRAWL_TMPDIR="$(mktemp -d)"
+  trap 'rm -rf "$QUICKCRAWL_TMPDIR"' EXIT
+
+  if command -v "$BINARY" >/dev/null 2>&1; then
+    INSTALLED=$("$BINARY" --version 2>/dev/null | head -1 || echo "unknown")
+    info "Upgrading from ${INSTALLED} to ${VERSION}..."
+  else
+    info "Downloading QuickCrawl ${VERSION} (${PLATFORM}/${ARCH_LABEL})..."
+  fi
+
+  download "$URL" "${QUICKCRAWL_TMPDIR}/${ASSET}"
+
+  info "Extracting..."
+  if [ "$PLATFORM" = "win32" ]; then
+    need unzip
+    unzip -o "${QUICKCRAWL_TMPDIR}/${ASSET}" -d "$QUICKCRAWL_TMPDIR" >/dev/null
+  else
+    tar xzf "${QUICKCRAWL_TMPDIR}/${ASSET}" -C "$QUICKCRAWL_TMPDIR"
+  fi
+
+  if [ ! -f "${QUICKCRAWL_TMPDIR}/${BINARY}" ]; then
+    err "Archive did not contain '${BINARY}'"
+  fi
+
+  if [ ! -d "$INSTALL_DIR" ]; then
+    if [ -w "$(dirname "$INSTALL_DIR")" ]; then
+      mkdir -p "$INSTALL_DIR"
+    else
+      sudo mkdir -p "$INSTALL_DIR"
+    fi
+  fi
+
+  info "Installing to ${INSTALL_DIR}/${BINARY}..."
+  if [ -w "$INSTALL_DIR" ]; then
+    mv "${QUICKCRAWL_TMPDIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+    chmod +x "${INSTALL_DIR}/${BINARY}"
+  else
+    sudo mv "${QUICKCRAWL_TMPDIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+    sudo chmod +x "${INSTALL_DIR}/${BINARY}"
+  fi
+
+  success "QuickCrawl ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
+  echo ""
+  echo "  Run:  ${BINARY} --help"
+  echo ""
+
+  case ":$PATH:" in
+    *":${INSTALL_DIR}:"*) ;;
+    *) echo "  Note: ${INSTALL_DIR} is not in your PATH. Add it with:"
+       echo "    export PATH=\"${INSTALL_DIR}:\$PATH\""
+       echo "" ;;
+  esac
+}
+
+# --- run --------------------------------------------------------------------
+
+detect_platform
+get_version
+install

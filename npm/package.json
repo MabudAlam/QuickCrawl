@@ -1,0 +1,35 @@
+{
+  "name": "@mabudalam/quickcrawl-mcp",
+  "version": "1.1.0",
+  "description": "MCP server for quickcrawl web scraper",
+  "license": "MIT",
+  "homepage": "https://github.com/MabudAlam/quickcrawl",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MabudAlam/quickcrawl.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "web-scraping",
+    "ai-agent",
+    "quickcrawl"
+  ],
+  "bin": {
+    "quickcrawl-mcp": "./bin/quickcrawl-mcp.js"
+  },
+  "files": [
+    "bin/quickcrawl-mcp.js"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

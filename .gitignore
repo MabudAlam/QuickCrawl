@@ -1,0 +1,57 @@
+# Binaries
+quickcrawl-server
+quickcrawl-mcp
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Build output
+dist/
+.agents/
+skills/
+skills-lock.json
+
+# Go workspace
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node/npm (for npm package if published)
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Cache
+.cache/
+
+# Internal docs
+internal.md
+
+preview/
