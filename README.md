@@ -574,3 +574,15 @@ docker run -p 3000:3000 quickcrawl-playground
 
 ---
 
+
+### Roadmap
+
+1. Add Page Interaction
+2. Hooks & Auth
+3. Improve Search
+4. Better SPA Handling
+5. Auto mode improvements for JS rendering
+6. Add support for https://github.com/h4ckf0r0day/obscura headless
+7. Focus on scalablity
+8. Cache System
+9. Improve the SDK perfomance
