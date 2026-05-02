@@ -192,6 +192,6 @@ install() {
 
 # --- run --------------------------------------------------------------------
 
-detect_platform
 get_version
+detect_platform
 install
