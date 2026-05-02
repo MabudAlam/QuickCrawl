@@ -17,10 +17,35 @@ builds:
     flags:
       - -tags=""
 
+  - id: quickcrawl-cli
+    binary: quickcrawl
+    main: ./cli
+    dir: .
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=""
+
 archives:
   - id: quickcrawl-mcp-archive
     ids:
       - quickcrawl-mcp
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: zip
+    files:
+      - quickcrawl.toml
+      - "*.md"
+
+  - id: quickcrawl-cli-archive
+    ids:
+      - quickcrawl-cli
     name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
