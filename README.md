@@ -127,6 +127,98 @@ Example MCP tool arguments:
 
 ---
 
+## 💻 CLI
+
+The Quickcrawl CLI provides standalone command-line access to all features. No server or Python needed.
+
+### Installation
+
+```bash
+# Quick install (recommended)
+curl -fsSL https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
+
+# Or from source
+go install github.com/MabudAlam/quickcrawl/cli
+
+# Download from GitHub releases
+curl -L https://github.com/MabudAlam/QuickCrawl/releases/latest/download/quickcrawl_darwin_arm64.tar.gz | tar -xz
+./quickcrawl --help
+```
+
+### Usage
+
+```bash
+# Scrape a single URL
+quickcrawl scrape https://example.com
+quickcrawl scrape https://example.com --formats html,markdown
+
+# Crawl a website
+quickcrawl crawl https://example.com --max-pages 10 --max-depth 3
+
+# Discover URLs (without scraping content)
+quickcrawl map https://example.com --max-depth 2
+
+# Search DuckDuckGo
+quickcrawl search "golang web scraping"
+quickcrawl search "python" --scrape --formats markdown
+```
+
+### CLI Examples
+
+See [`cli/cmd/`](cli/cmd/) for all subcommands:
+- [`scrape.go`](cli/cmd/scrape.go) — Scrape single URLs
+- [`crawl.go`](cli/cmd/crawl.go) — Crawl websites
+- [`map.go`](cli/cmd/map.go) — Discover URLs
+- [`search.go`](cli/cmd/search.go) — Web search
+
+---
+
+## 🐍 Python SDK
+
+Python SDK for Quickcrawl — scrape, crawl, and map websites from Python code.
+
+### Installation
+
+```bash
+# From PyPI (coming soon)
+pip install quickcrawl
+
+# From GitHub
+pip install git+https://github.com/MabudAlam/quickcrawl.git@python-sdk#subdirectory=python
+
+# Or clone and install
+git clone https://github.com/MabudAlam/quickcrawl
+cd quickcrawl/python
+pip install -e .
+```
+
+### Quick Start
+
+```python
+from quickcrawl import QuickCrawlClient
+
+# CLI mode (zero config, auto-downloads binary)
+with QuickCrawlClient() as client:
+    result = client.scrape("https://example.com")
+    print(result["markdown"])
+
+# HTTP mode (connect to deployed server)
+client = QuickCrawlClient(api_url="https://your-server.com", api_key="...")
+result = client.scrape("https://example.com")
+```
+
+### Python SDK Examples
+
+See [`python/examples/`](python/examples/):
+- [`01_scrape.py`](python/examples/01_scrape.py) — Scrape a single URL
+- [`02_crawl.py`](python/examples/02_crawl.py) — Crawl entire website
+- [`03_map.py`](python/examples/03_map.py) — Discover URLs without scraping
+- [`04_formats.py`](python/examples/04_formats.py) — Multiple output formats
+- [`05_cloud.py`](python/examples/05_cloud.py) — Connect to deployed server
+- [`06_search.py`](python/examples/06_search.py) — Web search with scraping
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid
@@ -398,6 +490,9 @@ quickcrawl/
 ├── cmd/
 │   ├── server/              # HTTP API server
 │   └── mcp/                 # MCP server for AI agents
+├── cli/                     # Standalone CLI binary
+│   ├── main.go              # Entry point
+│   └── cmd/                 # Cobra subcommands
 ├── internal/
 │   ├── api/                 # HTTP handlers, routes, middleware
 │   ├── crawler/             # BFS crawler, robots.txt, sitemap
@@ -408,7 +503,9 @@ quickcrawl/
 │   └── types/               # Type definitions
 ├── playground/              # Web UI playground
 ├── npm/                     # NPM wrapper package
-├── python/                  # Python client
+├── python/                  # Python SDK
+│   ├── examples/            # Python usage examples
+│   └── README.md           # Python SDK documentation
 ├── bench/                   # Benchmarks
 ├── scripts/                 # Release scripts
 └── workflows/               # CI/CD workflows
@@ -420,12 +517,12 @@ quickcrawl/
 
 | Tech | Use Case |
 |------|----------|
-| **Go 1.21+** | Core backend language |
+| **Go 1.21+** | Core backend, CLI, server |
 | **Gin** | HTTP framework |
+| **Cobra** | CLI framework |
 | **goquery** | HTML parsing and DOM manipulation |
 | **lightpanda** | Headless browser automation (CDP over WebSocket) |
 | **Chrome DevTools** | Browser automation via CDP WebSocket |
-
 | **MCP SDK** | Model Context Protocol server |
 | **slog** | Structured logging |
 

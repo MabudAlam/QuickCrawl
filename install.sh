@@ -7,14 +7,14 @@
 # Options (environment variables):
 #   QUICKCRAWL_VERSION=v0.1.0   Install a specific version instead of latest
 #   QUICKCRAWL_INSTALL_DIR=~/.local/bin   Custom install directory
-#   QUICKCRAWL_BINARY=quickcrawl-mcp  Binary to install (quickcrawl-server or quickcrawl-mcp)
+#   QUICKCRAWL_BINARY=quickcrawl          Binary to install (quickcrawl, quickcrawl-server, or quickcrawl-mcp)
 #   GITHUB_TOKEN=ghp_...     Avoid GitHub API rate limits
 
 set -eu
 
 REPO="MabudAlam/quickcrawl"
 INSTALL_DIR="${QUICKCRAWL_INSTALL_DIR:-/usr/local/bin}"
-BINARY="${QUICKCRAWL_BINARY:-quickcrawl-server}"
+BINARY="${QUICKCRAWL_BINARY:-quickcrawl}"
 
 # --- helpers ----------------------------------------------------------------
 
@@ -56,7 +56,7 @@ detect_platform() {
     Darwin)  PLATFORM="darwin" ;;
     Linux)   PLATFORM="linux"  ;;
     MINGW*|MSYS*|CYGWIN*) PLATFORM="win32" ;;
-    *)       err "Unsupported OS: $OS. Try: go install github.com/MabudAlam/quickcrawl/cmd/server" ;;
+    *)       err "Unsupported OS: $OS. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
   esac
 
   # Rosetta 2 detection — uname returns x86_64 under Rosetta on Apple Silicon
@@ -70,8 +70,7 @@ detect_platform() {
   case "$ARCH" in
     x86_64|amd64)  ARCH_LABEL="x64"   ;;
     aarch64|arm64) ARCH_LABEL="arm64"  ;;
-    *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cmd/server" ;;
-  esac
+    *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
 
   # musl libc detection — pre-built binaries require glibc
   if [ "$PLATFORM" = "linux" ]; then
@@ -81,9 +80,9 @@ detect_platform() {
   fi
 
   if [ "$PLATFORM" = "win32" ]; then
-    ASSET="${BINARY}-${PLATFORM}-${ARCH_LABEL}.zip"
+    ASSET="${BINARY}_${VERSION}_${PLATFORM}-${ARCH_LABEL}.zip"
   else
-    ASSET="${BINARY}-${PLATFORM}-${ARCH_LABEL}.tar.gz"
+    ASSET="${BINARY}_${VERSION}_${PLATFORM}-${ARCH_LABEL}.tar.gz"
   fi
 }
 
