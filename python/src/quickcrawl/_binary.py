@@ -1,4 +1,4 @@
-"""Download, cache, and locate the quickcrawl-mcp binary."""
+"""Download, cache, and locate the quickcrawl CLI binary."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from platformdirs import user_cache_dir
 from quickcrawl._platform import BINARY_NAME, get_asset_name
 from quickcrawl.exceptions import QuickCrawlBinaryNotFoundError
 
-GITHUB_REPO = "MabudAlam/quickcrawl"
+GITHUB_REPO = "MabudAlam/QuickCrawl"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 
@@ -58,7 +58,7 @@ def _download_binary(version: str) -> Path:
     if asset is None:
         raise QuickCrawlBinaryNotFoundError(
             "No prebuilt binary for this platform. "
-            "Install from source: go install github.com/MabudAlam/quickcrawl/cmd/mcp"
+            "Install from source: go install github.com/MabudAlam/quickcrawl/cli"
         )
 
     url = f"https://github.com/{GITHUB_REPO}/releases/download/v{version}/{asset}"
@@ -72,21 +72,21 @@ def _download_binary(version: str) -> Path:
     if asset.endswith(".tar.gz"):
         with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tar:
             for member in tar.getmembers():
-                if member.name.endswith("quickcrawl-mcp"):
+                if member.name.endswith("quickcrawl") and not member.name.endswith("quickcrawl-mcp"):
                     member.name = BINARY_NAME
                     tar.extract(member, path=cache)
                     break
             else:
-                raise QuickCrawlBinaryNotFoundError(f"quickcrawl-mcp not found in {asset}")
+                raise QuickCrawlBinaryNotFoundError(f"quickcrawl not found in {asset}")
     elif asset.endswith(".zip"):
         with zipfile.ZipFile(BytesIO(data)) as zf:
             for name in zf.namelist():
-                if name.endswith("quickcrawl-mcp.exe") or name.endswith("quickcrawl-mcp"):
+                if name.endswith("quickcrawl.exe") or (name.endswith("quickcrawl") and not name.endswith("quickcrawl-mcp")):
                     target = cache / BINARY_NAME
                     target.write_bytes(zf.read(name))
                     break
             else:
-                raise QuickCrawlBinaryNotFoundError(f"quickcrawl-mcp not found in {asset}")
+                raise QuickCrawlBinaryNotFoundError(f"quickcrawl not found in {asset}")
 
     binary = cache / BINARY_NAME
     binary.chmod(binary.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
@@ -107,7 +107,7 @@ def _is_native_binary(path: Path) -> bool:
 
 
 def ensure_binary() -> Path:
-    """Return path to quickcrawl-mcp binary, downloading latest if necessary."""
+    """Return path to quickcrawl CLI binary, downloading latest if necessary."""
     env_path = os.environ.get("QUICKCRAWL_BINARY")
     if env_path:
         p = Path(env_path)
@@ -128,7 +128,7 @@ def ensure_binary() -> Path:
             return cached[0]
         raise QuickCrawlBinaryNotFoundError(
             "Cannot reach GitHub API and no cached binary found. "
-            "Install manually: go install github.com/MabudAlam/quickcrawl/cmd/mcp"
+            "Install manually: go install github.com/MabudAlam/quickcrawl/cli"
         )
 
     binary = _cache_dir(version) / BINARY_NAME

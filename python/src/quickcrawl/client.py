@@ -1,4 +1,20 @@
-"""QuickCrawl client — subprocess (MCP) mode for web scraping, crawling, and URL discovery."""
+"""QuickCrawl Python SDK - CLI-based web scraping, crawling, and URL discovery.
+
+This module provides a Python client that shells out to the quickcrawl CLI binary.
+It's a simpler alternative to the MCP-based approach, using direct CLI invocation
+instead of JSON-RPC over stdio.
+
+Architecture:
+    Python SDK → CLI subprocess → JSON stdout → Python dict
+
+This is simpler than MCP because:
+    1. No protocol overhead (JSON-RPC framing)
+    2. No long-running process management
+    3. Each call is independent (no state between calls)
+    4. Easier to debug (just run the CLI manually)
+
+For HTTP mode (remote server), set api_url to connect to a running server.
+"""
 
 from __future__ import annotations
 
@@ -10,25 +26,19 @@ from typing import Any
 from quickcrawl._binary import ensure_binary
 from quickcrawl.exceptions import QuickCrawlApiError, QuickCrawlError, QuickCrawlTimeoutError
 
-_REQUEST_ID = 0
-
-
-def _next_id() -> int:
-    global _REQUEST_ID
-    _REQUEST_ID += 1
-    return _REQUEST_ID
-
 
 class QuickCrawlClient:
     """QuickCrawl web scraper client.
 
+    The client shells out to the quickcrawl CLI binary for scraping operations.
+    No server process is required - each call spawns a short-lived subprocess.
+
     Args:
-        api_url: QuickCrawl server URL for HTTP mode. If None, uses subprocess mode
-                 (spawns quickcrawl-mcp binary, no server required).
+        api_url: QuickCrawl server URL for HTTP mode. If None, uses CLI subprocess mode.
         api_key: API key for authentication (HTTP mode).
 
     Examples:
-        # Subprocess mode (zero config, no server):
+        # CLI mode (zero config, no server):
         client = QuickCrawlClient()
         result = client.scrape("https://example.com")
 
@@ -40,7 +50,6 @@ class QuickCrawlClient:
     def __init__(self, api_url: str | None = None, api_key: str | None = None):
         self._api_url = api_url
         self._api_key = api_key
-        self._process: subprocess.Popen | None = None
 
     def scrape(
         self,
@@ -53,21 +62,40 @@ class QuickCrawlClient:
     ) -> dict:
         """Scrape a single URL and return its content.
 
+        Args:
+            url: The URL to scrape.
+            formats: Output formats (markdown, html, links, json). Default: ["markdown"].
+            only_main_content: Extract only main content (no nav/footer). Default: True.
+            include_tags: CSS selectors to include.
+            exclude_tags: CSS selectors to exclude.
+            **kwargs: Additional arguments passed to the CLI.
+
         Returns:
             Dict with keys like 'markdown', 'html', 'metadata', etc.
         """
-        args: dict[str, Any] = {"url": url, "onlyMainContent": only_main_content}
+        args = ["scrape", url]
+
         if formats:
-            args["formats"] = formats
+            args.extend(["--formats", ",".join(formats)])
+        if not only_main_content:
+            args.append("--no-only-main-content")
         if include_tags:
-            args["includeTags"] = include_tags
+            args.extend(["--include-tags", ",".join(include_tags)])
         if exclude_tags:
-            args["excludeTags"] = exclude_tags
-        args.update(kwargs)
+            args.extend(["--exclude-tags", ",".join(exclude_tags)])
+
+        for key, value in kwargs.items():
+            if isinstance(value, bool):
+                if value:
+                    args.append(f"--{key.replace('_', '-')}")
+            elif isinstance(value, (list, tuple)):
+                args.extend([f"--{key.replace('_', '-')}", ",".join(str(v) for v in value)])
+            else:
+                args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            return self._http_post("/v1/scrape", args)
-        return self._tool_call("quickcrawl_scrape", args)
+            return self._http_post("/v1/scrape", {"url": url, "formats": formats})
+        return self._cli_call(args)
 
     def crawl(
         self,
@@ -80,20 +108,33 @@ class QuickCrawlClient:
     ) -> list[dict]:
         """Crawl a website and return all page results.
 
-        Starts an async crawl, polls for completion, and returns all results.
+        Starts a crawl job, polls for completion, and returns all scraped pages.
+
+        Args:
+            url: The starting URL to crawl.
+            max_depth: Maximum link depth to follow. Default: 2.
+            max_pages: Maximum number of pages to scrape. Default: 10.
+            poll_interval: Seconds between status checks. Default: 2.0.
+            timeout: Maximum seconds to wait. Default: 300.0.
+            **kwargs: Additional arguments passed to the CLI.
+
+        Returns:
+            List of dicts, each containing scraped page data.
         """
-        args: dict[str, Any] = {"url": url, "maxDepth": max_depth, "maxPages": max_pages}
-        args.update(kwargs)
+        args = ["crawl", url, "--max-depth", str(max_depth), "--max-pages", str(max_pages)]
+
+        for key, value in kwargs.items():
+            if isinstance(value, bool):
+                if value:
+                    args.append(f"--{key.replace('_', '-')}")
+            elif not isinstance(value, (list, tuple)):
+                args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
             return self._http_crawl(args, poll_interval, timeout)
 
-        result = self._tool_call("quickcrawl_crawl", args)
-        job_id = result.get("id")
-        if not job_id:
-            raise QuickCrawlError(f"Crawl did not return job ID: {result}")
-
-        return self._poll_crawl(job_id, poll_interval, timeout)
+        result = self._cli_call(args)
+        return result
 
     def map(
         self,
@@ -102,31 +143,31 @@ class QuickCrawlClient:
         use_sitemap: bool = True,
         **kwargs: Any,
     ) -> list[str]:
-        """Discover URLs on a website.
+        """Discover URLs on a website without scraping content.
+
+        Args:
+            url: The starting URL for discovery.
+            max_depth: Maximum link depth. Default: 2.
+            use_sitemap: Use sitemap.xml as seed. Default: True.
+            **kwargs: Additional arguments passed to the CLI.
 
         Returns:
             List of discovered URLs.
         """
-        args: dict[str, Any] = {"url": url, "maxDepth": max_depth, "useSitemap": use_sitemap}
-        args.update(kwargs)
+        args = ["map", url, "--max-depth", str(max_depth)]
+        if not use_sitemap:
+            args.append("--no-sitemap")
 
         if self._api_url:
-            data = self._http_post("/v1/map", args)
+            data = self._http_post("/v1/map", {"url": url, "maxDepth": max_depth, "useSitemap": use_sitemap})
             return data.get("links", [])
 
-        result = self._tool_call("quickcrawl_map", args)
+        result = self._cli_call(args)
         return result.get("links", [])
 
     def close(self) -> None:
-        """Shut down the subprocess if running."""
-        if self._process and self._process.poll() is None:
-            self._process.stdin.close()
-            try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.terminate()
-                self._process.wait(timeout=5)
-            self._process = None
+        """No-op for CLI mode. Kept for API compatibility with MCP mode."""
+        pass
 
     def __enter__(self) -> QuickCrawlClient:
         return self
@@ -137,70 +178,58 @@ class QuickCrawlClient:
     def __del__(self) -> None:
         self.close()
 
-    # --- Subprocess (MCP) mode ---
+    # --- CLI subprocess mode ---
 
-    def _ensure_process(self) -> subprocess.Popen:
-        if self._process is None or self._process.poll() is not None:
-            binary = ensure_binary()
-            self._process = subprocess.Popen(
-                [str(binary)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+    def _cli_call(self, args: list[str]) -> dict:
+        """Execute the quickcrawl CLI with the given arguments.
+
+        Args:
+            args: CLI subcommand and flags, e.g. ["scrape", "https://example.com"]
+
+        Returns:
+            Parsed JSON response from the CLI.
+
+        Raises:
+            QuickCrawlError: If the CLI can't be found or executed.
+            QuickCrawlApiError: If the CLI returns an error.
+        """
+        binary = ensure_binary()
+
+        cmd = [str(binary)] + args
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
                 text=True,
+                timeout=300,
             )
-        return self._process
+        except subprocess.TimeoutExpired:
+            raise QuickCrawlTimeoutError(f"Command timed out after 300s: {' '.join(cmd)}")
+        except FileNotFoundError:
+            raise QuickCrawlError(
+                f"quickcrawl binary not found. "
+                f"Install manually: go install github.com/MabudAlam/quickcrawl/cmd/cli"
+            )
+        except Exception as e:
+            raise QuickCrawlError(f"Failed to execute quickcrawl: {e}")
 
-    def _jsonrpc(self, method: str, params: dict | None = None) -> Any:
-        proc = self._ensure_process()
-        req = {
-            "jsonrpc": "2.0",
-            "id": _next_id(),
-            "method": method,
-            "params": params or {},
-        }
-        proc.stdin.write(json.dumps(req) + "\n")
-        proc.stdin.flush()
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
+            raise QuickCrawlApiError(f"quickcrawl error: {error_msg}")
 
-        line = proc.stdout.readline()
-        if not line:
-            raise QuickCrawlError("quickcrawl-mcp process closed unexpectedly")
+        if not result.stdout.strip():
+            raise QuickCrawlError("quickcrawl returned empty output")
 
-        resp = json.loads(line)
-        if "error" in resp:
-            raise QuickCrawlApiError(resp["error"].get("message", str(resp["error"])))
-        return resp.get("result")
-
-    def _tool_call(self, tool_name: str, arguments: dict) -> dict:
-        result = self._jsonrpc("tools/call", {"name": tool_name, "arguments": arguments})
-        if not result or not result.get("content"):
-            raise QuickCrawlError(f"Empty response from {tool_name}")
-
-        content = result["content"][0]
-        if result.get("isError"):
-            raise QuickCrawlApiError(content.get("text", "Unknown error"))
-
-        return json.loads(content["text"])
-
-    def _poll_crawl(self, job_id: str, poll_interval: float, timeout: float) -> list[dict]:
-        start = time.monotonic()
-        while True:
-            if time.monotonic() - start > timeout:
-                raise QuickCrawlTimeoutError(f"Crawl {job_id} timed out after {timeout}s")
-
-            result = self._tool_call("quickcrawl_check_crawl_status", {"id": job_id})
-            status = result.get("status")
-
-            if status == "completed":
-                return result.get("data", [])
-            if status == "failed":
-                raise QuickCrawlError(f"Crawl failed: {result.get('error', 'unknown')}")
-
-            time.sleep(poll_interval)
+        try:
+            return json.loads(result.stdout.strip())
+        except json.JSONDecodeError as e:
+            raise QuickCrawlError(f"Failed to parse quickcrawl output: {e}\nOutput: {result.stdout[:500]}")
 
     # --- HTTP mode ---
 
     def _http_request(self, method: str, path: str, body: dict | None = None, *, raw: bool = False) -> dict:
+        """Make an HTTP request to the API server."""
         import urllib.request
 
         url = f"{self._api_url.rstrip('/')}{path}"
