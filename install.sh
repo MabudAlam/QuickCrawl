@@ -71,6 +71,7 @@ detect_platform() {
     x86_64|amd64)  ARCH_LABEL="x64"   ;;
     aarch64|arm64) ARCH_LABEL="arm64"  ;;
     *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
+  esac
 
   # musl libc detection — pre-built binaries require glibc
   if [ "$PLATFORM" = "linux" ]; then
