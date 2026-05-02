@@ -4,15 +4,15 @@ import platform
 import sys
 
 PLATFORM_MAP = {
-    ("Darwin", "arm64"): "quickcrawl-mcp-darwin-arm64.tar.gz",
-    ("Darwin", "x86_64"): "quickcrawl-mcp-darwin-x64.tar.gz",
-    ("Linux", "x86_64"): "quickcrawl-mcp-linux-x64.tar.gz",
-    ("Linux", "aarch64"): "quickcrawl-mcp-linux-arm64.tar.gz",
-    ("Windows", "AMD64"): "quickcrawl-mcp-win32-x64.zip",
-    ("Windows", "ARM64"): "quickcrawl-mcp-win32-arm64.zip",
+    ("Darwin", "arm64"): "quickcrawl_0.1.0_darwin_arm64.tar.gz",
+    ("Darwin", "x86_64"): "quickcrawl_0.1.0_darwin_amd64.tar.gz",
+    ("Linux", "x86_64"): "quickcrawl_0.1.0_linux_amd64.tar.gz",
+    ("Linux", "aarch64"): "quickcrawl_0.1.0_linux_arm64.tar.gz",
+    ("Windows", "AMD64"): "quickcrawl_0.1.0_win32_x64.zip",
+    ("Windows", "ARM64"): "quickcrawl_0.1.0_win32_arm64.zip",
 }
 
-BINARY_NAME = "quickcrawl-mcp.exe" if sys.platform == "win32" else "quickcrawl-mcp"
+BINARY_NAME = "quickcrawl.exe" if sys.platform == "win32" else "quickcrawl"
 
 
 def get_asset_name() -> str | None:
