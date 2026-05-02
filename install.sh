@@ -1,5 +1,5 @@
 #!/bin/sh
-# QuickCrawl installer — downloads the latest release binary for your platform.
+# QuickCrawl installer - downloads the latest release binary for your platform.
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
 #   wget -qO- https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
@@ -59,10 +59,10 @@ detect_platform() {
     *)       err "Unsupported OS: $OS. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
   esac
 
-  # Rosetta 2 detection — uname returns x86_64 under Rosetta on Apple Silicon
+  # Rosetta 2 detection - uname returns x86_64 under Rosetta on Apple Silicon
   if [ "$PLATFORM" = "darwin" ] && [ "$ARCH" = "x86_64" ]; then
     if sysctl -n sysctl.proc_translated 2>/dev/null | grep -q '^1$'; then
-      info "Rosetta 2 detected — installing native arm64 binary"
+      info "Rosetta 2 detected - installing native arm64 binary"
       ARCH="arm64"
     fi
   fi
@@ -73,7 +73,7 @@ detect_platform() {
     *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
   esac
 
-  # musl libc detection — pre-built binaries require glibc
+  # musl libc detection - pre-built binaries require glibc
   if [ "$PLATFORM" = "linux" ]; then
     if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
       err "musl libc detected (Alpine Linux?). Pre-built binaries require glibc. Try: go install"
