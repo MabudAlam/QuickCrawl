@@ -11,6 +11,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -185,6 +186,7 @@ func scrapeSearchResults(results []search.TextResult) error {
 					cfg.Crawler.UserAgent,
 					cfg.Crawler.Stealth.Enabled,
 					cfg.Renderer.RenderJSDefault,
+					utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy),
 				)
 
 				if scrapeErr == nil && data != nil {

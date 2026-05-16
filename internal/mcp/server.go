@@ -13,6 +13,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -116,6 +117,7 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		s.config.Crawler.UserAgent,
 		s.config.Crawler.Stealth.Enabled,
 		s.config.Renderer.RenderJSDefault,
+		utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
 	)
 
 	if scrapeErr != nil {
@@ -446,6 +448,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 				s.config.Crawler.UserAgent,
 				s.config.Crawler.Stealth.Enabled,
 				&renderJS,
+				utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
 			)
 
 			if scrapeErr != nil {
