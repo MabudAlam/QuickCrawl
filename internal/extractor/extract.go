@@ -30,6 +30,12 @@ var noisePatterns = []string{
 	"authority-control", "mw-indicators", "sistersitebox", "mbox", "ambox",
 	"ombox", "hatnote", "shortdescription", "sphinxsidebar", "sphinxfooter",
 	"copyright", "dropdown", "city-selector", "location-selector",
+	"lang-selector", "language-selector", "skip-to", "skip-link", "skiplinks",
+	"promo", "promotional", "widget", "widgets",
+	"site-footer", "site-header", "page-footer", "page-header",
+	"global-nav", "global-footer", "global-header", "main-nav",
+	"primary-nav", "secondary-nav", "social-share", "social-links",
+	"social-icons", "follow-us", "site-map", "sitemap",
 }
 
 var noiseExactTokens = []string{

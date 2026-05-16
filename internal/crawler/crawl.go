@@ -11,6 +11,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/common"
 	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // RunCrawl executes a breadth-first crawl starting from a seed URL.
@@ -113,7 +114,14 @@ func RunCrawl(opts CrawlOptions) {
 					time.Sleep(sleepDur)
 				}
 
-				fetchResult, fetchErr := opts.Renderer.Fetch(item.url, nil, opts.Req.RenderJS, opts.Req.WaitFor, opts.Req.Browser)
+				// Build headers - use stealth profile if strategy is set.
+				var headers map[string]string
+				if opts.StealthStrategy != "" {
+					profile := utils.GetHeaderProfile(opts.StealthStrategy)
+					headers = profile.ToMap()
+				}
+
+				fetchResult, fetchErr := opts.Renderer.Fetch(item.url, headers, opts.Req.RenderJS, opts.Req.WaitFor, opts.Req.Browser)
 				if fetchErr != nil {
 					resultsCh <- crawlPageResult{item: item, err: fetchErr}
 					return

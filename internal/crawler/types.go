@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // Maximum number of URLs to discover during a crawl.
@@ -27,6 +28,7 @@ type CrawlOptions struct {
 	LLMConfig         *types.LLMConfig        // LLM configuration for extraction
 	Proxy             *string                 // Optional proxy URL
 	JitterFactor      float64                 // Random delay factor (0.0 to 1.0)
+	StealthStrategy   utils.HeaderStrategy    // Stealth header strategy
 }
 
 // RateLimiter implements per-domain rate limiting with configurable RPS.

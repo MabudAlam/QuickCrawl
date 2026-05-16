@@ -29,6 +29,7 @@ job_ttl_secs = 3600
 
 [crawler.stealth]
 enabled = true
+strategy = "modern_browser"
 user_agents = []
 jitter_factor = 0.2
 inject_headers = true

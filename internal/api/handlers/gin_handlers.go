@@ -15,6 +15,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -114,6 +115,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 	llmConfig := h.State.Config.Extraction.LLM
 
 	// Perform the scrape using the renderer (HTTP + optional browser fallback)
+	stealthStrategy := utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy)
 	data, scrapeErr := crawler.ScrapeURL(
 		&req,
 		rend,
@@ -121,6 +123,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		h.State.Config.Crawler.UserAgent,
 		h.State.Config.Crawler.Stealth.Enabled,
 		h.State.Config.Renderer.RenderJSDefault,
+		stealthStrategy,
 	)
 
 	// Handle scrape errors
@@ -233,6 +236,7 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 	// Goroutine: run the actual crawl job asynchronously
 	go func() {
 		defer close(stateCh)
+		stealthStrategy := utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy)
 		opts := crawler.CrawlOptions{
 			ID:                id,
 			Req:               &req,
@@ -245,6 +249,7 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 			LLMConfig:         h.State.Config.Extraction.LLM,
 			Proxy:             h.State.Config.Crawler.Proxy,
 			JitterFactor:      h.State.Config.Crawler.Stealth.JitterFactor,
+			StealthStrategy:   stealthStrategy,
 		}
 		crawler.RunCrawl(opts)
 	}()
@@ -473,6 +478,7 @@ func (h *Handler) Search(c *gin.Context) {
 				h.State.Config.Crawler.UserAgent,
 				h.State.Config.Crawler.Stealth.Enabled,
 				&renderJS,
+				utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy),
 			)
 
 			if scrapeErr != nil {

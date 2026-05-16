@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 const defaultMaxTokens = 4096
@@ -41,6 +41,7 @@ func ScrapeURL(
 	userAgent string,
 	defaultStealth bool,
 	renderJSDefault *bool,
+	stealthStrategy utils.HeaderStrategy,
 ) (*types.ScrapeData, *types.QuickCrawlError) {
 	totalStart := time.Now()
 
@@ -53,11 +54,25 @@ func ScrapeURL(
 		injectStealth = *req.Stealth
 	}
 
+	// When stealth is enabled, get a random header profile from the strategy pool.
+	// This provides realistic browser headers (Accept, Sec-Ch-Ua-*, Sec-Fetch-*).
+	var stealthProfile utils.HeaderProfile
+	var effectiveUA string
+	if injectStealth {
+		stealthProfile = utils.GetHeaderProfile(stealthStrategy)
+		effectiveUA = stealthProfile.UserAgent
+	} else {
+		effectiveUA = userAgent
+	}
+
 	effectiveRenderJS := effectiveRenderJSSetting(req.RenderJS, renderJSDefault)
 
 	needsTempFetcher := req.Proxy != nil || (req.Stealth != nil && *req.Stealth != defaultStealth)
 
-	var fetchResult *types.FetchResult
+	var (
+		fetchResult *types.FetchResult
+		err        *types.QuickCrawlError
+	)
 
 	if needsTempFetcher {
 		proxy := ""
@@ -65,48 +80,48 @@ func ScrapeURL(
 			proxy = *req.Proxy
 		}
 
-		effectiveUA := userAgent
-		if injectStealth {
-			pool := types.GetBuiltinUAPool()
-			effectiveUA = pool[rand.Intn(len(pool))]
-		}
-
+		// Use HTTP fetcher when JS rendering is explicitly disabled.
 		if effectiveRenderJS != nil && !*effectiveRenderJS {
 			proxyPtr := (*string)(nil)
 			if proxy != "" {
 				proxyPtr = &proxy
 			}
+			// Build headers: stealth profile headers + any custom headers override.
+			headers := req.Headers
+			if injectStealth {
+				headers = stealthProfile.ToMap()
+				for k, v := range req.Headers {
+					headers[k] = v
+				}
+			}
 			tempHTTP := renderer.NewHTTPFetcher(effectiveUA, proxyPtr, injectStealth)
-			result, err := tempHTTP.Fetch(req.URL, req.Headers, req.WaitFor)
+			fetchResult, err = tempHTTP.Fetch(req.URL, headers, req.WaitFor)
 			if err != nil {
 				return nil, err
 			}
-			if result == nil {
+			if fetchResult == nil {
 				return nil, types.ErrHttp.New("fetch returned nil")
 			}
-			fetchResult = result
 		} else {
-			mergedHeaders := req.Headers
+			// Browser rendering path - apply full stealth headers via CDP.
+			headers := req.Headers
 			if injectStealth {
-				if mergedHeaders == nil {
-					mergedHeaders = make(map[string]string)
-				}
-				if _, ok := mergedHeaders["User-Agent"]; !ok {
-					mergedHeaders["User-Agent"] = effectiveUA
+				headers = stealthProfile.ToMap()
+				for k, v := range req.Headers {
+					headers[k] = v
 				}
 			}
-			result, err := rend.Fetch(req.URL, mergedHeaders, req.RenderJS, req.WaitFor, req.Browser)
+			fetchResult, err = rend.Fetch(req.URL, headers, req.RenderJS, req.WaitFor, req.Browser)
 			if err != nil {
 				return nil, err
 			}
-			fetchResult = result
 		}
 	} else {
-		result, err := rend.Fetch(req.URL, req.Headers, req.RenderJS, req.WaitFor, req.Browser)
+		// Default path: use renderer with request headers (no stealth injection unless needsTempFetcher triggers).
+		fetchResult, err = rend.Fetch(req.URL, req.Headers, req.RenderJS, req.WaitFor, req.Browser)
 		if err != nil {
 			return nil, err
 		}
-		fetchResult = result
 	}
 
 	fetchElapsed := time.Since(totalStart)
