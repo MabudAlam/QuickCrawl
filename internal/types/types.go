@@ -405,16 +405,20 @@ func (c *RendererConfig) Defaults() {
 
 // StealthConfig configures stealth/bot-detection evasion.
 type StealthConfig struct {
-	Enabled       bool     `toml:"enabled" json:"enabled"`              // Enable stealth mode
+	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
 	UserAgents    []string `toml:"user_agents" json:"userAgents"`       // Custom user agents
-	JitterFactor  float64  `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
-	InjectHeaders bool     `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`     // Random delay factor
+	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string  `toml:"strategy" json:"strategy"`             // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
 func (s *StealthConfig) Defaults() {
 	s.JitterFactor = 0.2
 	s.InjectHeaders = true
+	if s.Strategy == "" {
+		s.Strategy = "modern_browser"
+	}
 }
 
 // CrawlerConfig configures the crawling subsystem.
