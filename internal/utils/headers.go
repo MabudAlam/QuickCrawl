@@ -188,9 +188,10 @@ func (p HeaderProfile) ToMap() map[string]string {
 	if p.AcceptLanguage != "" {
 		m["Accept-Language"] = p.AcceptLanguage
 	}
-	if p.AcceptEncoding != "" {
-		m["Accept-Encoding"] = p.AcceptEncoding
-	}
+	// NOTE: Accept-Encoding is intentionally omitted from ToMap().
+	// Go's http.Client automatically adds "Accept-Encoding: gzip, deflate"
+	// which is properly decompressed by the transport layer.
+	// Including br/zstd here would cause decompression failures in HTTPFetcher.
 	if p.SecFetchDest != "" {
 		m["Sec-Fetch-Dest"] = p.SecFetchDest
 	}
