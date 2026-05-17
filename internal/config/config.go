@@ -105,6 +105,9 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envString("CRAWLER__USER_AGENT"); v != "" {
 		cfg.Crawler.UserAgent = v
 	}
+	if v := envString("CRAWLER__USER_AGENT"); v != "" {
+		cfg.Crawler.UserAgent = v
+	}
 	if v := envInt("CRAWLER__DEFAULT_MAX_DEPTH"); v != nil {
 		cfg.Crawler.DefaultMaxDepth = *v
 	}
@@ -125,6 +128,12 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	}
 	if v := envBool("CRAWLER__STEALTH__INJECT_HEADERS"); v != nil {
 		cfg.Crawler.Stealth.InjectHeaders = *v
+	}
+	if v := envString("CRAWLER__STEALTH__STRATEGY"); v != "" {
+		cfg.Crawler.Stealth.Strategy = v
+	}
+	if v := envCSV("CRAWLER__STEALTH__USER_AGENTS"); v != nil {
+		cfg.Crawler.Stealth.UserAgents = v
 	}
 
 	// Extraction configuration
