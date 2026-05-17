@@ -20,6 +20,7 @@ const (
 	CodeNotFound          ErrorCode = "not_found"          // Resource not found
 	CodeRateLimited       ErrorCode = "rate_limited"       // Rate limit exceeded
 	CodeInternalErr       ErrorCode = "internal_error"     // Internal server error
+	CodeForbidden         ErrorCode = "forbidden"          // Access forbidden by robots.txt
 )
 
 // QuickcrawlError represents an error with a code and message.
