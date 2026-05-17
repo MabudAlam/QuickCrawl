@@ -114,14 +114,13 @@ func RunCrawl(opts CrawlOptions) {
 					time.Sleep(sleepDur)
 				}
 
-				// Build headers - use stealth profile if strategy is set.
 				var headers map[string]string
-				if opts.StealthStrategy != "" {
-					profile := utils.GetHeaderProfile(opts.StealthStrategy)
-					headers = profile.ToMap()
-				}
+			if opts.StealthStrategy != "" {
+				profile := utils.GetHeaderProfile(opts.StealthStrategy)
+				headers = profile.ToMap()
+			}
 
-				fetchResult, fetchErr := opts.Renderer.Fetch(item.url, headers, opts.Req.RenderJS, opts.Req.WaitFor, opts.Req.Browser)
+			fetchResult, fetchErr := opts.Renderer.Fetch(item.url, headers, opts.Req.RenderJS, opts.Req.WaitFor, opts.Req.Browser)
 				if fetchErr != nil {
 					resultsCh <- crawlPageResult{item: item, err: fetchErr}
 					return
