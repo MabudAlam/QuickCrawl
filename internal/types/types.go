@@ -442,11 +442,8 @@ func (c *CrawlerConfig) Defaults() {
 	if c.RequestsPerSecond == 0 {
 		c.RequestsPerSecond = 10.0
 	}
-	if !c.RespectRobotsTxt {
-		c.RespectRobotsTxt = true
-	}
 	if c.UserAgent == "" {
-		c.UserAgent = "quickcrawl/0.1"
+		c.UserAgent = ""
 	}
 	if c.DefaultMaxDepth == 0 {
 		c.DefaultMaxDepth = 2
@@ -580,6 +577,7 @@ const (
 	CodeNotFound          = common.CodeNotFound
 	CodeRateLimited       = common.CodeRateLimited
 	CodeInternalErr       = common.CodeInternalErr
+	CodeForbidden         = common.CodeForbidden
 )
 
 // Error factories (alias from common).
