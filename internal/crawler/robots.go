@@ -36,7 +36,23 @@ func (r *RobotsTxt) IsAllowed(path string) bool {
 	if r.data == nil {
 		return true
 	}
-	return r.data.TestAgent(path, r.userAgent)
+
+	if r.userAgent == "" {
+		return r.data.TestAgent(path, "*")
+	}
+
+	specificAllowed := r.data.TestAgent(path, r.userAgent)
+	globalAllowed := r.data.TestAgent(path, "*")
+
+	if !globalAllowed {
+		return specificAllowed
+	}
+
+	if !specificAllowed {
+		return false
+	}
+
+	return true
 }
 
 func FetchRobotsTxt(origin, userAgent string, proxy *string) *RobotsTxt {
