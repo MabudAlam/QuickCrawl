@@ -193,6 +193,18 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Check robots.txt if respect_robots_txt is enabled
+	if cfg.Crawler.RespectRobotsTxt {
+		parsedURL, _ := url.Parse(targetURL)
+		if parsedURL != nil {
+			origin := parsedURL.Scheme + "://" + parsedURL.Host
+			robots := crawler.FetchRobotsTxt(origin, cfg.Crawler.UserAgent, nil)
+			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
+				return fmt.Errorf("access denied by robots.txt")
+			}
+		}
+	}
+
 	// Create the renderer with configured settings.
 	rend, rendErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
