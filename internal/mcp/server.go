@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -108,6 +109,18 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 	}
 	if scrapeReq.Headers == nil {
 		scrapeReq.Headers = make(map[string]string)
+	}
+
+	// Check robots.txt if respect_robots_txt is enabled
+	if s.config.Crawler.RespectRobotsTxt {
+		parsedURL, _ := url.Parse(args.URL)
+		if parsedURL != nil {
+			origin := parsedURL.Scheme + "://" + parsedURL.Host
+			robots := crawler.FetchRobotsTxt(origin, s.config.Crawler.UserAgent, nil)
+			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
+				return errorResult("access denied by robots.txt"), nil, nil
+			}
+		}
 	}
 
 	data, scrapeErr := crawler.ScrapeURL(
