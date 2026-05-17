@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/PuerkitoBio/goquery"
 )
 
 // ─── HTML Cleaner ──────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ var (
 var noisePatterns = []string{
 	"sidebar", "table-of-contents", "tableofcontents", "infobox", "navbox",
 	"nav-box", "navigation", "breadcrumb", "cookie", "consent", "banner",
-	"disqus", "advert", "popup", "modal", "newsletter", "subscribe",
+	"disqus", "advert", "popup", "modal", "subscribe",
 	"printfooter", "catlinks", "mw-panel", "mw-navigation", "sitesub",
 	"jump-to-nav", "mw-editsection", "reflist", "mw-references",
 	"authority-control", "mw-indicators", "sistersitebox", "mbox", "ambox",
@@ -522,6 +522,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		mainContent := ExtractMainContent(contentHTML)
 		if mainContent != "" {
 			contentHTML = mainContent
+			contentHTML = CleanHTML(contentHTML, false, nil, nil)
 		}
 	}
 
@@ -529,42 +530,100 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 	if formatNeeded[types.FormatMarkdown] || formatNeeded[types.FormatJson] {
 		md := HTMLToMarkdown(contentHTML)
 		mdTrimmed := strings.TrimSpace(md)
-		suspiciouslyShort := opts.CSSSelector == nil && opts.XPath == nil && len(mdTrimmed) < 100 && len(opts.RawHTML) > 5000
 
-		if suspiciouslyShort {
-			var fallbackMD string
-			if opts.OnlyMainContent {
-				fromCleaned := HTMLToMarkdown(cleaned)
-				basicCleaned := CleanHTML(opts.RawHTML, false, opts.IncludeTags, opts.ExcludeTags)
-				basicMD := HTMLToMarkdown(basicCleaned)
+		type candidate struct {
+			name    string
+			content string
+		}
 
-				if len(strings.TrimSpace(fromCleaned)) >= len(strings.TrimSpace(basicMD)) {
-					fallbackMD = fromCleaned
-				} else {
-					fallbackMD = basicMD
-				}
-			} else {
-				fallbackMD = HTMLToMarkdown(opts.RawHTML)
+		candidates := []candidate{{name: "primary", content: md}}
+
+		if opts.OnlyMainContent {
+			cleanedMD := HTMLToMarkdown(cleaned)
+			if strings.TrimSpace(cleanedMD) != "" {
+				candidates = append(candidates, candidate{name: "cleaned", content: cleanedMD})
 			}
+		}
 
-			if len(strings.TrimSpace(fallbackMD)) < 100 && len(opts.RawHTML) > 5000 {
-				plain := HTMLToPlaintext(contentHTML)
-				if strings.TrimSpace(plain) == "" {
-					plain = HTMLToPlaintext(cleaned)
+		basicCleaned := CleanHTML(opts.RawHTML, false, opts.IncludeTags, opts.ExcludeTags)
+		basicMD := HTMLToMarkdown(basicCleaned)
+		if strings.TrimSpace(basicMD) != "" {
+			candidates = append(candidates, candidate{name: "basic", content: basicMD})
+		}
+
+		structuralMD := extractStructuralFallback(opts.RawHTML)
+		if strings.TrimSpace(structuralMD) != "" {
+			candidates = append(candidates, candidate{name: "structural", content: structuralMD})
+		}
+
+		plainText := HTMLToPlaintext(contentHTML)
+		if strings.TrimSpace(plainText) == "" {
+			plainText = HTMLToPlaintext(cleaned)
+		}
+		if strings.TrimSpace(plainText) == "" {
+			plainText = HTMLToPlaintext(opts.RawHTML)
+		}
+		if strings.TrimSpace(plainText) != "" {
+			candidates = append(candidates, candidate{name: "plaintext", content: plainText})
+		}
+
+		chosenIdx := 0
+		if opts.OnlyMainContent && len(candidates) > 1 {
+			maxLen := len(strings.TrimSpace(candidates[0].content))
+			for i := 1; i < len(candidates); i++ {
+				cLen := len(strings.TrimSpace(candidates[i].content))
+				if cLen > maxLen {
+					maxLen = cLen
+					chosenIdx = i
 				}
-				if strings.TrimSpace(plain) == "" {
-					plain = HTMLToPlaintext(opts.RawHTML)
-				}
-				if strings.TrimSpace(plain) != "" {
-					markdown = &plain
-				} else if strings.TrimSpace(fallbackMD) != "" {
-					markdown = &fallbackMD
-				}
-			} else if strings.TrimSpace(fallbackMD) != "" {
-				markdown = &fallbackMD
-			} else if mdTrimmed != "" {
-				markdown = &md
 			}
+		}
+
+		bestMD := candidates[chosenIdx].content
+		bestTrimmed := strings.TrimSpace(bestMD)
+
+		if bestMD != "" && meta.Title != nil && !strings.Contains(bestTrimmed, *meta.Title) {
+			if ogTitle := meta.OGTitle; ogTitle != nil && !strings.Contains(bestTrimmed, *ogTitle) {
+				titleToPrepend := *ogTitle
+				if strings.Contains(titleToPrepend, "|") {
+					titleToPrepend = strings.Split(titleToPrepend, "|")[0]
+				} else if idx := strings.Index(titleToPrepend, " - "); idx != -1 {
+					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
+				} else if idx := strings.Index(titleToPrepend, " – "); idx != -1 {
+					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
+				} else if idx := strings.Index(titleToPrepend, " — "); idx != -1 {
+					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
+				}
+				if titleToPrepend != "" {
+					bestMD = "# " + titleToPrepend + "\n\n" + bestMD
+					bestTrimmed = "# " + titleToPrepend + "\n\n" + bestTrimmed
+				}
+			}
+		}
+
+		if len(bestTrimmed) < 1500 {
+			descToAppend := ""
+			if meta.Description != nil && len(*meta.Description) >= 80 {
+				descToAppend = *meta.Description
+			} else if meta.OGDescription != nil && len(*meta.OGDescription) >= 80 {
+				descToAppend = *meta.OGDescription
+			}
+			if descToAppend != "" {
+				prefix := descToAppend
+				if len(prefix) > 120 {
+					prefix = prefix[:120]
+				}
+				if !strings.Contains(bestTrimmed, prefix) {
+					if meta.Title != nil && !strings.EqualFold(descToAppend, *meta.Title) {
+						bestMD = bestMD + "\n\n" + descToAppend
+					}
+				}
+			}
+		}
+
+		if bestTrimmed != "" {
+			bestMD = reflowInlineLists(bestMD)
+			markdown = &bestMD
 		} else if mdTrimmed != "" {
 			markdown = &md
 		} else if md != "" {
@@ -857,6 +916,125 @@ func escapeCSSIdentifier(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.ReplaceAll(value, " ", ".")
 	return value
+}
+
+// extractStructuralFallback extracts content from tables with ≥2 rows and lists with ≥5 items.
+// This is a fallback for pages where readability fails to find main content but the data
+// is embedded in structured elements like salary tables or job listings.
+func extractStructuralFallback(html string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return ""
+	}
+
+	var results []string
+
+	doc.Find("table").Each(func(i int, s *goquery.Selection) {
+		rows := s.Find("tr")
+		if rows.Length() >= 2 {
+			htmlChunk, _ := s.Html()
+			if len(strings.TrimSpace(htmlChunk)) >= 40 {
+				md := HTMLToMarkdown(htmlChunk)
+				if strings.TrimSpace(md) != "" {
+					results = append(results, md)
+				}
+			}
+		}
+	})
+
+	doc.Find("ul, ol").Each(func(i int, s *goquery.Selection) {
+		items := s.Find("li")
+		if items.Length() >= 5 {
+			htmlChunk, _ := s.Html()
+			if len(strings.TrimSpace(htmlChunk)) >= 40 {
+				md := HTMLToMarkdown(htmlChunk)
+				if strings.TrimSpace(md) != "" {
+					results = append(results, md)
+				}
+			}
+		}
+	})
+
+	if len(results) == 0 {
+		return ""
+	}
+
+	return strings.Join(results, "\n\n")
+}
+
+// calculateQualityScore computes a quality score for markdown content.
+func calculateQualityScore(md string) float64 {
+	if md == "" {
+		return 0
+	}
+	words := strings.Fields(md)
+	if len(words) == 0 {
+		return 0
+	}
+
+	textLen := float64(len(md))
+	wordCount := float64(len(words))
+
+	uniqueWords := make(map[string]bool)
+	for _, w := range words {
+		uniqueWords[strings.ToLower(w)] = true
+	}
+	uniqueRatio := float64(len(uniqueWords)) / wordCount
+
+	linkDensity := 0.0
+	linkMatches := regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`).FindAllStringIndex(md, -1)
+	linkTextLen := 0
+	for _, match := range linkMatches {
+		linkTextLen += match[1] - match[0]
+	}
+	if textLen > 0 {
+		linkDensity = float64(linkTextLen) / textLen
+	}
+
+	boilerplateWords := []string{"copyright", "all rights reserved", "privacy policy", "terms of service", "cookie", "subscribe", "newsletter", "advertisement", "advert", "share", "follow us", "contact us", "about us"}
+	boilerplateRatio := 0.0
+	lowerMd := strings.ToLower(md)
+	for _, bw := range boilerplateWords {
+		if strings.Contains(lowerMd, bw) {
+			boilerplateRatio += 0.1
+		}
+	}
+	if boilerplateRatio > 1.0 {
+		boilerplateRatio = 1.0
+	}
+
+	score := uniqueRatio*0.4 + (1.0-linkDensity)*0.3 + (1.0-boilerplateRatio)*0.3
+
+	if wordCount > 100 {
+		score *= 1.1
+	}
+	if textLen > 500 {
+		score *= 1.05
+	}
+
+	return score
+}
+
+// reflowInlineLists cleans up inline lists that were incorrectly split across lines.
+// This compensates for markdown converters that emit each link on its own line.
+func reflowInlineLists(md string) string {
+	re1 := regexp.MustCompile(`":\s*\n+\s*\[`)
+	md = re1.ReplaceAllString(md, "\": [")
+
+	re2 := regexp.MustCompile(`"\),\s*\n+\s*\[`)
+	md = re2.ReplaceAllString(md, "\"), [")
+
+	re3 := regexp.MustCompile(`",\s*\n+\s*([A-Z])`)
+	md = re3.ReplaceAllString(md, "\", $1")
+
+	return md
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // extractPDF handles PDF extraction when raw bytes are provided with a PDF
