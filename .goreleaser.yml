@@ -42,6 +42,7 @@ archives:
     files:
       - quickcrawl.toml
       - "*.md"
+      - "!internal.md"
 
   - id: quickcrawl-cli-archive
     ids:
@@ -53,6 +54,7 @@ archives:
     files:
       - quickcrawl.toml
       - "*.md"
+      - "!internal.md"
 
 snapshot:
   version_template: "{{ .Version }}-next"
