@@ -41,8 +41,7 @@ archives:
         formats: zip
     files:
       - quickcrawl.toml
-      - "*.md"
-      - "!internal.md"
+      - README.md
 
   - id: quickcrawl-cli-archive
     ids:
@@ -53,8 +52,7 @@ archives:
         formats: zip
     files:
       - quickcrawl.toml
-      - "*.md"
-      - "!internal.md"
+      - README.md
 
 snapshot:
   version_template: "{{ .Version }}-next"
