@@ -297,12 +297,12 @@ type MapResponse struct {
 
 // SearchRequest defines parameters for a search operation.
 type SearchRequest struct {
-	Query     string         `json:"query"`               // Search query
-	Region   string         `json:"region"`              // Region code (e.g., "us-en")
-	Safesearch string       `json:"safesearch,omitempty"` // SafeSearch mode: "moderate", "strict", "off"
-	Timelimit string        `json:"timelimit,omitempty"` // Time limit filter (e.g., "d" for day)
-	RenderJS bool           `json:"renderJs"`            // Enable JavaScript rendering
-	Formats  []OutputFormat `json:"formats"`             // Desired output formats
+	Query      string         `json:"query"`                // Search query
+	Region     string         `json:"region"`               // Region code (e.g., "us-en")
+	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "moderate", "strict", "off"
+	Timelimit  string         `json:"timelimit,omitempty"`  // Time limit filter (e.g., "d" for day)
+	RenderJS   bool           `json:"renderJs"`             // Enable JavaScript rendering
+	Formats    []OutputFormat `json:"formats"`              // Desired output formats
 }
 
 // Defaults sets default values for optional fields.
@@ -323,12 +323,12 @@ type SearchResult struct {
 	Title       string   `json:"title"`       // Result title
 	Description string   `json:"description"` // Result snippet/description
 	URL         string   `json:"url"`         // Result URL
-	Markdown   *string  `json:"markdown,omitempty"`
-	HTML       *string  `json:"html,omitempty"`
-	RawHTML    *string  `json:"rawHtml,omitempty"`
-	PlainText  *string  `json:"plainText,omitempty"`
-	Links      []string `json:"links,omitempty"`
-	RawJSON    []byte   `json:"rawJson,omitempty"`
+	Markdown    *string  `json:"markdown,omitempty"`
+	HTML        *string  `json:"html,omitempty"`
+	RawHTML     *string  `json:"rawHtml,omitempty"`
+	PlainText   *string  `json:"plainText,omitempty"`
+	Links       []string `json:"links,omitempty"`
+	RawJSON     []byte   `json:"rawJson,omitempty"`
 }
 
 // SearchData contains the search results.
@@ -338,9 +338,9 @@ type SearchData struct {
 
 // SearchResponse is returned by the search endpoint.
 type SearchResponse struct {
-	Success bool      `json:"success"`          // Whether operation succeeded
+	Success bool        `json:"success"`         // Whether operation succeeded
 	Data    *SearchData `json:"data,omitempty"`  // Search results
-	Error   *string    `json:"error,omitempty"` // Error message
+	Error   *string     `json:"error,omitempty"` // Error message
 }
 
 // =============================================================================
@@ -350,6 +350,7 @@ type SearchResponse struct {
 // FetchResult contains the raw result from a fetcher (HTTP or browser).
 type FetchResult struct {
 	URL          string  // URL that was fetched
+	FinalURL     *string // Final URL after redirects
 	StatusCode   uint16  // HTTP status code
 	HTML         string  // Fetched HTML content
 	ContentType  *string // Content-Type header value
@@ -367,7 +368,7 @@ const (
 	ModeAuto       RendererMode = "auto"       // Auto-detect (try HTTP, then JS if needed)
 	ModeNone       RendererMode = "none"       // HTTP only, no JavaScript
 	ModeLightpanda RendererMode = "lightpanda" // LightPanda browser
-	ModeChrome     RendererMode = "chrome" // Chrome browser
+	ModeChrome     RendererMode = "chrome"     // Chrome browser
 )
 
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
@@ -386,8 +387,8 @@ type RendererConfig struct {
 	PoolSize        int          `toml:"pool_size" json:"poolSize"`                // Browser pool size
 	RenderJSDefault *bool        `toml:"render_js_default" json:"renderJsDefault"` // Default JS rendering
 	BrowserBinary   string       `toml:"browser_binary" json:"browserBinary"`      // Chrome binary path
-	Lightpanda *CdpEndpoint `toml:"lightpanda" json:"lightpanda"` // LightPanda config
-	Chrome     *CdpEndpoint `toml:"chrome" json:"chrome"`           // Chrome config
+	Lightpanda      *CdpEndpoint `toml:"lightpanda" json:"lightpanda"`             // LightPanda config
+	Chrome          *CdpEndpoint `toml:"chrome" json:"chrome"`                     // Chrome config
 }
 
 // Defaults sets default values for unset fields.
@@ -405,11 +406,11 @@ func (c *RendererConfig) Defaults() {
 
 // StealthConfig configures stealth/bot-detection evasion.
 type StealthConfig struct {
-	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
+	Enabled       bool     `toml:"enabled" json:"enabled"`              // Enable stealth mode
 	UserAgents    []string `toml:"user_agents" json:"userAgents"`       // Custom user agents
-	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`     // Random delay factor
-	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
-	Strategy      string  `toml:"strategy" json:"strategy"`             // Header strategy: modern_browser, mobile_device, bot_friendly
+	JitterFactor  float64  `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
+	InjectHeaders bool     `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string   `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
