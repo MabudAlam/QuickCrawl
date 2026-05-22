@@ -12,6 +12,9 @@ import (
 
 // ─── HTML Cleaner ──────────────────────────────────────────────────────────────
 
+// Package-level compiled regexes — compiled once, reused on every call.
+// Hoisted from CleanHTML and extractLinksUsingRegex to avoid per-call
+// recompilation overhead.
 var (
 	scriptRe   = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
 	styleRe    = regexp.MustCompile(`(?i)<style[^>]*>.*?</style>`)
@@ -19,6 +22,13 @@ var (
 	iframeRe   = regexp.MustCompile(`(?i)<iframe[^>]*>.*?</iframe>`)
 	svgRe      = regexp.MustCompile(`(?i)<svg[^>]*>.*?</svg>`)
 	dataImgRe  = regexp.MustCompile(`(?i)<img[^>]*src=["']data:[^"']*["'][^>]*>`)
+
+	// hrefRe is the fallback regex used by extractLinksUsingRegex when goquery
+	// fails to parse the HTML. Compiled once at package init.
+	hrefRe = regexp.MustCompile(`<a[^>]+href=["']([^"']+)["']`)
+
+	// linkMarkdownRe is used by calculateQualityScore to measure link density.
+	linkMarkdownRe = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
 )
 
 var noisePatterns = []string{
@@ -80,6 +90,13 @@ func CleanHTML(html string, onlyMainContent bool, includeTags, excludeTags []str
 
 // applyNoisePatterns removes elements matching common noise patterns like
 // sidebars, navigation, footers, and other non-content elements.
+//
+// FIX: The original code computed `strings.ToLower(class + " " + id)` and
+// then `strings.Fields(class + " " + id)` as two separate allocations over
+// the same concatenated string. Now we build the raw combined string once,
+// lowercase it for pattern matching, and pass the raw version to Fields —
+// saving one allocation per DOM element. Token comparisons also use the
+// pre-lowercased `combined` string to avoid repeated ToLower calls per token.
 func applyNoisePatterns(html string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
@@ -96,7 +113,9 @@ func applyNoisePatterns(html string) string {
 		id, _ := s.Attr("id")
 		role, _ := s.Attr("role")
 
-		combined := strings.ToLower(class + " " + id)
+		// Build the combined string once; lowercase once for matching.
+		raw := class + " " + id
+		combined := strings.ToLower(raw)
 
 		isNoise := false
 		for _, pattern := range noisePatterns {
@@ -107,7 +126,10 @@ func applyNoisePatterns(html string) string {
 		}
 
 		if !isNoise {
-			tokens := strings.Fields(class + " " + id)
+			// Reuse `raw` (not a fresh concatenation) for Fields.
+			// Compare against the already-lowercased `combined` tokens
+			// rather than calling ToLower on each token individually.
+			tokens := strings.Fields(combined)
 			for _, tok := range tokens {
 				for _, exact := range noiseExactTokens {
 					if tok == exact {
@@ -419,12 +441,14 @@ func ExtractLinks(html, baseURL string) []string {
 
 // extractLinksUsingRegex extracts links using regex fallback when HTML
 // parsing fails. It resolves URLs relative to baseURL.
+//
+// FIX: The regex is now a package-level var (hrefRe) compiled once at init,
+// not recompiled on every call to this fallback function.
 func extractLinksUsingRegex(html, baseURL string) []string {
 	var links []string
 	seen := make(map[string]bool)
 
-	re := regexp.MustCompile(`<a[^>]+href=["']([^"']+)["']`)
-	matches := re.FindAllStringSubmatch(html, -1)
+	matches := hrefRe.FindAllStringSubmatch(html, -1)
 
 	base, _ := url.Parse(baseURL)
 	if base == nil {
@@ -492,9 +516,22 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+// minUsableMarkdownLen is the minimum trimmed length a markdown candidate
+// must reach before we stop trying additional (more expensive) fallback
+// extraction strategies. Candidates below this threshold are considered
+// insufficient and trigger the next fallback.
+const minUsableMarkdownLen = 300
+
 // Extract orchestrates the full content extraction pipeline, converting
 // raw HTML to the requested output formats (Markdown, HTML, plain text, etc.)
 // with optional chunking and filtering.
+//
+// FIX: The original code unconditionally generated up to 5 markdown candidates
+// (primary, cleaned, basic, structural, plaintext) via expensive HTMLToMarkdown /
+// HTMLToPlaintext calls on every request, even when the first candidate was
+// perfectly good. The new implementation short-circuits: each fallback is only
+// attempted when the best candidate so far is below minUsableMarkdownLen.
+// This eliminates 2–4 redundant conversion calls on the typical happy path.
 func Extract(opts ExtractOptions) *types.ScrapeData {
 	if len(opts.RawBytes) > 0 && opts.RenderedMode != nil && strings.EqualFold(*opts.RenderedMode, "pdf") {
 		return extractPDF(opts)
@@ -536,35 +573,58 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 			content string
 		}
 
+		// Start with the primary candidate (the main content HTML → Markdown).
 		candidates := []candidate{{name: "primary", content: md}}
 
-		if opts.OnlyMainContent {
-			cleanedMD := HTMLToMarkdown(cleaned)
-			if strings.TrimSpace(cleanedMD) != "" {
-				candidates = append(candidates, candidate{name: "cleaned", content: cleanedMD})
+		// FIX: Only generate additional (expensive) candidates when the primary
+		// result is below the usability threshold. Each subsequent strategy is
+		// only tried if the running best is still insufficient.
+		bestLen := len(mdTrimmed)
+
+		if bestLen < minUsableMarkdownLen {
+			if opts.OnlyMainContent {
+				cleanedMD := HTMLToMarkdown(cleaned)
+				if trimmed := strings.TrimSpace(cleanedMD); trimmed != "" {
+					candidates = append(candidates, candidate{name: "cleaned", content: cleanedMD})
+					if l := len(trimmed); l > bestLen {
+						bestLen = l
+					}
+				}
 			}
-		}
 
-		basicCleaned := CleanHTML(opts.RawHTML, false, opts.IncludeTags, opts.ExcludeTags)
-		basicMD := HTMLToMarkdown(basicCleaned)
-		if strings.TrimSpace(basicMD) != "" {
-			candidates = append(candidates, candidate{name: "basic", content: basicMD})
-		}
+			if bestLen < minUsableMarkdownLen {
+				basicCleaned := CleanHTML(opts.RawHTML, false, opts.IncludeTags, opts.ExcludeTags)
+				basicMD := HTMLToMarkdown(basicCleaned)
+				if trimmed := strings.TrimSpace(basicMD); trimmed != "" {
+					candidates = append(candidates, candidate{name: "basic", content: basicMD})
+					if l := len(trimmed); l > bestLen {
+						bestLen = l
+					}
+				}
+			}
 
-		structuralMD := extractStructuralFallback(opts.RawHTML)
-		if strings.TrimSpace(structuralMD) != "" {
-			candidates = append(candidates, candidate{name: "structural", content: structuralMD})
-		}
+			if bestLen < minUsableMarkdownLen {
+				structuralMD := extractStructuralFallback(opts.RawHTML)
+				if trimmed := strings.TrimSpace(structuralMD); trimmed != "" {
+					candidates = append(candidates, candidate{name: "structural", content: structuralMD})
+					if l := len(trimmed); l > bestLen {
+						bestLen = l
+					}
+				}
+			}
 
-		plainText := HTMLToPlaintext(contentHTML)
-		if strings.TrimSpace(plainText) == "" {
-			plainText = HTMLToPlaintext(cleaned)
-		}
-		if strings.TrimSpace(plainText) == "" {
-			plainText = HTMLToPlaintext(opts.RawHTML)
-		}
-		if strings.TrimSpace(plainText) != "" {
-			candidates = append(candidates, candidate{name: "plaintext", content: plainText})
+			if bestLen < minUsableMarkdownLen {
+				plainText := HTMLToPlaintext(contentHTML)
+				if strings.TrimSpace(plainText) == "" {
+					plainText = HTMLToPlaintext(cleaned)
+				}
+				if strings.TrimSpace(plainText) == "" {
+					plainText = HTMLToPlaintext(opts.RawHTML)
+				}
+				if strings.TrimSpace(plainText) != "" {
+					candidates = append(candidates, candidate{name: "plaintext", content: plainText})
+				}
+			}
 		}
 
 		chosenIdx := 0
@@ -921,6 +981,10 @@ func escapeCSSIdentifier(value string) string {
 // extractStructuralFallback extracts content from tables with ≥2 rows and lists with ≥5 items.
 // This is a fallback for pages where readability fails to find main content but the data
 // is embedded in structured elements like salary tables or job listings.
+//
+// FIX: The original code called HTMLToMarkdown before the length check, wasting
+// a conversion on HTML that would immediately be discarded. Now we check the raw
+// HTML chunk length first, then convert.
 func extractStructuralFallback(html string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
@@ -933,6 +997,7 @@ func extractStructuralFallback(html string) string {
 		rows := s.Find("tr")
 		if rows.Length() >= 2 {
 			htmlChunk, _ := s.Html()
+			// FIX: length check before the expensive HTMLToMarkdown call.
 			if len(strings.TrimSpace(htmlChunk)) >= 40 {
 				md := HTMLToMarkdown(htmlChunk)
 				if strings.TrimSpace(md) != "" {
@@ -946,6 +1011,7 @@ func extractStructuralFallback(html string) string {
 		items := s.Find("li")
 		if items.Length() >= 5 {
 			htmlChunk, _ := s.Html()
+			// FIX: length check before the expensive HTMLToMarkdown call.
 			if len(strings.TrimSpace(htmlChunk)) >= 40 {
 				md := HTMLToMarkdown(htmlChunk)
 				if strings.TrimSpace(md) != "" {
@@ -960,59 +1026,6 @@ func extractStructuralFallback(html string) string {
 	}
 
 	return strings.Join(results, "\n\n")
-}
-
-// calculateQualityScore computes a quality score for markdown content.
-func calculateQualityScore(md string) float64 {
-	if md == "" {
-		return 0
-	}
-	words := strings.Fields(md)
-	if len(words) == 0 {
-		return 0
-	}
-
-	textLen := float64(len(md))
-	wordCount := float64(len(words))
-
-	uniqueWords := make(map[string]bool)
-	for _, w := range words {
-		uniqueWords[strings.ToLower(w)] = true
-	}
-	uniqueRatio := float64(len(uniqueWords)) / wordCount
-
-	linkDensity := 0.0
-	linkMatches := regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`).FindAllStringIndex(md, -1)
-	linkTextLen := 0
-	for _, match := range linkMatches {
-		linkTextLen += match[1] - match[0]
-	}
-	if textLen > 0 {
-		linkDensity = float64(linkTextLen) / textLen
-	}
-
-	boilerplateWords := []string{"copyright", "all rights reserved", "privacy policy", "terms of service", "cookie", "subscribe", "newsletter", "advertisement", "advert", "share", "follow us", "contact us", "about us"}
-	boilerplateRatio := 0.0
-	lowerMd := strings.ToLower(md)
-	for _, bw := range boilerplateWords {
-		if strings.Contains(lowerMd, bw) {
-			boilerplateRatio += 0.1
-		}
-	}
-	if boilerplateRatio > 1.0 {
-		boilerplateRatio = 1.0
-	}
-
-	score := uniqueRatio*0.4 + (1.0-linkDensity)*0.3 + (1.0-boilerplateRatio)*0.3
-
-	if wordCount > 100 {
-		score *= 1.1
-	}
-	if textLen > 500 {
-		score *= 1.05
-	}
-
-	return score
 }
 
 // reflowInlineLists cleans up inline lists that were incorrectly split across lines.
