@@ -24,6 +24,12 @@ const (
 
 	// DefaultPoolSize is the default number of concurrent browser pages.
 	DefaultPoolSize = 10
+
+	// httpMaxRetries is the number of retries for transient HTTP errors.
+	httpMaxRetries = 1
+
+	// httpRetryBackoff is the delay between retry attempts.
+	httpRetryBackoff = 250 * time.Millisecond
 )
 
 // stealthHeaders are HTTP headers injected to mimic a real Chrome browser.
