@@ -595,6 +595,7 @@ var (
 	ErrNotFound          = common.ErrNotFound
 	ErrRateLimited       = common.ErrRateLimited
 	ErrInternal          = common.ErrInternal
+	ErrForbidden         = common.ErrForbidden
 )
 
 // Type aliases for common types.

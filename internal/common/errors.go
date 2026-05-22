@@ -80,6 +80,7 @@ var (
 	ErrNotFound          = NewErrorFactory(CodeNotFound)
 	ErrRateLimited       = NewErrorFactory(CodeRateLimited)
 	ErrInternal          = NewErrorFactory(CodeInternalErr)
+	ErrForbidden         = NewErrorFactory(CodeForbidden)
 )
 
 // NewQuickcrawlError creates a new error with the given message and error code.
