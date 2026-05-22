@@ -13,6 +13,7 @@ type MapOptions struct {
 	BaseURL           string
 	MaxDepth          uint32
 	UseSitemap        bool
+	RespectRobots     bool
 	Renderer          *renderer.FallbackRenderer
 	MaxConcurrency    int
 	RequestsPerSecond float64
@@ -45,6 +46,7 @@ func Map(opts MapOptions) (*types.MapData, *types.QuickCrawlError) {
 		maxDepth,
 		opts.UseSitemap,
 		opts.Renderer,
+		opts.RespectRobots,
 		opts.MaxConcurrency,
 		opts.RequestsPerSecond,
 		opts.UserAgent,

@@ -355,6 +355,8 @@ func (h *Handler) Map(c *gin.Context) {
 		useSitemap = *req.UseSitemap
 	}
 
+	respectRobots := h.State.Config.Crawler.RespectRobotsTxt
+
 	maxDepth := uint32(h.State.Config.Crawler.DefaultMaxDepth)
 	if req.MaxDepth != nil {
 		maxDepth = uint32(*req.MaxDepth)
@@ -381,6 +383,7 @@ func (h *Handler) Map(c *gin.Context) {
 		maxDepth,
 		useSitemap,
 		rend,
+		respectRobots,
 		h.State.Config.Crawler.MaxConcurrency,
 		h.State.Config.Crawler.RequestsPerSecond,
 		h.State.Config.Crawler.UserAgent,
@@ -389,6 +392,14 @@ func (h *Handler) Map(c *gin.Context) {
 	)
 
 	if discoverErr != nil {
+		if discoverErr.Code == types.CodeForbidden {
+			c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
+				Success:   false,
+				Error:     stringPtr("access denied by robots.txt"),
+				ErrorCode: stringPtr(string(types.CodeForbidden)),
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}](discoverErr.Message))
 		return
 	}
