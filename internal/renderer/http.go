@@ -86,110 +86,165 @@ func (f *HTTPFetcher) IsAvailable() bool {
 }
 
 // Fetch performs an HTTP GET request and returns the result.
+// It retries once on transient errors (connection/timeout) or gateway errors (502-504).
 func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs *int64) (*types.FetchResult, *types.QuickCrawlError) {
 	start := time.Now()
-	log.Printf("[http] starting fetch: url=%s", rawURL)
 
-	// Create HTTP request
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, types.ErrInvalidURL.New(fmt.Sprintf("Invalid URL: %v", err))
-	}
-
-	// Set User-Agent header
-	req.Header.Set("User-Agent", f.userAgent)
-
-	// Inject stealth headers to mimic real browser
-	if f.injectStealthHeaders {
-		for k, v := range stealthHeaders {
-			req.Header.Set(k, v)
+	// Build request once; we rebuild it each attempt so headers are fresh.
+	buildRequest := func() (*http.Request, *types.QuickCrawlError) {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, types.ErrInvalidURL.New(fmt.Sprintf("Invalid URL: %v", err))
 		}
-	}
-
-	// Apply custom headers from caller
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	// Execute request
-	resp, err := f.client.Do(req)
-	if err != nil {
-		// Distinguish between unreachable host and other errors
-		if strings.Contains(err.Error(), "connection refused") ||
-			strings.Contains(err.Error(), "timeout") ||
-			strings.Contains(err.Error(), "no such host") {
-			return nil, types.ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s: %v", rawURL, err))
-		}
-		return nil, types.ErrHttp.New(err.Error())
-	}
-	defer resp.Body.Close()
-
-	statusCode := resp.StatusCode
-
-	// Check Content-Length header for size limits
-	if cl := resp.Header.Get("Content-Length"); cl != "" {
-		if contentLength, err := strconv.ParseInt(cl, 10, 64); err == nil {
-			if contentLength > MaxResponseBytes {
-				return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", contentLength, MaxResponseBytes))
+		req.Header.Set("User-Agent", f.userAgent)
+		if f.injectStealthHeaders {
+			for k, v := range stealthHeaders {
+				req.Header.Set(k, v)
 			}
 		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		return req, nil
 	}
 
-	// Extract and normalize Content-Type
-	contentType := resp.Header.Get("Content-Type")
-	if idx := strings.Index(contentType, ";"); idx != -1 {
-		contentType = strings.TrimSpace(contentType[:idx])
-	}
-	contentType = strings.ToLower(contentType)
-
-	// Check if response is a PDF
-	isPDF := contentType == "application/pdf"
-
-	// Read response body with size limit
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
-	if err != nil {
-		return nil, types.ErrHttp.New(err.Error())
-	}
-
-	// Verify body size after reading (Content-Length might not be set)
-	if len(body) > MaxResponseBytes {
-		return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", len(body), MaxResponseBytes))
-	}
-
-	// Prepare result based on content type
-	var html string
-	var rawBytes []byte
-	renderedMethod := "http"
-
-	if isPDF {
-		// PDFs are returned as raw bytes
-		rawBytes = body
-		html = ""
-		renderedMethod = "pdf"
-	} else {
-		html = string(body)
+	// isRetriableError returns true for transient errors worth one retry.
+// Does NOT retry certificate errors (expired, invalid) as these are permanent.
+	isRetriableError := func(err error) bool {
+		if err == nil {
+			return false
+		}
+		errStr := err.Error()
+		// Skip retryable check for certificate errors - these are permanent failures
+		if strings.Contains(errStr, "certificate has expired") ||
+			strings.Contains(errStr, "x509") ||
+			strings.Contains(errStr, "certificate is valid for") {
+			return false
+		}
+		return strings.Contains(errStr, "connection refused") ||
+			strings.Contains(errStr, "timeout") ||
+			strings.Contains(errStr, "deadline exceeded") ||
+			strings.Contains(errStr, "no such host") ||
+			strings.Contains(errStr, "temporary failure") ||
+			strings.Contains(errStr, "i/o timeout") ||
+			strings.Contains(errStr, "tls handshake")
 	}
 
-	// Add warning for error status codes
-	var warning *string
-	if statusCode >= 400 {
-		warningStr := fmt.Sprintf("Target returned %d %s", statusCode, canonicalStatusText(uint16(statusCode)))
-		warning = &warningStr
+	// isRetriableStatus returns true for transient gateway errors.
+	isRetriableStatus := func(statusCode int) bool {
+		return statusCode >= 502 && statusCode <= 504
 	}
 
-	elapsed := time.Since(start)
-	log.Printf("[http] fetch completed: url=%s status=%d duration=%v size=%d", rawURL, statusCode, elapsed, len(body))
+	var lastErr error
+	for attempt := 0; attempt <= httpMaxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := httpRetryBackoff
+			log.Printf("[http] retrying (attempt %d): url=%s backoff=%v", attempt, rawURL, backoff)
+			time.Sleep(backoff)
+		}
 
-	return &types.FetchResult{
-		URL:          rawURL,
-		StatusCode:   uint16(statusCode),
-		HTML:         html,
-		ContentType:  &contentType,
-		RawBytes:     rawBytes,
-		RenderedWith: &renderedMethod,
-		TimeTaken:    uint64(time.Since(start).Milliseconds()),
-		Warning:      warning,
-	}, nil
+		req, reqErr := buildRequest()
+		if reqErr != nil {
+			return nil, reqErr
+		}
+
+		log.Printf("[http] starting fetch: url=%s attempt=%d", rawURL, attempt)
+
+		resp, err := f.client.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt < httpMaxRetries && isRetriableError(err) {
+				log.Printf("[http] transient error (attempt %d): url=%s error=%v", attempt, rawURL, err)
+				continue
+			}
+			if strings.Contains(err.Error(), "connection refused") ||
+				strings.Contains(err.Error(), "no such host") {
+				return nil, types.ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s: %v", rawURL, err))
+			}
+			return nil, types.ErrHttp.New(err.Error())
+		}
+		defer resp.Body.Close()
+
+		statusCode := resp.StatusCode
+
+		// Retry on 502-504 with one retry
+		if attempt < httpMaxRetries && isRetriableStatus(statusCode) {
+			lastErr = fmt.Errorf("HTTP %d", statusCode)
+			log.Printf("[http] retrying on status %d (attempt %d): url=%s", statusCode, attempt, rawURL)
+			continue
+		}
+
+		// Check Content-Length header for size limits
+		if cl := resp.Header.Get("Content-Length"); cl != "" {
+			if contentLength, err := strconv.ParseInt(cl, 10, 64); err == nil {
+				if contentLength > MaxResponseBytes {
+					return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", contentLength, MaxResponseBytes))
+				}
+			}
+		}
+
+		// Extract and normalize Content-Type
+		contentType := resp.Header.Get("Content-Type")
+		if idx := strings.Index(contentType, ";"); idx != -1 {
+			contentType = strings.TrimSpace(contentType[:idx])
+		}
+		contentType = strings.ToLower(contentType)
+
+		// Check if response is a PDF
+		isPDF := contentType == "application/pdf"
+
+		// Read response body with size limit
+		body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+		if err != nil {
+			return nil, types.ErrHttp.New(err.Error())
+		}
+
+		// Verify body size after reading (Content-Length might not be set)
+		if len(body) > MaxResponseBytes {
+			return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", len(body), MaxResponseBytes))
+		}
+
+		// Prepare result based on content type
+		var html string
+		var rawBytes []byte
+		renderedMethod := "http"
+
+		if isPDF {
+			rawBytes = body
+			html = ""
+			renderedMethod = "pdf"
+		} else {
+			html = string(body)
+		}
+
+		// Add warning for error status codes
+		var warning *string
+		if statusCode >= 400 {
+			warningStr := fmt.Sprintf("Target returned %d %s", statusCode, canonicalStatusText(uint16(statusCode)))
+			warning = &warningStr
+		}
+
+		elapsed := time.Since(start)
+		log.Printf("[http] fetch completed: url=%s status=%d duration=%v size=%d attempt=%d", rawURL, statusCode, elapsed, len(body), attempt)
+
+		return &types.FetchResult{
+			URL:          rawURL,
+			StatusCode:   uint16(statusCode),
+			HTML:         html,
+			ContentType:  &contentType,
+			RawBytes:     rawBytes,
+			RenderedWith: &renderedMethod,
+			TimeTaken:    uint64(time.Since(start).Milliseconds()),
+			Warning:      warning,
+		}, nil
+	}
+
+	// All retries exhausted
+	if strings.Contains(lastErr.Error(), "connection refused") ||
+		strings.Contains(lastErr.Error(), "no such host") {
+		return nil, types.ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s after %d attempts: %v", rawURL, httpMaxRetries+1, lastErr))
+	}
+	return nil, types.ErrHttp.New(fmt.Sprintf("failed after %d attempts: %v", httpMaxRetries+1, lastErr))
 }
 
 // canonicalStatusText converts HTTP status codes to human-readable text.
