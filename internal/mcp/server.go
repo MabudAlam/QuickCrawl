@@ -330,6 +330,7 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 		maxDepth,
 		useSitemap,
 		s.state.Renderer,
+		s.config.Crawler.RespectRobotsTxt,
 		s.config.Crawler.MaxConcurrency,
 		s.config.Crawler.RequestsPerSecond,
 		s.config.Crawler.UserAgent,
@@ -338,6 +339,9 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 	)
 
 	if discoverErr != nil {
+		if discoverErr.Code == types.CodeForbidden {
+			return errorResult("access denied by robots.txt"), nil, nil
+		}
 		return errorResult(fmt.Sprintf("map error: %v", discoverErr.Message)), nil, nil
 	}
 

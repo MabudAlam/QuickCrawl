@@ -263,7 +263,7 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 // If ctx is provided and has a deadline, the operation will respect that timeout.
 func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer interface {
 	Fetch(rawURL string, headers map[string]string, renderJS *bool, waitForMs *int64, browser *string) (*types.FetchResult, *types.QuickCrawlError)
-}, maxConcurrency int, requestsPerSecond float64, userAgent string, proxy *string, ctx context.Context) ([]string, *types.QuickCrawlError) {
+}, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, proxy *string, ctx context.Context) ([]string, *types.QuickCrawlError) {
 	parsed, err := common.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
 		return nil, types.ErrInvalidRequest.New("Only http/https URLs are allowed")
@@ -287,6 +287,16 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer int
 	queueIdx := 0
 	queue := []pendingCrawlItem{{url: baseURL, depth: 0}}
 	visited[normalizeURL(baseURL)] = struct{}{}
+
+	// Fetch robots.txt if respectRobots is enabled
+	var robots *RobotsTxt
+	if respectRobots {
+		robots = FetchRobotsTxt(origin, userAgent, proxy)
+		// Check if the base URL itself is allowed
+		if robots != nil && !robots.IsAllowed(parsed.Path) {
+			return nil, types.ErrForbidden.New("access denied by robots.txt")
+		}
+	}
 
 	if useSitemap {
 		for _, smURL := range collectSitemapSeedURLs(origin, userAgent, proxy) {
@@ -341,11 +351,20 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer int
 					time.Sleep(sleepDur)
 				}
 
-				if ctx.Err() != nil {
+if ctx.Err() != nil {
+				return
+			}
+
+			// Check robots.txt before fetching
+			if respectRobots && robots != nil {
+				parsedLink, parseErr := common.ValidateURL(item.url)
+				if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
+					resultsCh <- nil
 					return
 				}
+			}
 
-				fetchResult, fetchErr := renderer.Fetch(item.url, map[string]string{}, newBool(false), nil, nil)
+			fetchResult, fetchErr := renderer.Fetch(item.url, map[string]string{}, newBool(false), nil, nil)
 				if fetchErr != nil || fetchResult == nil {
 					resultsCh <- nil
 					return
