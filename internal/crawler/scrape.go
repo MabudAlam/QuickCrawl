@@ -67,7 +67,7 @@ func ScrapeURL(
 
 	effectiveRenderJS := effectiveRenderJSSetting(req.RenderJS, renderJSDefault)
 
-	needsTempFetcher := req.Proxy != nil || (req.Stealth != nil && *req.Stealth != defaultStealth)
+	needsTempFetcher := req.Proxy != nil
 
 	var (
 		fetchResult *types.FetchResult
@@ -80,13 +80,11 @@ func ScrapeURL(
 			proxy = *req.Proxy
 		}
 
-		// Use HTTP fetcher when JS rendering is explicitly disabled.
 		if effectiveRenderJS != nil && !*effectiveRenderJS {
 			proxyPtr := (*string)(nil)
 			if proxy != "" {
 				proxyPtr = &proxy
 			}
-			// Build headers: stealth profile headers + any custom headers override.
 			headers := req.Headers
 			if injectStealth {
 				headers = stealthProfile.ToMap()
@@ -103,7 +101,6 @@ func ScrapeURL(
 				return nil, types.ErrHttp.New("fetch returned nil")
 			}
 		} else {
-			// Browser rendering path - apply full stealth headers via CDP.
 			headers := req.Headers
 			if injectStealth {
 				headers = stealthProfile.ToMap()
@@ -117,8 +114,14 @@ func ScrapeURL(
 			}
 		}
 	} else {
-		// Default path: use renderer with request headers (no stealth injection unless needsTempFetcher triggers).
-		fetchResult, err = rend.Fetch(req.URL, req.Headers, req.RenderJS, req.WaitFor, req.Browser)
+		headers := req.Headers
+		if injectStealth {
+			headers = stealthProfile.ToMap()
+			for k, v := range req.Headers {
+				headers[k] = v
+			}
+		}
+		fetchResult, err = rend.Fetch(req.URL, headers, req.RenderJS, req.WaitFor, req.Browser)
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +358,7 @@ func humanReadableStatusText(statusCode uint16) string {
 // detectBlockInterstitial checks if the HTML content indicates an anti-bot challenge page
 // such as Cloudflare, CAPTCHA, or other access restriction pages.
 func detectBlockInterstitial(html string) *string {
-	if len(html) > 50000 {
+	if html == "" {
 		return nil
 	}
 
@@ -506,9 +509,9 @@ func callOpenAIAPI(markdown string, schema any, llm *types.LLMConfig) (any, *typ
 		return nil, types.ErrExtraction.New("OpenAI returned no content")
 	}
 
-	var result any
-	if err := json.Unmarshal([]byte(*msg.Content), &result); err != nil {
-		return nil, types.ErrExtraction.New(fmt.Sprintf("Failed to parse OpenAI JSON output: %v", err))
+	result, parseErr := parseJSONFromLLM(*msg.Content)
+	if parseErr != nil {
+		return nil, parseErr
 	}
 	return result, nil
 }
