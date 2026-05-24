@@ -57,7 +57,7 @@ func RunCrawl(opts CrawlOptions) {
 
 	robots := &RobotsTxt{}
 	if opts.RespectRobots {
-		robots = FetchRobotsTxt(origin, opts.UserAgent, opts.Proxy)
+		robots = FetchRobotsTxt(origin, opts.UserAgent)
 	}
 
 	semaphore := make(chan struct{}, maxIntValue(opts.MaxConcurrency, 1))
@@ -126,24 +126,18 @@ func RunCrawl(opts CrawlOptions) {
 					return
 				}
 
-				data := extractor.Extract(extractor.ExtractOptions{
-					RawHTML:         fetchResult.HTML,
-					RawBytes:        fetchResult.RawBytes,
-					SourceURL:       fetchResult.URL,
-					StatusCode:      int(fetchResult.StatusCode),
-					RenderedMode:    fetchResult.RenderedWith,
-					TimeTaken:       fetchResult.TimeTaken,
-					Formats:         opts.Req.Formats,
-					OnlyMainContent: opts.Req.OnlyMainContent,
-					IncludeTags:     []string{},
-					ExcludeTags:     []string{},
-					CSSSelector:     nil,
-					XPath:           nil,
-					ChunkStrategy:   nil,
-					Query:           nil,
-					FilterMode:      nil,
-					TopK:            nil,
-				})
+			data := extractor.Extract(extractor.ExtractOptions{
+				RawHTML:        fetchResult.HTML,
+				RawBytes:       fetchResult.RawBytes,
+				SourceURL:      fetchResult.URL,
+				StatusCode:     int(fetchResult.StatusCode),
+				RenderedMode:   fetchResult.RenderedWith,
+				TimeTaken:      fetchResult.TimeTaken,
+				Formats:        opts.Req.Formats,
+				IncludeTags:    []string{},
+				ExcludeTags:    []string{},
+				CSSSelector:    nil,
+			})
 
 				// NOTE: LLM extraction is skipped per-page during crawl.
 				// After crawl completes, we aggregate all markdown and call LLM once.
@@ -219,9 +213,8 @@ func RunCrawl(opts CrawlOptions) {
 	}
 
 	var answer json.RawMessage
-	var sources []types.ChunkResult
 	if includesJSONFormat(opts.Req.Formats) && opts.Req.Extract != nil && opts.LLMConfig != nil {
-		answer, sources = extractAggregatedJSON(results, opts.Req.Extract, opts.Req.ChunkStrategy, opts.Req.Query, opts.Req.FilterMode, opts.Req.TopK, opts.LLMConfig)
+		answer = extractAggregatedJSON(results, opts.Req.Extract, opts.LLMConfig)
 	}
 
 	reportProgress(types.CrawlState{
@@ -232,7 +225,6 @@ func RunCrawl(opts CrawlOptions) {
 		Completed: uint32(len(results)),
 		Data:      results,
 		Answer:    answer,
-		Sources:   sources,
 		Error:     nil,
 	})
 }
@@ -263,7 +255,7 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 // If ctx is provided and has a deadline, the operation will respect that timeout.
 func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer interface {
 	Fetch(rawURL string, headers map[string]string, renderJS *bool, waitForMs *int64, browser *string) (*types.FetchResult, *types.QuickCrawlError)
-}, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, proxy *string, ctx context.Context) ([]string, *types.QuickCrawlError) {
+}, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *types.QuickCrawlError) {
 	parsed, err := common.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
 		return nil, types.ErrInvalidRequest.New("Only http/https URLs are allowed")
@@ -291,7 +283,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer int
 	// Fetch robots.txt if respectRobots is enabled
 	var robots *RobotsTxt
 	if respectRobots {
-		robots = FetchRobotsTxt(origin, userAgent, proxy)
+		robots = FetchRobotsTxt(origin, userAgent)
 		// Check if the base URL itself is allowed
 		if robots != nil && !robots.IsAllowed(parsed.Path) {
 			return nil, types.ErrForbidden.New("access denied by robots.txt")
@@ -299,7 +291,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer int
 	}
 
 	if useSitemap {
-		for _, smURL := range collectSitemapSeedURLs(origin, userAgent, proxy) {
+		for _, smURL := range collectSitemapSeedURLs(origin, userAgent) {
 			if ctx.Err() != nil {
 				break
 			}
@@ -425,148 +417,40 @@ if ctx.Err() != nil {
 // collectSitemapSeedURLs collects initial URLs from sitemaps.
 // It first tries the default sitemap.xml location, then checks robots.txt
 // for any sitemap declarations.
-func collectSitemapSeedURLs(origin, userAgent string, proxy *string) []string {
+func collectSitemapSeedURLs(origin, userAgent string) []string {
 	urls := []string{origin + "/sitemap.xml"}
-	if robots := FetchRobotsTxt(origin, userAgent, proxy); robots != nil {
+	if robots := FetchRobotsTxt(origin, userAgent); robots != nil {
 		urls = append(urls, robots.Sitemaps...)
 	}
 	return urls
 }
 
 // buildCrawlLLMInput builds the content to send to LLM for a crawl page.
-// If chunking is enabled with query, uses filtered chunks.
-// Otherwise, uses full markdown or truncates by MaxMarkdownChars.
-func buildCrawlLLMInput(markdown string, chunkStrategy *types.ChunkStrategy, query *string, filterMode *types.FilterMode, topK *int, maxMarkdownChars *int) string {
-	if markdown == "" {
-		return ""
-	}
-
-	// If chunking is enabled, chunk the content and optionally filter
-	if chunkStrategy != nil {
-		rawChunks := extractor.ChunkText(markdown, chunkStrategy)
-
-		if query != nil && len(*query) > 0 && len(rawChunks) > 0 {
-			filtered := extractor.FilterChunksScored(rawChunks, *query, filterMode, 5)
-
-			// Apply TopK limit
-			if topK != nil && *topK < len(filtered) {
-				filtered = filtered[:*topK]
-			}
-
-			// Join filtered chunks
-			var sb strings.Builder
-			for i, chunk := range filtered {
-				if i > 0 {
-					sb.WriteString("\n\n")
-				}
-				sb.WriteString(chunk.Content)
-			}
-			return sb.String()
-		}
-
-		// No query, but chunking enabled - join all chunks
-		var sb strings.Builder
-		for i, chunk := range rawChunks {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			sb.WriteString(chunk)
-		}
-		return sb.String()
-	}
-
-	// No chunking - use MaxMarkdownChars if set
-	if maxMarkdownChars != nil && *maxMarkdownChars > 0 && len(markdown) > *maxMarkdownChars {
-		return markdown[:*maxMarkdownChars]
-	}
-
+// Returns the full markdown.
+func buildCrawlLLMInput(markdown string) string {
 	return markdown
 }
 
-// extractAggregatedJSON aggregates markdown from all crawled pages, applies
-// chunking and filtering across all content, then calls LLM once to produce
-// a single structured JSON answer. Returns the JSON result and the source chunks used.
-func extractAggregatedJSON(results []types.ScrapeData, extract *types.ExtractOptions, chunkStrategy *types.ChunkStrategy, query *string, filterMode *types.FilterMode, topK *int, llm *types.LLMConfig) (json.RawMessage, []types.ChunkResult) {
+// extractAggregatedJSON aggregates markdown from all crawled pages and calls
+// LLM once to produce a single structured JSON answer.
+func extractAggregatedJSON(results []types.ScrapeData, extract *types.ExtractOptions, llm *types.LLMConfig) json.RawMessage {
 	if len(results) == 0 {
-		return nil, nil
-	}
-
-	if chunkStrategy == nil || query == nil || len(*query) == 0 {
-		var sb strings.Builder
-		for i, res := range results {
-			if res.Markdown != nil && *res.Markdown != "" {
-				if i > 0 {
-					sb.WriteString("\n\n---\n\n")
-				}
-				sb.WriteString(*res.Markdown)
-			}
-		}
-		combinedMarkdown := sb.String()
-		if combinedMarkdown == "" {
-			return nil, nil
-		}
-
-		effectiveLLM := llm
-		if extract.Prompt != "" {
-			effectiveLLM.ExtractionPrompt = extract.Prompt
-		}
-		if extract.ResponseFormat != "" {
-			effectiveLLM.ResponseFormat = extract.ResponseFormat
-		}
-
-		jsonResult, err := extractStructured(combinedMarkdown, extract.Schema, effectiveLLM)
-		if err != nil || jsonResult == "" {
-			return nil, nil
-		}
-		return json.RawMessage(jsonResult), nil
-	}
-
-	var allFilteredChunks []types.ChunkResult
-	for _, res := range results {
-		if res.Markdown == nil || *res.Markdown == "" {
-			continue
-		}
-		pageChunks := extractor.ChunkText(*res.Markdown, chunkStrategy)
-		if len(pageChunks) == 0 {
-			continue
-		}
-		filtered := extractor.FilterChunksScored(pageChunks, *query, filterMode, 100)
-		for _, chunk := range filtered {
-			chunk.URL = res.Metadata.SourceURL
-			chunk.PageTitle = ""
-			if res.Metadata.Title != nil {
-				chunk.PageTitle = *res.Metadata.Title
-			}
-			allFilteredChunks = append(allFilteredChunks, chunk)
-		}
-	}
-
-	if len(allFilteredChunks) == 0 {
-		return nil, nil
-	}
-
-	sort.Slice(allFilteredChunks, func(i, j int) bool {
-		if allFilteredChunks[i].Score == nil {
-			return false
-		}
-		if allFilteredChunks[j].Score == nil {
-			return true
-		}
-		return *allFilteredChunks[i].Score > *allFilteredChunks[j].Score
-	})
-
-	if topK != nil && *topK < len(allFilteredChunks) {
-		allFilteredChunks = allFilteredChunks[:*topK]
+		return nil
 	}
 
 	var sb strings.Builder
-	for i, chunk := range allFilteredChunks {
-		if i > 0 {
-			sb.WriteString("\n\n")
+	for i, res := range results {
+		if res.Markdown != nil && *res.Markdown != "" {
+			if i > 0 {
+				sb.WriteString("\n\n---\n\n")
+			}
+			sb.WriteString(*res.Markdown)
 		}
-		sb.WriteString(chunk.Content)
 	}
-	llmInput := sb.String()
+	combinedMarkdown := sb.String()
+	if combinedMarkdown == "" {
+		return nil
+	}
 
 	effectiveLLM := llm
 	if extract.Prompt != "" {
@@ -576,56 +460,15 @@ func extractAggregatedJSON(results []types.ScrapeData, extract *types.ExtractOpt
 		effectiveLLM.ResponseFormat = extract.ResponseFormat
 	}
 
-	jsonResult, err := extractStructured(llmInput, extract.Schema, effectiveLLM)
+	jsonResult, err := extractStructured(combinedMarkdown, extract.Schema, effectiveLLM)
 	if err != nil || jsonResult == "" {
-		return nil, nil
+		return nil
 	}
-
-	return json.RawMessage(jsonResult), allFilteredChunks
+	return json.RawMessage(jsonResult)
 }
 
 // buildCrawlLLMInputWithSources builds the content to send to LLM for a crawl page.
-// If chunking is enabled with query, uses filtered chunks.
-// Otherwise, uses full markdown or truncates by MaxMarkdownChars.
-// Returns the LLM input string and the source chunks used.
-func buildCrawlLLMInputWithSources(markdown string, chunkStrategy *types.ChunkStrategy, query *string, filterMode *types.FilterMode, topK *int, maxMarkdownChars *int) (string, []types.ChunkResult) {
-	if markdown == "" {
-		return "", nil
-	}
-
-	if chunkStrategy != nil {
-		rawChunks := extractor.ChunkText(markdown, chunkStrategy)
-
-		if query != nil && len(*query) > 0 && len(rawChunks) > 0 {
-			filtered := extractor.FilterChunksScored(rawChunks, *query, filterMode, 5)
-
-			if topK != nil && *topK < len(filtered) {
-				filtered = filtered[:*topK]
-			}
-
-			var sb strings.Builder
-			for i, chunk := range filtered {
-				if i > 0 {
-					sb.WriteString("\n\n")
-				}
-				sb.WriteString(chunk.Content)
-			}
-			return sb.String(), filtered
-		}
-
-		var sb strings.Builder
-		for i, chunk := range rawChunks {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			sb.WriteString(chunk)
-		}
-		return sb.String(), nil
-	}
-
-	if maxMarkdownChars != nil && *maxMarkdownChars > 0 && len(markdown) > *maxMarkdownChars {
-		return markdown[:*maxMarkdownChars], nil
-	}
-
-	return markdown, nil
+// Returns the LLM input string.
+func buildCrawlLLMInputWithSources(markdown string) string {
+	return markdown
 }

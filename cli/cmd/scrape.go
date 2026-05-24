@@ -37,8 +37,6 @@ Example:
 var scrapeFlags = struct {
 	// formats is a comma-separated list of output formats.
 	formats string
-	// onlyMainContent extracts only the main content (no nav/footer).
-	onlyMainContent bool
 	// renderJS forces JavaScript rendering.
 	renderJS bool
 	// waitFor is milliseconds to wait after page load.
@@ -49,18 +47,10 @@ var scrapeFlags = struct {
 	excludeTags string
 	// cssSelector extracts a specific element.
 	cssSelector string
-	// xpath extracts using XPath expression.
-	xpath string
-	// query filters chunks by relevance.
-	query string
-	// topK returns top K filtered chunks.
-	topK int
 	// jsonSchema for structured extraction.
 	jsonSchema string
 	// renderer forces a specific renderer (auto, lightpanda, chrome).
 	renderer string
-	// proxy sets a proxy URL.
-	proxy string
 }{}
 
 func init() {
@@ -71,8 +61,6 @@ func init() {
 
 	scrapeCmd.Flags().StringVarP(&scrapeFlags.formats, "formats", "f", "markdown",
 		"Output formats (comma-separated): markdown,html,links,json")
-	scrapeCmd.Flags().BoolVar(&scrapeFlags.onlyMainContent, "only-main-content", true,
-		"Extract only main content (removes nav/footer)")
 	scrapeCmd.Flags().BoolVar(&scrapeFlags.renderJS, "render-js", false,
 		"Force JavaScript rendering")
 	scrapeCmd.Flags().Int64Var(&scrapeFlags.waitFor, "wait-for", 0,
@@ -83,18 +71,10 @@ func init() {
 		"CSS selectors to exclude (comma-separated)")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.cssSelector, "css-selector", "",
 		"Extract content from specific CSS selector")
-	scrapeCmd.Flags().StringVar(&scrapeFlags.xpath, "xpath", "",
-		"Extract content using XPath expression")
-	scrapeCmd.Flags().StringVar(&scrapeFlags.query, "query", "",
-		"Query string for filtering chunks by relevance")
-	scrapeCmd.Flags().IntVar(&scrapeFlags.topK, "top-k", 0,
-		"Return only top K filtered chunks (0 = all)")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.jsonSchema, "json-schema", "",
 		"JSON Schema for structured data extraction")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.renderer, "renderer", "auto",
 		"Renderer to use: auto, lightpanda, chrome")
-	scrapeCmd.Flags().StringVar(&scrapeFlags.proxy, "proxy", "",
-		"Proxy URL to use for requests")
 }
 
 // runScrape executes the scrape command.
@@ -120,7 +100,6 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	// Build the ScrapeRequest using existing types.
 	// The crawler package already has all the logic for scraping.
 	formats := parseFormats(scrapeFlags.formats)
-	onlyMain := scrapeFlags.onlyMainContent
 
 	// Parse optional flags.
 	var renderJS *bool
@@ -141,22 +120,9 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		excludeTags = strings.Split(scrapeFlags.excludeTags, ",")
 	}
 
-	var cssSelector, xpath *string
+	var cssSelector *string
 	if scrapeFlags.cssSelector != "" {
 		cssSelector = &scrapeFlags.cssSelector
-	}
-	if scrapeFlags.xpath != "" {
-		xpath = &scrapeFlags.xpath
-	}
-
-	var query *string
-	if scrapeFlags.query != "" {
-		query = &scrapeFlags.query
-	}
-
-	var topK *int
-	if scrapeFlags.topK > 0 {
-		topK = &scrapeFlags.topK
 	}
 
 	var browser *string
@@ -164,25 +130,15 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		browser = &scrapeFlags.renderer
 	}
 
-	var proxy *string
-	if scrapeFlags.proxy != "" {
-		proxy = &scrapeFlags.proxy
-	}
-
 	scrapeReq := &types.ScrapeRequest{
-		URL:             targetURL,
-		Formats:         formats,
-		OnlyMainContent: onlyMain,
-		RenderJS:        renderJS,
-		WaitFor:         waitFor,
-		IncludeTags:     includeTags,
-		ExcludeTags:     excludeTags,
-		CSSSelector:     cssSelector,
-		XPath:           xpath,
-		Query:           query,
-		TopK:            topK,
-		Browser:         browser,
-		Proxy:           proxy,
+		URL:          targetURL,
+		Formats:      formats,
+		RenderJS:     renderJS,
+		WaitFor:      waitFor,
+		IncludeTags:  includeTags,
+		ExcludeTags:  excludeTags,
+		CSSSelector:  cssSelector,
+		Browser:      browser,
 	}
 	scrapeReq.Defaults()
 
@@ -198,7 +154,7 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		parsedURL, _ := url.Parse(targetURL)
 		if parsedURL != nil {
 			origin := parsedURL.Scheme + "://" + parsedURL.Host
-			robots := crawler.FetchRobotsTxt(origin, cfg.Crawler.UserAgent, nil)
+			robots := crawler.FetchRobotsTxt(origin, cfg.Crawler.UserAgent)
 			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
 				return fmt.Errorf("access denied by robots.txt")
 			}
@@ -209,7 +165,6 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	rend, rendErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
 		cfg.Crawler.UserAgent,
-		cfg.Crawler.Proxy,
 		&cfg.Crawler.Stealth,
 		cfg.Renderer.RenderJSDefault,
 	)
@@ -224,7 +179,6 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		scrapeReq,
 		rend,
 		cfg.Extraction.LLM,
-		cfg.Crawler.UserAgent,
 		cfg.Crawler.Stealth.Enabled,
 		cfg.Renderer.RenderJSDefault,
 		utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy),
@@ -310,9 +264,6 @@ func formatScrapeData(data *types.ScrapeData) string {
 		if err := json.Unmarshal(data.JSON, &raw); err == nil {
 			result["json"] = raw
 		}
-	}
-	if len(data.Chunks) > 0 {
-		result["chunks"] = data.Chunks
 	}
 
 	// Always include metadata even if it's empty.

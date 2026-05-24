@@ -7,7 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +24,7 @@ type HTTPFetcher struct {
 }
 
 // NewHTTPFetcher creates a new HTTP fetcher with the given settings.
-func NewHTTPFetcher(userAgent string, proxyURL *string, injectStealthHeaders bool) *HTTPFetcher {
+func NewHTTPFetcher(userAgent string, injectStealthHeaders bool) *HTTPFetcher {
 	// Configure connection pool for better performance
 	transport := &http.Transport{
 		IdleConnTimeout:       60 * time.Second,
@@ -34,14 +33,6 @@ func NewHTTPFetcher(userAgent string, proxyURL *string, injectStealthHeaders boo
 		TLSHandshakeTimeout:   HTTPConnectTimeout,
 		ResponseHeaderTimeout: HTTPRequestTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
-	}
-
-	// Set up proxy if specified
-	if proxyURL != nil && *proxyURL != "" {
-		proxy, err := url.Parse(*proxyURL)
-		if err == nil {
-			transport.Proxy = http.ProxyURL(proxy)
-		}
 	}
 
 	// Enforce modern TLS versions for security

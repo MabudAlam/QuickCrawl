@@ -35,7 +35,6 @@ var mapFlags = struct {
 	useSitemap bool
 	timeout    int
 	renderer   string
-	proxy      string
 }{}
 
 func init() {
@@ -49,8 +48,6 @@ func init() {
 		"Timeout in milliseconds for the entire operation")
 	mapCmd.Flags().StringVar(&mapFlags.renderer, "renderer", "auto",
 		"Renderer: auto, lightpanda, chrome")
-	mapCmd.Flags().StringVar(&mapFlags.proxy, "proxy", "",
-		"Proxy URL for requests")
 }
 
 // runMap executes the URL discovery command.
@@ -80,7 +77,6 @@ func runMap(cmd *cobra.Command, args []string) error {
 	rend, rendErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
 		cfg.Crawler.UserAgent,
-		cfg.Crawler.Proxy,
 		&cfg.Crawler.Stealth,
 		cfg.Renderer.RenderJSDefault,
 	)
@@ -100,11 +96,6 @@ func runMap(cmd *cobra.Command, args []string) error {
 		timeout = 30000
 	}
 
-	var proxy *string
-	if mapFlags.proxy != "" {
-		proxy = &mapFlags.proxy
-	}
-
 	opts := crawler.MapOptions{
 		BaseURL:           targetURL,
 		MaxDepth:          maxDepth,
@@ -113,7 +104,6 @@ func runMap(cmd *cobra.Command, args []string) error {
 		MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 		RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 		UserAgent:         cfg.Crawler.UserAgent,
-		Proxy:             proxy,
 		Timeout:           &timeout,
 	}
 

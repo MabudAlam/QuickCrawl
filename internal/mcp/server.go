@@ -31,21 +31,15 @@ func NewServer(state *api.AppState, cfg *types.AppConfig) *Server {
 }
 
 type ScrapeArgs struct {
-	URL             string               `json:"url"`
-	Formats         []string             `json:"formats,omitempty"`
-	OnlyMainContent *bool                `json:"onlyMainContent,omitempty"`
-	RenderJS        *bool                `json:"renderJs,omitempty"`
-	WaitFor         *int64               `json:"waitFor,omitempty"`
-	IncludeTags     []string             `json:"includeTags,omitempty"`
-	ExcludeTags     []string             `json:"excludeTags,omitempty"`
-	XPath           *string              `json:"xpath,omitempty"`
-	CSSSelector     *string              `json:"cssSelector,omitempty"`
-	Query           *string              `json:"query,omitempty"`
-	TopK            *int                 `json:"topK,omitempty"`
-	ChunkStrategy   *types.ChunkStrategy `json:"chunkStrategy,omitempty"`
-	FilterMode      *types.FilterMode    `json:"filterMode,omitempty"`
-	Renderer        *string              `json:"renderer,omitempty"`
-	Browser         *string              `json:"browser,omitempty"`
+	URL          string               `json:"url"`
+	Formats      []string             `json:"formats,omitempty"`
+	RenderJS     *bool                `json:"renderJs,omitempty"`
+	WaitFor      *int64               `json:"waitFor,omitempty"`
+	IncludeTags  []string             `json:"includeTags,omitempty"`
+	ExcludeTags  []string             `json:"excludeTags,omitempty"`
+	CSSSelector  *string              `json:"cssSelector,omitempty"`
+	Renderer     *string              `json:"renderer,omitempty"`
+	Browser      *string              `json:"browser,omitempty"`
 }
 
 type SearchArgs struct {
@@ -82,26 +76,15 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		}
 	}
 
-	onlyMain := true
-	if args.OnlyMainContent != nil {
-		onlyMain = *args.OnlyMainContent
-	}
-
 	scrapeReq := &types.ScrapeRequest{
-		URL:             args.URL,
-		Formats:         formats,
-		OnlyMainContent: onlyMain,
-		RenderJS:        args.RenderJS,
-		WaitFor:         args.WaitFor,
-		IncludeTags:     args.IncludeTags,
-		ExcludeTags:     args.ExcludeTags,
-		XPath:           args.XPath,
-		CSSSelector:     args.CSSSelector,
-		Query:           args.Query,
-		TopK:            args.TopK,
-		ChunkStrategy:   args.ChunkStrategy,
-		FilterMode:      args.FilterMode,
-		Browser:         preferredRenderer,
+		URL:          args.URL,
+		Formats:      formats,
+		RenderJS:     args.RenderJS,
+		WaitFor:      args.WaitFor,
+		IncludeTags:  args.IncludeTags,
+		ExcludeTags:  args.ExcludeTags,
+		CSSSelector:  args.CSSSelector,
+		Browser:      preferredRenderer,
 	}
 	if scrapeReq.RenderJS == nil && preferredRenderer != nil {
 		forceJS := true
@@ -116,7 +99,7 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		parsedURL, _ := url.Parse(args.URL)
 		if parsedURL != nil {
 			origin := parsedURL.Scheme + "://" + parsedURL.Host
-			robots := crawler.FetchRobotsTxt(origin, s.config.Crawler.UserAgent, nil)
+			robots := crawler.FetchRobotsTxt(origin, s.config.Crawler.UserAgent)
 			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
 				return errorResult("access denied by robots.txt"), nil, nil
 			}
@@ -127,7 +110,6 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		scrapeReq,
 		s.state.Renderer,
 		s.config.Extraction.LLM,
-		s.config.Crawler.UserAgent,
 		s.config.Crawler.Stealth.Enabled,
 		s.config.Renderer.RenderJSDefault,
 		utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
@@ -145,20 +127,15 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 }
 
 type CrawlArgs struct {
-	URL             string                `json:"url"`
-	MaxDepth        *uint32               `json:"maxDepth,omitempty"`
-	MaxPages        *uint32               `json:"maxPages,omitempty"`
-	Formats         []string              `json:"formats,omitempty"`
-	OnlyMainContent *bool                 `json:"onlyMainContent,omitempty"`
-	RenderJS        *bool                 `json:"renderJs,omitempty"`
-	WaitFor         *int64                `json:"waitFor,omitempty"`
-	Query           *string               `json:"query,omitempty"`
-	TopK            *int                  `json:"topK,omitempty"`
-	ChunkStrategy   *types.ChunkStrategy  `json:"chunkStrategy,omitempty"`
-	FilterMode      *types.FilterMode     `json:"filterMode,omitempty"`
-	Extract         *types.ExtractOptions `json:"extract,omitempty"`
-	Renderer        *string               `json:"renderer,omitempty"`
-	Browser         *string               `json:"browser,omitempty"`
+	URL            string                `json:"url"`
+	MaxDepth       *uint32               `json:"maxDepth,omitempty"`
+	MaxPages       *uint32               `json:"maxPages,omitempty"`
+	Formats        []string              `json:"formats,omitempty"`
+	RenderJS       *bool                 `json:"renderJs,omitempty"`
+	WaitFor        *int64                `json:"waitFor,omitempty"`
+	Extract        *types.ExtractOptions `json:"extract,omitempty"`
+	Renderer       *string               `json:"renderer,omitempty"`
+	Browser        *string               `json:"browser,omitempty"`
 }
 
 func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, any, error) {
@@ -195,34 +172,19 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		}
 	}
 
-	onlyMain := true
-	if args.OnlyMainContent != nil {
-		onlyMain = *args.OnlyMainContent
-	}
-
 	scrapeReq := &types.ScrapeRequest{
-		Formats:         formats,
-		OnlyMainContent: onlyMain,
-		Query:           args.Query,
-		TopK:            args.TopK,
-		ChunkStrategy:   args.ChunkStrategy,
-		FilterMode:      args.FilterMode,
+		Formats: formats,
 	}
 
 	crawlReq := &types.CrawlRequest{
-		URL:             args.URL,
-		MaxDepth:        &maxDepth,
-		MaxPages:        &maxPages,
-		Formats:         scrapeReq.Formats,
-		OnlyMainContent: scrapeReq.OnlyMainContent,
-		RenderJS:        args.RenderJS,
-		WaitFor:         args.WaitFor,
-		Browser:         preferredRenderer,
-		Query:           args.Query,
-		TopK:            args.TopK,
-		ChunkStrategy:   args.ChunkStrategy,
-		FilterMode:      args.FilterMode,
-		Extract:         args.Extract,
+		URL:          args.URL,
+		MaxDepth:     &maxDepth,
+		MaxPages:     &maxPages,
+		Formats:      scrapeReq.Formats,
+		RenderJS:     args.RenderJS,
+		WaitFor:      args.WaitFor,
+		Browser:      preferredRenderer,
+		Extract:      args.Extract,
 	}
 	if crawlReq.RenderJS == nil && preferredRenderer != nil {
 		forceJS := true
@@ -250,7 +212,6 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 			UserAgent:         s.config.Crawler.UserAgent,
 			StateCh:           stateCh,
 			LLMConfig:         s.config.Extraction.LLM,
-			Proxy:             s.config.Crawler.Proxy,
 			JitterFactor:      s.config.Crawler.Stealth.JitterFactor,
 		}
 		crawler.RunCrawl(opts)
@@ -334,7 +295,6 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 		s.config.Crawler.MaxConcurrency,
 		s.config.Crawler.RequestsPerSecond,
 		s.config.Crawler.UserAgent,
-		s.config.Crawler.Proxy,
 		crawlCtx,
 	)
 
@@ -446,10 +406,9 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 
 			renderJS := args.RenderJS
 			scrapeReq := &types.ScrapeRequest{
-				URL:             result.Href,
-				Formats:         formats,
-				OnlyMainContent: true,
-				RenderJS:        &renderJS,
+				URL:      result.Href,
+				Formats:  formats,
+				RenderJS: &renderJS,
 			}
 
 			searchResult := types.SearchResult{
@@ -462,7 +421,6 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 				scrapeReq,
 				rend,
 				llmConfig,
-				s.config.Crawler.UserAgent,
 				s.config.Crawler.Stealth.Enabled,
 				&renderJS,
 				utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
@@ -552,9 +510,6 @@ func formatScrapeData(data *types.ScrapeData) string {
 	}
 	if len(data.JSON) > 0 {
 		result["json"] = json.RawMessage(data.JSON)
-	}
-	if len(data.Chunks) > 0 {
-		result["chunks"] = data.Chunks
 	}
 
 	result["metadata"] = data.Metadata
@@ -657,10 +612,6 @@ func scrapeInputSchema() map[string]any {
 					"enum": []string{"markdown", "html", "links", "json"},
 				},
 			},
-			"onlyMainContent": map[string]any{
-				"type":        "boolean",
-				"description": "Extract only the main content, removing nav/footer/etc",
-			},
 			"renderJs": map[string]any{
 				"type":        "boolean",
 				"description": "Render JavaScript before extracting (true = force JS, false = HTTP only, omit = auto-detect/default)",
@@ -687,18 +638,6 @@ func scrapeInputSchema() map[string]any {
 			"cssSelector": map[string]any{
 				"type":        "string",
 				"description": "Extract content from a specific CSS selector",
-			},
-			"xpath": map[string]any{
-				"type":        "string",
-				"description": "Extract content from a specific XPath expression",
-			},
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Query for chunk filtering",
-			},
-			"topK": map[string]any{
-				"type":        "integer",
-				"description": "Return top K filtered chunks",
 			},
 		},
 		"required": []string{"url"},
@@ -741,10 +680,6 @@ func crawlInputSchema() map[string]any {
 					"type": "string",
 					"enum": []string{"markdown", "html", "links", "json"},
 				},
-			},
-			"onlyMainContent": map[string]any{
-				"type":        "boolean",
-				"description": "Extract only the main content for each crawled page",
 			},
 		},
 		"required": []string{"url"},

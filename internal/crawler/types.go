@@ -26,7 +26,6 @@ type CrawlOptions struct {
 	UserAgent         string                  // User-Agent header for requests
 	StateCh           chan<- types.CrawlState // Channel for progress updates
 	LLMConfig         *types.LLMConfig        // LLM configuration for extraction
-	Proxy             *string                 // Optional proxy URL
 	JitterFactor      float64                 // Random delay factor (0.0 to 1.0)
 	StealthStrategy   utils.HeaderStrategy    // Stealth header strategy
 }

@@ -66,7 +66,7 @@ func (h *Handler) Health(c *gin.Context) {
 // Scrape handles POST /v1/scrape - scrapes a single URL and returns content.
 // It accepts a ScrapeRequest JSON body and returns ScrapeData in the requested formats.
 func (h *Handler) Scrape(c *gin.Context) {
-	// Parse request body
+	// Parse request bodyue
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Failed to read request body"))
@@ -96,11 +96,9 @@ func (h *Handler) Scrape(c *gin.Context) {
 	}
 
 	// Apply default settings if not provided in request
+	//If the user don't mention what output format that they want , we will return the default format that is specified in the config file (markdown/html/plaintext/rawhtml)
 	if len(req.Formats) == 0 {
 		req.Formats = []types.OutputFormat{types.OutputFormat(h.State.Config.Extraction.DefaultFormat)}
-	}
-	if !req.OnlyMainContent {
-		req.OnlyMainContent = h.State.Config.Extraction.OnlyMainContent
 	}
 
 	// Ensure renderer is initialized
@@ -120,7 +118,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		if parsedURL != nil {
 			origin := parsedURL.Scheme + "://" + parsedURL.Host
 			log.Printf("[robots] checking robots.txt for origin=%s with userAgent=%q", origin, h.State.Config.Crawler.UserAgent)
-			robots := crawler.FetchRobotsTxt(origin, h.State.Config.Crawler.UserAgent, nil)
+			robots := crawler.FetchRobotsTxt(origin, h.State.Config.Crawler.UserAgent)
 			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
 				log.Printf("[robots] denied: path=%s", parsedURL.Path)
 				c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
@@ -134,6 +132,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		}
 	}
 
+	//Initialize the LLM config for extraction from the application state
 	llmConfig := h.State.Config.Extraction.LLM
 
 	// Perform the scrape using the renderer (HTTP + optional browser fallback)
@@ -142,7 +141,6 @@ func (h *Handler) Scrape(c *gin.Context) {
 		&req,
 		rend,
 		llmConfig,
-		h.State.Config.Crawler.UserAgent,
 		h.State.Config.Crawler.Stealth.Enabled,
 		h.State.Config.Renderer.RenderJSDefault,
 		stealthStrategy,
@@ -269,7 +267,6 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 			UserAgent:         h.State.Config.Crawler.UserAgent,
 			StateCh:           stateCh,
 			LLMConfig:         h.State.Config.Extraction.LLM,
-			Proxy:             h.State.Config.Crawler.Proxy,
 			JitterFactor:      h.State.Config.Crawler.Stealth.JitterFactor,
 			StealthStrategy:   stealthStrategy,
 		}
@@ -387,7 +384,6 @@ func (h *Handler) Map(c *gin.Context) {
 		h.State.Config.Crawler.MaxConcurrency,
 		h.State.Config.Crawler.RequestsPerSecond,
 		h.State.Config.Crawler.UserAgent,
-		h.State.Config.Crawler.Proxy,
 		ctx,
 	)
 
@@ -492,10 +488,9 @@ func (h *Handler) Search(c *gin.Context) {
 
 			renderJS := req.RenderJS
 			scrapeReq := &types.ScrapeRequest{
-				URL:             result.Href,
-				Formats:         req.Formats,
-				OnlyMainContent: true,
-				RenderJS:        &renderJS,
+				URL:      result.Href,
+				Formats:  req.Formats,
+				RenderJS: &renderJS,
 			}
 
 			searchResult := types.SearchResult{
@@ -508,7 +503,6 @@ func (h *Handler) Search(c *gin.Context) {
 				scrapeReq,
 				rend,
 				llmConfig,
-				h.State.Config.Crawler.UserAgent,
 				h.State.Config.Crawler.Stealth.Enabled,
 				&renderJS,
 				utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy),
@@ -556,7 +550,6 @@ func (h *Handler) Search(c *gin.Context) {
 }
 
 // parseScrapeRequest deserializes a ScrapeRequest from JSON.
-// Also applies default values and defaults OnlyMainContent to true if not specified.
 func parseScrapeRequest(body []byte) (types.ScrapeRequest, error) {
 	var req types.ScrapeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -564,15 +557,10 @@ func parseScrapeRequest(body []byte) (types.ScrapeRequest, error) {
 	}
 
 	req.Defaults()
-	if !hasJSONField(body, "onlyMainContent") {
-		req.OnlyMainContent = true
-	}
-
 	return req, nil
 }
 
 // parseCrawlRequest deserializes a CrawlRequest from JSON.
-// Also applies default values and defaults OnlyMainContent to true if not specified.
 func parseCrawlRequest(body []byte) (types.CrawlRequest, error) {
 	var req types.CrawlRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -580,10 +568,6 @@ func parseCrawlRequest(body []byte) (types.CrawlRequest, error) {
 	}
 
 	req.Defaults()
-	if !hasJSONField(body, "onlyMainContent") {
-		req.OnlyMainContent = true
-	}
-
 	return req, nil
 }
 
