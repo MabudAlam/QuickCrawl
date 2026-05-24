@@ -1,25 +1,19 @@
 export interface ScrapeRequest {
   url: string;
   formats?: Format[];
-  onlyMainContent?: boolean;
   renderJs?: boolean;
   waitFor?: number;
   headers?: Record<string, string>;
-  cssSelector?: string;
-  xpath?: string;
-  proxy?: string;
-  stealth?: boolean;
+cssSelector?: string;
+  includeTags?: string[];
+  excludeTags?: string[];
+  browser?: "lightpanda" | "chrome";
   extract?: {
     schema: Record<string, unknown>;
     prompt?: string;
     responseFormat?: string;
   };
-  chunkStrategy?: { type: ChunkStrategy };
-  query?: string;
-  filterMode?: FilterMode;
-  topK?: number;
   maxMarkdownChars?: number;
-  browser?: "lightpanda" | "chrome";
 }
 
 export interface CrawlRequest {
@@ -27,19 +21,16 @@ export interface CrawlRequest {
   maxDepth?: number;
   maxPages?: number;
   formats?: Format[];
-  onlyMainContent?: boolean;
   renderJs?: boolean;
   waitFor?: number;
+  includeTags?: string[];
+  excludeTags?: string[];
   browser?: "lightpanda" | "chrome";
   extract?: {
     schema: Record<string, unknown>;
     prompt?: string;
     responseFormat?: string;
   };
-  chunkStrategy?: { type: ChunkStrategy };
-  query?: string;
-  filterMode?: FilterMode;
-  topK?: number;
   maxMarkdownChars?: number;
 }
 
@@ -77,23 +68,12 @@ export interface SearchResponse {
 
 export type Format = "markdown" | "html" | "rawHtml" | "plainText" | "links" | "json";
 
-export type ChunkStrategy = "sentence" | "regex" | "topic";
-
-export type FilterMode = "bm25" | "cosine";
-
-export interface ChunkResult {
-  content: string;
-  score: number | null;
-  index: number;
-}
-
 export interface ScrapeData {
   markdown?: string;
   html?: string;
   rawHtml?: string;
   plainText?: string;
   links?: string[];
-  chunks?: ChunkResult[];
   metadata?: {
     title?: string;
     description?: string;
@@ -157,16 +137,13 @@ export interface PlaygroundState {
 
 export interface ScrapeOptions {
   formats: Format[];
-  onlyMainContent: boolean;
   renderJs: boolean;
   waitFor: number;
   headers: string;
   cssSelector: string;
+  includeTags: string;
+  excludeTags: string;
   browser: "lightpanda" | "chrome" | undefined;
-  chunkStrategy: ChunkStrategy | undefined;
-  query: string;
-  filterMode: FilterMode | undefined;
-  topK: number;
   jsonSchema: string;
   extractionPrompt: string;
   extractionResponseFormat: string;
@@ -177,17 +154,14 @@ export interface CrawlOptions {
   maxDepth: number;
   maxPages: number;
   formats: Format[];
-  onlyMainContent: boolean;
   renderJs: boolean;
   waitFor: number;
+  includeTags: string;
+  excludeTags: string;
   browser: "lightpanda" | "chrome" | undefined;
   jsonSchema: string;
   extractionPrompt: string;
   extractionResponseFormat: string;
-  chunkStrategy: ChunkStrategy | undefined;
-  query: string;
-  filterMode: FilterMode | undefined;
-  topK: number;
   maxMarkdownChars: number | undefined;
 }
 

@@ -114,9 +114,6 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envInt("CRAWLER__DEFAULT_MAX_PAGES"); v != nil {
 		cfg.Crawler.DefaultMaxPages = *v
 	}
-	if v := envString("CRAWLER__PROXY"); v != "" {
-		cfg.Crawler.Proxy = ptr(v)
-	}
 	if v := envInt64("CRAWLER__JOB_TTL_SECS"); v != nil {
 		cfg.Crawler.JobTTLSecs = *v
 	}
@@ -139,9 +136,6 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	// Extraction configuration
 	if v := envString("EXTRACTION__DEFAULT_FORMAT"); v != "" {
 		cfg.Extraction.DefaultFormat = v
-	}
-	if v := envBool("EXTRACTION__ONLY_MAIN_CONTENT"); v != nil {
-		cfg.Extraction.OnlyMainContent = *v
 	}
 	if cfg.Extraction.LLM == nil {
 		cfg.Extraction.LLM = &types.LLMConfig{}

@@ -1,6 +1,6 @@
 // Package extractor provides content extraction from HTML.
 // It converts raw HTML into various output formats (Markdown, plain text, etc.)
-// and can extract metadata, chunk text, and filter results.
+// and can extract metadata and filter results.
 package extractor
 
 import (
@@ -31,9 +31,6 @@ type ExtractOptions struct {
 	// Formats specifies which output formats to generate
 	Formats []types.OutputFormat
 
-	// OnlyMainContent instructs extraction to focus on main content areas
-	OnlyMainContent bool
-
 	// IncludeTags filters to only include these HTML tags
 	IncludeTags []string
 
@@ -42,21 +39,6 @@ type ExtractOptions struct {
 
 	// CSSSelector extracts content from elements matching this selector
 	CSSSelector *string
-
-	// XPath extracts content from elements matching this XPath expression
-	XPath *string
-
-	// ChunkStrategy specifies how to split text into chunks
-	ChunkStrategy *types.ChunkStrategy
-
-	// Query is the search query for filtering chunks
-	Query *string
-
-	// FilterMode specifies the ranking algorithm (BM25 or cosine)
-	FilterMode *types.FilterMode
-
-	// TopK returns only the top K scored chunks
-	TopK *int
 }
 
 // ExtractedMetadata contains page metadata extracted from HTML.

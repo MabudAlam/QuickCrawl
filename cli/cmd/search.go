@@ -124,7 +124,6 @@ func scrapeSearchResults(results []search.TextResult) error {
 	rend, rendErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
 		cfg.Crawler.UserAgent,
-		cfg.Crawler.Proxy,
 		&cfg.Crawler.Stealth,
 		cfg.Renderer.RenderJSDefault,
 	)
@@ -173,17 +172,15 @@ func scrapeSearchResults(results []search.TextResult) error {
 			if _, urlErr := url.Parse(result.Href); urlErr == nil {
 				renderJS := searchFlags.renderJS
 				scrapeReq := &types.ScrapeRequest{
-					URL:             result.Href,
-					Formats:         formats,
-					OnlyMainContent: true,
-					RenderJS:        &renderJS,
+					URL:      result.Href,
+					Formats:  formats,
+					RenderJS: &renderJS,
 				}
 
 				data, scrapeErr := crawler.ScrapeURL(
 					scrapeReq,
 					rend,
 					cfg.Extraction.LLM,
-					cfg.Crawler.UserAgent,
 					cfg.Crawler.Stealth.Enabled,
 					cfg.Renderer.RenderJSDefault,
 					utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy),

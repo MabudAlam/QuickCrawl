@@ -108,7 +108,7 @@ export function generateCurlCommand(
 ): string {
   const url = baseUrl || getBaseUrl();
   const fullUrl = `${url}/v1/${endpoint}`;
-  
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -120,7 +120,8 @@ export function generateCurlCommand(
   });
 
   const body = typeof request === "object" ? request : {};
-  curlCmd += ` \\\n  -d '${JSON.stringify(body, null, 2)}'`;
+  const { onlyMainContent, ...cleanedBody } = body as Record<string, unknown>;
+  curlCmd += ` \\\n  -d '${JSON.stringify(cleanedBody, null, 2)}'`;
 
   return curlCmd;
 }
@@ -137,10 +138,12 @@ export function generateFetchCode(
     "Content-Type": "application/json",
   };
 
+  const { onlyMainContent, ...cleanedRequest } = request as unknown as Record<string, unknown>;
+
   return `const response = await fetch('${fullUrl}', {
   method: 'POST',
   headers: ${JSON.stringify(headers, null, 2).replace(/"/g, "'")},
-  body: JSON.stringify(${JSON.stringify(request, null, 2)}),
+  body: JSON.stringify(${JSON.stringify(cleanedRequest, null, 2)}),
 });
 
 const data = await response.json();
@@ -157,13 +160,15 @@ export function generatePythonCode(
 
   const headers = `    "Content-Type": "application/json",\n`;
 
+  const { onlyMainContent, ...cleanedRequest } = request as unknown as Record<string, unknown>;
+
   return `import requests
 import json
 
 url = "${fullUrl}"
 headers = {
 ${headers}}
-data = ${JSON.stringify(request, null, 4)}
+data = ${JSON.stringify(cleanedRequest, null, 4)}
 
 response = requests.post(url, headers=headers, json=data)
 print(response.json())`;

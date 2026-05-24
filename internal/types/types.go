@@ -53,42 +53,6 @@ func (f *OutputFormat) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// =============================================================================
-// Chunking Types
-// =============================================================================
-
-// ChunkStrategyType defines how text should be split into chunks.
-type ChunkStrategyType string
-
-// Supported chunking strategies.
-const (
-	ChunkSentence ChunkStrategyType = "sentence" // Split by sentence boundaries
-	ChunkRegex    ChunkStrategyType = "regex"    // Split by regex pattern
-	ChunkTopic    ChunkStrategyType = "topic"    // Split by header topics
-)
-
-// ChunkStrategy defines how to split text for processing.
-type ChunkStrategy struct {
-	Type         ChunkStrategyType `json:"type"`                   // Strategy to use
-	MaxChars     *int              `json:"maxChars,omitempty"`     // Max characters per chunk
-	OverlapChars *int              `json:"overlapChars,omitempty"` // Character overlap between chunks
-	Dedupe       *bool             `json:"dedupe,omitempty"`       // Remove duplicate chunks
-	Pattern      string            `json:"pattern,omitempty"`      // Regex pattern (for ChunkRegex)
-}
-
-// =============================================================================
-// Filtering Types
-// =============================================================================
-
-// FilterMode specifies the algorithm for filtering text chunks.
-type FilterMode string
-
-// Supported filtering modes.
-const (
-	FilterBm25   FilterMode = "bm25"   // Okapi BM25 algorithm
-	FilterCosine FilterMode = "cosine" // TF-IDF cosine similarity
-)
-
 // ExtractOptions defines options for LLM-based extraction.
 type ExtractOptions struct {
 	Schema         json.RawMessage `json:"schema,omitempty"`         // JSON schema for structured extraction
@@ -102,9 +66,8 @@ type ExtractOptions struct {
 
 // ScrapeRequest defines the parameters for a single URL scrape operation.
 type ScrapeRequest struct {
-	URL                 string            `json:"url"`                           // URL to scrape
-	Formats             []OutputFormat    `json:"formats"`                       // Desired output formats
-	OnlyMainContent     bool              `json:"onlyMainContent"`               // Extract only main content (no nav, footer, etc.)
+	URL     string            `json:"url"`    // URL to scrape
+	Formats []OutputFormat    `json:"formats"` // Desired output formats
 	RenderJS            *bool             `json:"renderJs,omitempty"`            // Force JavaScript rendering
 	WaitFor             *int64            `json:"waitFor,omitempty"`             // Wait time in ms after page load
 	IncludeTags         []string          `json:"includeTags,omitempty"`         // HTML tags to include
@@ -112,19 +75,7 @@ type ScrapeRequest struct {
 	JSONSchema          *json.RawMessage  `json:"jsonSchema,omitempty"`          // Schema for JSON output
 	Headers             map[string]string `json:"headers,omitempty"`             // Custom HTTP headers
 	CSSSelector         *string           `json:"cssSelector,omitempty"`         // Extract specific element
-	XPath               *string           `json:"xpath,omitempty"`               // XPath selector for extraction
-	ChunkStrategy       *ChunkStrategy    `json:"chunkStrategy,omitempty"`       // How to chunk the content
-	Query               *string           `json:"query,omitempty"`               // Query for filtering chunks
-	FilterMode          *FilterMode       `json:"filterMode,omitempty"`          // Algorithm for filtering
-	TopK                *int              `json:"topK,omitempty"`                // Return top K filtered chunks
-	Proxy               *string           `json:"proxy,omitempty"`               // Proxy URL to use
-	Stealth             *bool             `json:"stealth,omitempty"`             // Use stealth mode
-	Actions             *json.RawMessage  `json:"actions,omitempty"`             // Browser actions to perform
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
-	LLMAPIKey           *string           `json:"llmApiKey,omitempty"`           // LLM API key override
-	MaxMarkdownChars    *int              `json:"maxMarkdownChars,omitempty"`    // Max chars for LLM when no chunking
-	LLMProvider         *string           `json:"llmProvider,omitempty"`         // LLM provider override
-	LLMModel            *string           `json:"llmModel,omitempty"`            // LLM model override
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
 	Browser             *string           `json:"browser,omitempty"`             // Browser to use (lightpanda, chrome)
@@ -155,15 +106,6 @@ type PageMetadata struct {
 	TimeTaken     uint64  `json:"timeTaken"`                // Time taken to fetch
 }
 
-// ChunkResult represents a single chunk of text with optional score.
-type ChunkResult struct {
-	Content   string   `json:"content"`             // The chunk text
-	Score     *float64 `json:"score,omitempty"`     // Relevance score (if filtered)
-	Index     int      `json:"index"`               // Position in original list
-	URL       string   `json:"url,omitempty"`       // Source URL this chunk came from
-	PageTitle string   `json:"pageTitle,omitempty"` // Title of the source page
-}
-
 // ScrapeData contains the result of a scrape operation.
 type ScrapeData struct {
 	Markdown  *string         `json:"markdown,omitempty"`  // Markdown conversion
@@ -172,7 +114,6 @@ type ScrapeData struct {
 	PlainText *string         `json:"plainText,omitempty"` // Plain text
 	Links     []string        `json:"links,omitempty"`     // URLs found on page
 	JSON      json.RawMessage `json:"json,omitempty"`      // LLM extracted JSON
-	Chunks    []ChunkResult   `json:"chunks,omitempty"`    // Chunked content
 	Warning   *string         `json:"warning,omitempty"`   // Non-fatal warning
 	Metadata  PageMetadata    `json:"metadata"`            // Page metadata
 }
@@ -221,16 +162,11 @@ type CrawlRequest struct {
 	MaxDepth         *uint32         `json:"maxDepth,omitempty"`         // Maximum link depth
 	MaxPages         *uint32         `json:"maxPages,omitempty"`         // Maximum pages to crawl
 	Formats          []OutputFormat  `json:"formats"`                    // Desired output formats
-	OnlyMainContent  bool            `json:"onlyMainContent"`            // Extract only main content
+
 	RenderJS         *bool           `json:"renderJs,omitempty"`         // Force JS rendering
 	WaitFor          *int64          `json:"waitFor,omitempty"`          // Wait time in ms
 	Browser          *string         `json:"browser,omitempty"`          // Browser to use (lightpanda, chrome)
 	Extract          *ExtractOptions `json:"extract,omitempty"`          // LLM extraction options
-	ChunkStrategy    *ChunkStrategy  `json:"chunkStrategy,omitempty"`    // How to chunk content for LLM
-	Query            *string         `json:"query,omitempty"`            // Query for filtering chunks
-	FilterMode       *FilterMode     `json:"filterMode,omitempty"`       // Algorithm for filtering
-	TopK             *int            `json:"topK,omitempty"`             // Top K chunks to send to LLM
-	MaxMarkdownChars *int            `json:"maxMarkdownChars,omitempty"` // Max chars for LLM when no chunking
 }
 
 // Defaults sets default values for optional fields.
@@ -249,7 +185,6 @@ type CrawlState struct {
 	Completed uint32          `json:"completed"`         // Pages successfully scraped
 	Data      []ScrapeData    `json:"data"`              // Scraped page data
 	Answer    json.RawMessage `json:"answer,omitempty"`  // Aggregated LLM answer (single answer from all pages)
-	Sources   []ChunkResult   `json:"sources,omitempty"` // Chunks used for LLM answer
 	Error     *string         `json:"error,omitempty"`   // Error message if failed
 }
 
@@ -430,7 +365,6 @@ type CrawlerConfig struct {
 	UserAgent         string        `toml:"user_agent" json:"userAgent"`                  // User agent string
 	DefaultMaxDepth   int           `toml:"default_max_depth" json:"defaultMaxDepth"`     // Default max depth
 	DefaultMaxPages   int           `toml:"default_max_pages" json:"defaultMaxPages"`     // Default max pages
-	Proxy             *string       `toml:"proxy" json:"proxy"`                           // Proxy URL
 	JobTTLSecs        int64         `toml:"job_ttl_secs" json:"jobTtlSecs"`               // Job TTL in seconds
 	Stealth           StealthConfig `toml:"stealth" json:"stealth"`                       // Stealth settings
 }
@@ -491,7 +425,7 @@ func (l *LLMConfig) Defaults() {
 // ExtractionConfig configures the extraction subsystem.
 type ExtractionConfig struct {
 	DefaultFormat   string     `toml:"default_format" json:"defaultFormat"`      // Default output format
-	OnlyMainContent bool       `toml:"only_main_content" json:"onlyMainContent"` // Extract main content only
+
 	LLM             *LLMConfig `toml:"llm" json:"llm"`                           // LLM settings
 }
 
@@ -500,7 +434,6 @@ func (e *ExtractionConfig) Defaults() {
 	if e.DefaultFormat == "" {
 		e.DefaultFormat = "markdown"
 	}
-	e.OnlyMainContent = true
 }
 
 // ServerConfig configures the HTTP server.
@@ -556,7 +489,6 @@ func ResolveRenderJS(request *bool, defaultVal *bool) *bool {
 type HTTPClientConfig struct {
 	ConnectTimeout time.Duration // Connection timeout
 	Timeout        time.Duration // Request timeout
-	Proxy          *string       // Proxy URL
 	UserAgent      string        // User agent string
 }
 

@@ -22,14 +22,16 @@ type FallbackRenderer struct {
 
 // NewFallbackRenderer creates a new FallbackRenderer with default settings.
 // This is a convenience constructor that uses nil configuration and passes
-// through parameters to NewFallbackRendererWithConfig.
+// NewFallbackRenderer creates a FallbackRenderer with explicit configuration.
+// It initializes the HTTP fetcher and optionally configures browser-based fetchers
+// based on the configured mode (auto, chrome, lightpanda, or none).
+// Browser mode is determined by RENDERER__MODE env var or renderer config.
 func NewFallbackRenderer(
 	userAgent string,
-	proxy *string,
 	stealth *types.StealthConfig,
 	renderJSDefault *bool,
 ) (*FallbackRenderer, *types.QuickCrawlError) {
-	return NewFallbackRendererWithConfig(nil, userAgent, proxy, stealth, renderJSDefault)
+	return NewFallbackRendererWithConfig(nil, userAgent, stealth, renderJSDefault)
 }
 
 // NewFallbackRendererWithConfig creates a FallbackRenderer with explicit configuration.
@@ -39,13 +41,12 @@ func NewFallbackRenderer(
 func NewFallbackRendererWithConfig(
 	rendererCfg *types.RendererConfig,
 	userAgent string,
-	proxy *string,
 	stealth *types.StealthConfig,
 	renderJSDefault *bool,
 ) (*FallbackRenderer, *types.QuickCrawlError) {
 	// Initialize HTTP fetcher with optional header injection for stealth
 	injectHeaders := stealth != nil && stealth.InjectHeaders
-	httpFetcher := NewHTTPFetcher(userAgent, proxy, injectHeaders)
+	httpFetcher := NewHTTPFetcher(userAgent, injectHeaders)
 
 	var jsRenderers []PageFetcher
 	var cleanup func()

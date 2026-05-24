@@ -32,7 +32,6 @@ func main() {
 	rend, rendererErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
 		cfg.Crawler.UserAgent,
-		cfg.Crawler.Proxy,
 		&cfg.Crawler.Stealth,
 		cfg.Renderer.RenderJSDefault,
 	)
