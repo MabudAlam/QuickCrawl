@@ -42,8 +42,6 @@ import type {
   CrawlState,
   HealthResponse,
   Format,
-  ChunkStrategy,
-  FilterMode,
   ScrapeData,
   MapResponse,
   SearchResponse,
@@ -81,21 +79,16 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
   const [crawlSchemaFields, setCrawlSchemaFields] = useState<{ name: string; type: string; description: string; itemType?: string }[]>([
     { name: "title", type: "string", description: "" },
   ]);
-  const [scrapeMarkdownChurnEnabled, setScrapeMarkdownChurnEnabled] = useState(false);
-  const [crawlMarkdownChurnEnabled, setCrawlMarkdownChurnEnabled] = useState(false);
 
   const [scrapeOptions, setScrapeOptions] = useState<ScrapeOptions>({
     formats: ["markdown"] as Format[],
-    onlyMainContent: true,
     renderJs: false,
     waitFor: 0,
     headers: "",
     cssSelector: "",
+    includeTags: "",
+    excludeTags: "",
     browser: undefined as "lightpanda" | "chrome" | undefined,
-    chunkStrategy: undefined as ChunkStrategy | undefined,
-    query: "",
-    filterMode: undefined as FilterMode | undefined,
-    topK: 5,
     jsonSchema: "",
     extractionPrompt: "",
     extractionResponseFormat: "",
@@ -174,17 +167,14 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     maxDepth: 2,
     maxPages: 100,
     formats: ["markdown"] as Format[],
-    onlyMainContent: true,
     renderJs: false,
     waitFor: 0,
+    includeTags: "",
+    excludeTags: "",
     browser: undefined as "lightpanda" | "chrome" | undefined,
     jsonSchema: "",
     extractionPrompt: "",
     extractionResponseFormat: "",
-    chunkStrategy: undefined as ChunkStrategy | undefined,
-    query: "",
-    filterMode: undefined as FilterMode | undefined,
-    topK: 5,
     maxMarkdownChars: undefined,
   });
 
@@ -230,12 +220,9 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           const newFormats = checked
             ? [...prev.formats, format]
             : prev.formats.filter((f) => f !== format);
-          const includesJson = newFormats.includes("json");
           return {
             ...prev,
             formats: newFormats,
-            chunkStrategy: includesJson && !prev.chunkStrategy ? "sentence" as ChunkStrategy : prev.chunkStrategy,
-            filterMode: includesJson && !prev.filterMode ? "bm25" as FilterMode : prev.filterMode,
           };
         });
       }
@@ -262,19 +249,14 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
         return {
           url,
           formats: scrapeOptions.formats.length ? scrapeOptions.formats : ["markdown"],
-          onlyMainContent: scrapeOptions.onlyMainContent,
           renderJs: scrapeOptions.renderJs,
           waitFor: scrapeOptions.waitFor || undefined,
           headers: scrapeOptions.headers || undefined,
           cssSelector: scrapeOptions.cssSelector || undefined,
+          includeTags: scrapeOptions.includeTags ? scrapeOptions.includeTags.split(",").map(s => s.trim()) : undefined,
+          excludeTags: scrapeOptions.excludeTags ? scrapeOptions.excludeTags.split(",").map(s => s.trim()) : undefined,
           browser: scrapeOptions.browser,
           extract,
-          chunkStrategy: scrapeOptions.chunkStrategy
-            ? { type: scrapeOptions.chunkStrategy }
-            : undefined,
-          query: scrapeOptions.query || undefined,
-          filterMode: scrapeOptions.filterMode,
-          topK: scrapeOptions.topK,
           maxMarkdownChars: scrapeOptions.maxMarkdownChars || undefined,
         } as ScrapeRequest;
       }
@@ -297,18 +279,11 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           maxDepth: crawlOptions.maxDepth,
           maxPages: crawlOptions.maxPages,
           formats: crawlOptions.formats.length ? crawlOptions.formats : ["markdown"],
-          onlyMainContent: crawlOptions.onlyMainContent,
           renderJs: crawlOptions.renderJs,
           waitFor: crawlOptions.waitFor || undefined,
           browser: crawlOptions.browser,
           extract,
-          chunkStrategy: includesJson && crawlOptions.chunkStrategy
-            ? { type: crawlOptions.chunkStrategy }
-            : undefined,
-          query: includesJson ? (crawlOptions.query || undefined) : undefined,
-          filterMode: includesJson ? (crawlOptions.filterMode || undefined) : undefined,
-          topK: includesJson ? (crawlOptions.topK ?? 5) : undefined,
-          maxMarkdownChars: crawlMarkdownChurnEnabled ? (crawlOptions.maxMarkdownChars || undefined) : undefined,
+          maxMarkdownChars: crawlOptions.maxMarkdownChars || undefined,
         } as CrawlRequest;
       }
       case "map":
@@ -327,27 +302,13 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           formats: searchFormats,
         } as SearchRequest;
     }
-  }, [endpoint, url, scrapeOptions, crawlOptions, mapOptions, crawlMarkdownChurnEnabled, scrapeMarkdownChurnEnabled, searchQuery, searchRegion, searchTimeLimit, searchRenderJs, searchFormats]);
+  }, [endpoint, url, scrapeOptions, crawlOptions, mapOptions, searchQuery, searchRegion, searchTimeLimit, searchRenderJs, searchFormats]);
 
   const handleSubmit = async () => {
     const request = buildRequest();
     if (!request) {
       setError("Please enter a URL");
       return;
-    }
-
-    if (endpoint === "crawl") {
-      const req = request as CrawlRequest;
-      if (req.formats?.includes("json")) {
-        if (!req.chunkStrategy) {
-          setError("JSON format requires a chunk strategy. Please select one.");
-          return;
-        }
-        if (!req.query) {
-          setError("JSON format requires a query for filtering chunks. Please enter one.");
-          return;
-        }
-      }
     }
 
     setIsLoading(true);
@@ -484,20 +445,15 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     setSchemaFields([{ name: "title", type: "string", description: "" }]);
     setCrawlSchemaBuilderOpen(false);
     setCrawlSchemaFields([{ name: "title", type: "string", description: "" }]);
-    setScrapeMarkdownChurnEnabled(false);
-    setCrawlMarkdownChurnEnabled(false);
     setScrapeOptions({
       formats: ["markdown"] as Format[],
-      onlyMainContent: true,
       renderJs: false,
       waitFor: 0,
       headers: "",
       cssSelector: "",
+      includeTags: "",
+      excludeTags: "",
       browser: undefined as "lightpanda" | "chrome" | undefined,
-      chunkStrategy: undefined as ChunkStrategy | undefined,
-      query: "",
-      filterMode: undefined as FilterMode | undefined,
-      topK: 5,
       jsonSchema: "",
       extractionPrompt: "",
       extractionResponseFormat: "",
@@ -507,17 +463,14 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
       maxDepth: 2,
       maxPages: 100,
       formats: ["markdown"] as Format[],
-      onlyMainContent: true,
       renderJs: false,
       waitFor: 0,
+      includeTags: "",
+      excludeTags: "",
       browser: undefined as "lightpanda" | "chrome" | undefined,
       jsonSchema: "",
       extractionPrompt: "",
       extractionResponseFormat: "",
-      chunkStrategy: undefined as ChunkStrategy | undefined,
-      query: "",
-      filterMode: undefined as FilterMode | undefined,
-      topK: 5,
       maxMarkdownChars: undefined,
     });
     setMapOptions({
@@ -866,130 +819,7 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                     </div>
                   )}
 
-                  <div className="space-y-3">
-                    <Label>Chunk Strategy</Label>
-                    <div className="flex flex-wrap gap-3">
-                      {(["sentence", "regex", "topic"] as ChunkStrategy[]).map(
-                        (strategy) => (
-                          <div key={strategy} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`scrape-chunk-${strategy}`}
-                              checked={scrapeOptions.chunkStrategy === strategy}
-                              onCheckedChange={(checked) =>
-                                setScrapeOptions({
-                                  ...scrapeOptions,
-                                  chunkStrategy: checked ? strategy : undefined,
-                                })
-                              }
-                            />
-                            <Label htmlFor={`scrape-chunk-${strategy}`} className="text-sm font-normal">
-                              {strategy}
-                            </Label>
-                          </div>
-                        )
-                      )}
-                    </div>
-
-                    {scrapeOptions.chunkStrategy && (
-                      <div className="space-y-3 pl-4 border-l-2 border-main">
-                        <div className="space-y-2">
-                          <Label htmlFor="scrape-query">Query (for filtering chunks)</Label>
-                          <Input
-                            id="scrape-query"
-                            value={scrapeOptions.query}
-                            onChange={(e) =>
-                              setScrapeOptions({ ...scrapeOptions, query: e.target.value })
-                            }
-                            placeholder="machine learning AI"
-                            className="text-sm"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Filter Mode</Label>
-                          <div className="flex flex-wrap gap-3">
-                            {(["bm25", "cosine"] as FilterMode[]).map(
-                              (mode) => (
-                                <div key={mode} className="flex items-center gap-2">
-                                  <Checkbox
-                                    id={`scrape-filter-${mode}`}
-                                    checked={scrapeOptions.filterMode === mode}
-                                    onCheckedChange={(checked) =>
-                                      setScrapeOptions({
-                                        ...scrapeOptions,
-                                        filterMode: checked ? mode : undefined,
-                                      })
-                                    }
-                                  />
-                                  <Label htmlFor={`scrape-filter-${mode}`} className="text-sm font-normal">
-                                    {mode}
-                                  </Label>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Top K: {scrapeOptions.topK}</Label>
-                          <Slider
-                            value={[scrapeOptions.topK ?? 5]}
-                            onValueChange={([v]) =>
-                              setScrapeOptions({ ...scrapeOptions, topK: v })
-                            }
-                            min={1}
-                            max={20}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {scrapeOptions.formats.includes("json") && !scrapeOptions.chunkStrategy && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          id="scrape-markdown-churn"
-                          checked={scrapeMarkdownChurnEnabled}
-                          onCheckedChange={(checked) => {
-                            setScrapeMarkdownChurnEnabled(checked);
-                            if (!checked) {
-                              setScrapeOptions({ ...scrapeOptions, maxMarkdownChars: undefined });
-                            } else {
-                              setScrapeOptions({ ...scrapeOptions, maxMarkdownChars: 8000 });
-                            }
-                          }}
-                        />
-                        <Label htmlFor="scrape-markdown-churn" className="text-sm">Enable Markdown Churn</Label>
-                      </div>
-                      {scrapeMarkdownChurnEnabled && (
-                        <>
-                          <Label>Max Chars for LLM: {scrapeOptions.maxMarkdownChars}</Label>
-                          <Slider
-                            value={[scrapeOptions.maxMarkdownChars ?? 8000]}
-                            onValueChange={([v]) =>
-                              setScrapeOptions({ ...scrapeOptions, maxMarkdownChars: v })
-                            }
-                            min={1000}
-                            max={32000}
-                            step={1000}
-                          />
-                        </>
-                      )}
-                    </div>
-                  )}
-
                   <div className="flex flex-wrap items-center gap-2 sm:gap-6">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="scrape-main-content"
-                        checked={scrapeOptions.onlyMainContent}
-                        onCheckedChange={(checked) =>
-                          setScrapeOptions({ ...scrapeOptions, onlyMainContent: checked })
-                        }
-                      />
-                      <Label htmlFor="scrape-main-content" className="text-sm">Main Content</Label>
-                    </div>
                     <div className="flex items-center gap-2">
                       <Switch
                         id="scrape-render"
@@ -1028,16 +858,18 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Wait: {scrapeOptions.waitFor}ms</Label>
-                    <Slider
-                      value={[scrapeOptions.waitFor]}
-                      onValueChange={([v]) => setScrapeOptions({ ...scrapeOptions, waitFor: v })}
-                      min={0}
-                      max={10000}
-                      step={500}
-                    />
-                  </div>
+                  {scrapeOptions.renderJs && (
+                    <div className="space-y-2">
+                      <Label>Wait: {scrapeOptions.waitFor}ms</Label>
+                      <Slider
+                        value={[scrapeOptions.waitFor]}
+                        onValueChange={([v]) => setScrapeOptions({ ...scrapeOptions, waitFor: v })}
+                        min={0}
+                        max={10000}
+                        step={500}
+                      />
+                    </div>
+                  )}
 
                   <button
                     type="button"
@@ -1071,6 +903,30 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                             setScrapeOptions({ ...scrapeOptions, headers: e.target.value })
                           }
                           placeholder='{"User-Agent": "..."}'
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="scrape-include-tags">Include Tags (comma-separated)</Label>
+                        <Input
+                          id="scrape-include-tags"
+                          value={scrapeOptions.includeTags}
+                          onChange={(e) =>
+                            setScrapeOptions({ ...scrapeOptions, includeTags: e.target.value })
+                          }
+                          placeholder="article, main"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="scrape-exclude-tags">Exclude Tags (comma-separated)</Label>
+                        <Input
+                          id="scrape-exclude-tags"
+                          value={scrapeOptions.excludeTags}
+                          onChange={(e) =>
+                            setScrapeOptions({ ...scrapeOptions, excludeTags: e.target.value })
+                          }
+                          placeholder="nav, footer"
                         />
                       </div>
                     </div>
@@ -1143,112 +999,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                         )
                       )}
                     </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label>Chunk Strategy</Label>
-                    <div className="flex flex-wrap gap-3">
-                      {(["sentence", "regex", "topic"] as ChunkStrategy[]).map(
-                        (strategy) => (
-                          <div key={strategy} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`crawl-chunk-${strategy}`}
-                              checked={crawlOptions.chunkStrategy === strategy}
-                              onCheckedChange={(checked) =>
-                                setCrawlOptions({
-                                  ...crawlOptions,
-                                  chunkStrategy: checked ? strategy : undefined,
-                                })
-                              }
-                            />
-                            <Label htmlFor={`crawl-chunk-${strategy}`} className="text-sm font-normal">
-                              {strategy}
-                            </Label>
-                          </div>
-                        )
-                      )}
-                    </div>
-
-                    {crawlOptions.chunkStrategy && (
-                      <div className="space-y-3 pl-4 border-l-2 border-main">
-                        <div className="space-y-2">
-                          <Label htmlFor="crawl-query">Query (for filtering chunks)</Label>
-                          <Input
-                            id="crawl-query"
-                            value={crawlOptions.query}
-                            onChange={(e) =>
-                              setCrawlOptions({ ...crawlOptions, query: e.target.value })
-                            }
-                            placeholder="machine learning AI"
-                            className="text-sm"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Filter Mode</Label>
-                          <div className="flex flex-wrap gap-3">
-                            {(["bm25", "cosine"] as FilterMode[]).map(
-                              (mode) => (
-                                <div key={mode} className="flex items-center gap-2">
-                                  <Checkbox
-                                    id={`crawl-filter-${mode}`}
-                                    checked={crawlOptions.filterMode === mode}
-                                    onCheckedChange={(checked) =>
-                                      setCrawlOptions({
-                                        ...crawlOptions,
-                                        filterMode: checked ? mode : undefined,
-                                      })
-                                    }
-                                  />
-                                  <Label htmlFor={`crawl-filter-${mode}`} className="text-sm font-normal">
-                                    {mode}
-                                  </Label>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Top K: {crawlOptions.topK}</Label>
-                          <Slider
-                            value={[crawlOptions.topK ?? 5]}
-                            onValueChange={([v]) =>
-                              setCrawlOptions({ ...crawlOptions, topK: v })
-                            }
-                            min={1}
-                            max={20}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            id="crawl-markdown-churn"
-                            checked={crawlMarkdownChurnEnabled}
-                            onCheckedChange={(checked) => {
-                              setCrawlMarkdownChurnEnabled(checked);
-                              if (!checked) {
-                                setCrawlOptions({ ...crawlOptions, maxMarkdownChars: undefined });
-                              } else {
-                                setCrawlOptions({ ...crawlOptions, maxMarkdownChars: 8000 });
-                              }
-                            }}
-                          />
-                          <Label htmlFor="crawl-markdown-churn" className="text-sm">Enable Markdown Churn</Label>
-                        </div>
-                        {crawlMarkdownChurnEnabled && (
-                          <div className="space-y-2">
-                            <Label>Max Chars for LLM: {crawlOptions.maxMarkdownChars}</Label>
-                            <Slider
-                              value={[crawlOptions.maxMarkdownChars ?? 8000]}
-                              onValueChange={([v]) =>
-                                setCrawlOptions({ ...crawlOptions, maxMarkdownChars: v })
-                              }
-                              min={1000}
-                              max={32000}
-                              step={1000}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {crawlOptions.formats.includes("json") && (
@@ -1407,16 +1157,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                   <div className="flex flex-wrap items-center gap-2 sm:gap-6">
                     <div className="flex items-center gap-2">
                       <Switch
-                        id="crawl-main-content"
-                        checked={crawlOptions.onlyMainContent}
-                        onCheckedChange={(checked) =>
-                          setCrawlOptions({ ...crawlOptions, onlyMainContent: checked })
-                        }
-                      />
-                      <Label htmlFor="crawl-main-content" className="text-sm">Main Content</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
                         id="crawl-render"
                         checked={crawlOptions.renderJs}
                         onCheckedChange={(checked) =>
@@ -1453,16 +1193,18 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Wait: {crawlOptions.waitFor}ms</Label>
-                    <Slider
-                      value={[crawlOptions.waitFor]}
-                      onValueChange={([v]) => setCrawlOptions({ ...crawlOptions, waitFor: v })}
-                      min={0}
-                      max={10000}
-                      step={500}
-                    />
-                  </div>
+                  {crawlOptions.renderJs && (
+                    <div className="space-y-2">
+                      <Label>Wait: {crawlOptions.waitFor}ms</Label>
+                      <Slider
+                        value={[crawlOptions.waitFor]}
+                        onValueChange={([v]) => setCrawlOptions({ ...crawlOptions, waitFor: v })}
+                        min={0}
+                        max={10000}
+                        step={500}
+                      />
+                    </div>
+                  )}
 
                   <Button
                     className="w-full"

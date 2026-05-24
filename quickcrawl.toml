@@ -20,11 +20,10 @@ ws_url = ""
 [crawler]
 max_concurrency = 40
 requests_per_second = 40.0
-respect_robots_txt = true
+respect_robots_txt = false
 user_agent = ""
 default_max_depth = 2
 default_max_pages = 100
-proxy = ""
 job_ttl_secs = 3600
 
 [crawler.stealth]

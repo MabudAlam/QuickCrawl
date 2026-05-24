@@ -55,19 +55,11 @@ func (r *RobotsTxt) IsAllowed(path string) bool {
 	return true
 }
 
-func FetchRobotsTxt(origin, userAgent string, proxy *string) *RobotsTxt {
+func FetchRobotsTxt(origin, userAgent string) *RobotsTxt {
 	robotsURL := strings.TrimRight(origin, "/") + "/robots.txt"
 	u, err := url.Parse(robotsURL)
 	if err != nil {
 		return &RobotsTxt{userAgent: userAgent}
-	}
-
-	client := robotsClient
-	if proxy != nil && *proxy != "" {
-		if proxyURL, parseErr := url.Parse(*proxy); parseErr == nil {
-			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
-			client = &http.Client{Transport: transport, Timeout: 10 * time.Second}
-		}
 	}
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -78,7 +70,7 @@ func FetchRobotsTxt(origin, userAgent string, proxy *string) *RobotsTxt {
 		req.Header.Set("User-Agent", userAgent)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := robotsClient.Do(req)
 	if err != nil {
 		return &RobotsTxt{userAgent: userAgent}
 	}

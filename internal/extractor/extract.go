@@ -58,12 +58,10 @@ var structuralElements = map[string]bool{
 	"html": true, "head": true, "body": true, "main": true,
 }
 
-// CleanHTML removes unwanted HTML elements and optionally filters to main content.
+// CleanHTML removes unwanted HTML elements.
 // It strips scripts, styles, noscript, iframes, SVGs, and data URI images.
-// When onlyMainContent is true, it also removes nav, footer, header, aside, menu,
-// and select elements, plus applies noise pattern filtering.
 // All structural removals are done through goquery to avoid partial tag issues.
-func CleanHTML(html string, onlyMainContent bool, includeTags, excludeTags []string) string {
+func CleanHTML(html string, includeTags, excludeTags []string) string {
 	result := html
 
 	result = scriptRe.ReplaceAllString(result, "")
@@ -72,10 +70,6 @@ func CleanHTML(html string, onlyMainContent bool, includeTags, excludeTags []str
 	result = iframeRe.ReplaceAllString(result, "")
 	result = svgRe.ReplaceAllString(result, "")
 	result = dataImgRe.ReplaceAllString(result, "")
-
-	if onlyMainContent {
-		result = applyNoisePatterns(result)
-	}
 
 	if len(includeTags) > 0 {
 		result = filterBySelectors(result, includeTags)
@@ -539,28 +533,18 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 
 	meta := ExtractMetadata(opts.RawHTML)
 
-	cleaned := CleanHTML(opts.RawHTML, opts.OnlyMainContent, opts.IncludeTags, opts.ExcludeTags)
+	cleaned := CleanHTML(opts.RawHTML, opts.IncludeTags, opts.ExcludeTags)
 
 	formatNeeded := createFormatSet(opts.Formats)
 
 	selectedHTML := ""
 	if opts.CSSSelector != nil {
 		selectedHTML = applyCSSSelector(cleaned, *opts.CSSSelector)
-	} else if opts.XPath != nil {
-		selectedHTML = applyXPath(cleaned, *opts.XPath)
 	}
 
 	contentHTML := cleaned
 	if selectedHTML != "" {
 		contentHTML = selectedHTML
-	}
-
-	if opts.OnlyMainContent && opts.CSSSelector == nil && opts.XPath == nil {
-		mainContent := ExtractMainContent(contentHTML)
-		if mainContent != "" {
-			contentHTML = mainContent
-			contentHTML = CleanHTML(contentHTML, false, nil, nil)
-		}
 	}
 
 	var markdown *string
@@ -582,18 +566,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		bestLen := len(mdTrimmed)
 
 		if bestLen < minUsableMarkdownLen {
-			if opts.OnlyMainContent {
-				cleanedMD := HTMLToMarkdown(cleaned)
-				if trimmed := strings.TrimSpace(cleanedMD); trimmed != "" {
-					candidates = append(candidates, candidate{name: "cleaned", content: cleanedMD})
-					if l := len(trimmed); l > bestLen {
-						bestLen = l
-					}
-				}
-			}
-
-			if bestLen < minUsableMarkdownLen {
-				basicCleaned := CleanHTML(opts.RawHTML, false, opts.IncludeTags, opts.ExcludeTags)
+			basicCleaned := CleanHTML(opts.RawHTML, opts.IncludeTags, opts.ExcludeTags)
 				basicMD := HTMLToMarkdown(basicCleaned)
 				if trimmed := strings.TrimSpace(basicMD); trimmed != "" {
 					candidates = append(candidates, candidate{name: "basic", content: basicMD})
@@ -601,7 +574,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 						bestLen = l
 					}
 				}
-			}
 
 			if bestLen < minUsableMarkdownLen {
 				structuralMD := extractStructuralFallback(opts.RawHTML)
@@ -628,7 +600,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		}
 
 		chosenIdx := 0
-		if opts.OnlyMainContent && len(candidates) > 1 {
+		if len(candidates) > 1 {
 			maxLen := len(strings.TrimSpace(candidates[0].content))
 			for i := 1; i < len(candidates); i++ {
 				cLen := len(strings.TrimSpace(candidates[i].content))
@@ -720,38 +692,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		links = ExtractLinks(opts.RawHTML, opts.SourceURL)
 	}
 
-	var chunks []types.ChunkResult
-	if opts.ChunkStrategy != nil && markdown != nil && len(strings.TrimSpace(*markdown)) > 0 {
-		rawChunks := ChunkText(*markdown, opts.ChunkStrategy)
-
-		if opts.Query != nil && opts.FilterMode != nil && len(strings.TrimSpace(*opts.Query)) > 0 && len(rawChunks) > 0 {
-			topK := 5
-			if opts.TopK != nil {
-				topK = *opts.TopK
-			}
-			filtered := FilterChunksScored(rawChunks, *opts.Query, opts.FilterMode, topK)
-			chunks = filtered
-		} else {
-			for i, chunk := range rawChunks {
-				var score *float64
-				chunks = append(chunks, types.ChunkResult{
-					Content: chunk,
-					Score:   score,
-					Index:   i,
-				})
-			}
-			if opts.TopK != nil && *opts.TopK < len(chunks) {
-				chunks = chunks[:*opts.TopK]
-			}
-		}
-	}
-
-	var orphanWarning *string
-	if opts.ChunkStrategy == nil && (opts.Query != nil || opts.FilterMode != nil) {
-		warning := "'query' and 'filterMode' require 'chunkStrategy' to be set. These parameters were ignored."
-		orphanWarning = &warning
-	}
-
 	return &types.ScrapeData{
 		Markdown:  markdown,
 		HTML:      html,
@@ -759,8 +699,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		PlainText: plainText,
 		Links:     links,
 		JSON:      nil,
-		Chunks:    chunks,
-		Warning:   orphanWarning,
 		Metadata: types.PageMetadata{
 			Title:         meta.Title,
 			Description:   meta.Description,
@@ -1082,7 +1020,6 @@ func extractPDF(opts ExtractOptions) *types.ScrapeData {
 		PlainText: plainText,
 		Links:     nil,
 		JSON:      nil,
-		Chunks:    nil,
 		Warning:   nil,
 		Metadata: types.PageMetadata{
 			SourceURL:    opts.SourceURL,

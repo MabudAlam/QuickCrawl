@@ -29,7 +29,7 @@ var llmHTTPClient = &http.Client{
 }
 
 // ScrapeURL fetches a single URL and extracts content in the requested formats.
-// It handles proxy configuration, stealth mode, JavaScript rendering decisions,
+// It handles stealth mode, JavaScript rendering decisions,
 // content extraction, and optional LLM-based structured data extraction.
 //
 // The function returns a ScrapeData containing all requested output formats
@@ -38,93 +38,34 @@ func ScrapeURL(
 	req *types.ScrapeRequest,
 	rend *renderer.FallbackRenderer,
 	llmConfig *types.LLMConfig,
-	userAgent string,
 	defaultStealth bool,
 	renderJSDefault *bool,
 	stealthStrategy utils.HeaderStrategy,
 ) (*types.ScrapeData, *types.QuickCrawlError) {
 	totalStart := time.Now()
 
-	if req.Actions != nil {
-		return nil, types.ErrInvalidRequest.New("The 'actions' parameter is not yet supported. Use cssSelector or xpath for element targeting.")
-	}
-
 	injectStealth := defaultStealth
-	if req.Stealth != nil {
-		injectStealth = *req.Stealth
-	}
 
-	// When stealth is enabled, get a random header profile from the strategy pool.
-	// This provides realistic browser headers (Accept, Sec-Ch-Ua-*, Sec-Fetch-*).
 	var stealthProfile utils.HeaderProfile
-	var effectiveUA string
 	if injectStealth {
 		stealthProfile = utils.GetHeaderProfile(stealthStrategy)
-		effectiveUA = stealthProfile.UserAgent
-	} else {
-		effectiveUA = userAgent
 	}
-
-	effectiveRenderJS := effectiveRenderJSSetting(req.RenderJS, renderJSDefault)
-
-	needsTempFetcher := req.Proxy != nil
 
 	var (
 		fetchResult *types.FetchResult
-		err        *types.QuickCrawlError
+		err         *types.QuickCrawlError
 	)
 
-	if needsTempFetcher {
-		proxy := ""
-		if req.Proxy != nil {
-			proxy = *req.Proxy
+	headers := req.Headers
+	if injectStealth {
+		headers = stealthProfile.ToMap()
+		for k, v := range req.Headers {
+			headers[k] = v
 		}
-
-		if effectiveRenderJS != nil && !*effectiveRenderJS {
-			proxyPtr := (*string)(nil)
-			if proxy != "" {
-				proxyPtr = &proxy
-			}
-			headers := req.Headers
-			if injectStealth {
-				headers = stealthProfile.ToMap()
-				for k, v := range req.Headers {
-					headers[k] = v
-				}
-			}
-			tempHTTP := renderer.NewHTTPFetcher(effectiveUA, proxyPtr, injectStealth)
-			fetchResult, err = tempHTTP.Fetch(req.URL, headers, req.WaitFor)
-			if err != nil {
-				return nil, err
-			}
-			if fetchResult == nil {
-				return nil, types.ErrHttp.New("fetch returned nil")
-			}
-		} else {
-			headers := req.Headers
-			if injectStealth {
-				headers = stealthProfile.ToMap()
-				for k, v := range req.Headers {
-					headers[k] = v
-				}
-			}
-			fetchResult, err = rend.Fetch(req.URL, headers, req.RenderJS, req.WaitFor, req.Browser)
-			if err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		headers := req.Headers
-		if injectStealth {
-			headers = stealthProfile.ToMap()
-			for k, v := range req.Headers {
-				headers[k] = v
-			}
-		}
-		fetchResult, err = rend.Fetch(req.URL, headers, req.RenderJS, req.WaitFor, req.Browser)
-		if err != nil {
-			return nil, err
-		}
+	}
+	fetchResult, err = rend.Fetch(req.URL, headers, req.RenderJS, req.WaitFor, req.Browser)
+	if err != nil {
+		return nil, err
 	}
 
 	fetchElapsed := time.Since(totalStart)
@@ -133,22 +74,16 @@ func ScrapeURL(
 	warning := buildFetchWarning(fetchResult)
 	extractStart := time.Now()
 	data := extractor.Extract(extractor.ExtractOptions{
-		RawHTML:         fetchResult.HTML,
-		RawBytes:        fetchResult.RawBytes,
-		SourceURL:       fetchResult.URL,
-		StatusCode:      int(fetchResult.StatusCode),
-		RenderedMode:    fetchResult.RenderedWith,
-		TimeTaken:       fetchResult.TimeTaken,
-		Formats:         req.Formats,
-		OnlyMainContent: req.OnlyMainContent,
-		IncludeTags:     req.IncludeTags,
-		ExcludeTags:     req.ExcludeTags,
-		CSSSelector:     req.CSSSelector,
-		XPath:           req.XPath,
-		ChunkStrategy:   req.ChunkStrategy,
-		Query:           req.Query,
-		FilterMode:      req.FilterMode,
-		TopK:            req.TopK,
+		RawHTML:      fetchResult.HTML,
+		RawBytes:     fetchResult.RawBytes,
+		SourceURL:    fetchResult.URL,
+		StatusCode:   int(fetchResult.StatusCode),
+		RenderedMode: fetchResult.RenderedWith,
+		TimeTaken:    fetchResult.TimeTaken,
+		Formats:      req.Formats,
+		IncludeTags:  req.IncludeTags,
+		ExcludeTags:  req.ExcludeTags,
+		CSSSelector:  req.CSSSelector,
 	})
 
 	extractElapsed := time.Since(extractStart)
@@ -187,40 +122,17 @@ func ScrapeURL(
 			responseFormat = req.Extract.ResponseFormat
 		}
 
-		var byokConfig *types.LLMConfig
-		if req.LLMAPIKey != nil {
-			provider := "openai"
-			if req.LLMProvider != nil {
-				provider = *req.LLMProvider
-			}
-			model := "gpt-4o-mini"
-			if req.LLMModel != nil {
-				model = *req.LLMModel
-			}
-			byokConfig = &types.LLMConfig{
-				APIKey:           *req.LLMAPIKey,
-				Provider:         provider,
-				Model:            model,
-				MaxTokens:        defaultMaxTokens,
-				ExtractionPrompt: extractionPrompt,
-				ResponseFormat:   responseFormat,
-			}
+		effectiveLLM := llmConfig
+		if effectiveLLM != nil && extractionPrompt != "" {
+			effectiveLLM.ExtractionPrompt = extractionPrompt
 		}
-
-		effectiveLLM := byokConfig
-		if effectiveLLM == nil && llmConfig != nil {
-			effectiveLLM = llmConfig
-			if extractionPrompt != "" {
-				effectiveLLM.ExtractionPrompt = extractionPrompt
-			}
-			if responseFormat != "" {
-				effectiveLLM.ResponseFormat = responseFormat
-			}
+		if effectiveLLM != nil && responseFormat != "" {
+			effectiveLLM.ResponseFormat = responseFormat
 		}
 
 		if effectiveSchema != nil && effectiveLLM != nil {
 			if data.Markdown != nil {
-				llmInput := buildLLMInput(data, req.ChunkStrategy, req.Query, req.FilterMode, req.TopK, req.MaxMarkdownChars)
+				llmInput := buildLLMInput(data)
 				jsonResult, err := extractStructured(llmInput, *effectiveSchema, effectiveLLM)
 				if err != nil {
 					return nil, err
@@ -242,51 +154,12 @@ func ScrapeURL(
 	return data, nil
 }
 
-// buildLLMInput builds the content to send to LLM based on chunking settings.
-// If chunking is enabled with query, uses filtered chunks.
-// Otherwise, uses full markdown or truncates by MaxMarkdownChars.
-func buildLLMInput(data *types.ScrapeData, chunkStrategy *types.ChunkStrategy, query *string, filterMode *types.FilterMode, topK *int, maxMarkdownChars *int) string {
+// buildLLMInput builds the content to send to LLM based on MaxMarkdownChars setting.
+func buildLLMInput(data *types.ScrapeData) string {
 	if data.Markdown == nil {
 		return ""
 	}
-
-	markdown := *data.Markdown
-
-	// If chunking is enabled with query, use filtered chunks
-	if chunkStrategy != nil && query != nil && len(*query) > 0 && data.Chunks != nil && len(data.Chunks) > 0 {
-		var filtered []types.ChunkResult
-		if filterMode != nil {
-			chunkTexts := make([]string, len(data.Chunks))
-			for i, c := range data.Chunks {
-				chunkTexts[i] = c.Content
-			}
-			filtered = extractor.FilterChunksScored(chunkTexts, *query, filterMode, 5)
-		} else {
-			filtered = data.Chunks
-		}
-
-		// Apply TopK limit
-		if topK != nil && *topK < len(filtered) {
-			filtered = filtered[:*topK]
-		}
-
-		// Join filtered chunks
-		var sb strings.Builder
-		for i, chunk := range filtered {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			sb.WriteString(chunk.Content)
-		}
-		return sb.String()
-	}
-
-	// If MaxMarkdownChars is set, truncate
-	if maxMarkdownChars != nil && *maxMarkdownChars > 0 && len(markdown) > *maxMarkdownChars {
-		return markdown[:*maxMarkdownChars]
-	}
-
-	return markdown
+	return *data.Markdown
 }
 
 // effectiveRenderJSSetting determines the effective JavaScript rendering setting

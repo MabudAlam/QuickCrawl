@@ -18,7 +18,6 @@ type MapOptions struct {
 	MaxConcurrency    int
 	RequestsPerSecond float64
 	UserAgent         string
-	Proxy             *string
 	Timeout           *int // Timeout in milliseconds
 }
 
@@ -50,7 +49,6 @@ func Map(opts MapOptions) (*types.MapData, *types.QuickCrawlError) {
 		opts.MaxConcurrency,
 		opts.RequestsPerSecond,
 		opts.UserAgent,
-		opts.Proxy,
 		ctx,
 	)
 	if err != nil {

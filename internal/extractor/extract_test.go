@@ -31,7 +31,7 @@ func BenchmarkCleanHTMLMinimal(b *testing.B) {
 	html := `<p>Simple paragraph with <em>emphasis</em>.</p>`
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = CleanHTML(html, false, nil, nil)
+		_ = CleanHTML(html, nil, nil)
 	}
 }
 
@@ -46,7 +46,7 @@ func BenchmarkCleanHTMLNoMainContent(b *testing.B) {
 </html>`
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = CleanHTML(html, false, nil, nil)
+		_ = CleanHTML(html, nil, nil)
 	}
 }
 
@@ -173,7 +173,7 @@ Paragraph after`
 
 func TestCleanHTML(t *testing.T) {
 	html := `<html><head><script>evil</script></head><body><p>Hello</p></body></html>`
-	result := CleanHTML(html, true, nil, nil)
+	result := CleanHTML(html, nil, nil)
 	if strings.Contains(result, "evil") {
 		t.Error("Script should have been removed")
 	}

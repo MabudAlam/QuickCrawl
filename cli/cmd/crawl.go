@@ -33,16 +33,14 @@ Example:
 
 // crawlFlags holds the configuration for the crawl command.
 var crawlFlags = struct {
-	formats        string
-	onlyMainContent bool
-	renderJS       bool
+	formats  string
+	renderJS bool
 	waitFor        int64
 	maxDepth       int
 	maxPages       int
 	query          string
 	topK           int
 	renderer       string
-	proxy          string
 }{}
 
 func init() {
@@ -50,8 +48,6 @@ func init() {
 
 	crawlCmd.Flags().StringVarP(&crawlFlags.formats, "formats", "f", "markdown",
 		"Output formats (comma-separated): markdown,html,links,json")
-	crawlCmd.Flags().BoolVar(&crawlFlags.onlyMainContent, "only-main-content", true,
-		"Extract only main content (removes nav/footer)")
 	crawlCmd.Flags().BoolVar(&crawlFlags.renderJS, "render-js", false,
 		"Force JavaScript rendering on all pages")
 	crawlCmd.Flags().Int64Var(&crawlFlags.waitFor, "wait-for", 0,
@@ -60,14 +56,8 @@ func init() {
 		"Maximum link depth to follow (0-10)")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxPages, "max-pages", 10,
 		"Maximum number of pages to scrape")
-	crawlCmd.Flags().StringVar(&crawlFlags.query, "query", "",
-		"Query for filtering chunks by relevance before LLM extraction")
-	crawlCmd.Flags().IntVar(&crawlFlags.topK, "top-k", 0,
-		"Return only top K chunks for LLM extraction (0 = all)")
 	crawlCmd.Flags().StringVar(&crawlFlags.renderer, "renderer", "auto",
 		"Renderer: auto, lightpanda, chrome")
-	crawlCmd.Flags().StringVar(&crawlFlags.proxy, "proxy", "",
-		"Proxy URL for requests")
 }
 
 // runCrawl executes the crawl command.
@@ -111,37 +101,19 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		waitFor = &crawlFlags.waitFor
 	}
 
-	var query *string
-	if crawlFlags.query != "" {
-		query = &crawlFlags.query
-	}
-
-	var topK *int
-	if crawlFlags.topK > 0 {
-		topK = &crawlFlags.topK
-	}
-
 	var browser *string
 	if crawlFlags.renderer != "" && crawlFlags.renderer != "auto" {
 		browser = &crawlFlags.renderer
 	}
 
-	var proxy *string
-	if crawlFlags.proxy != "" {
-		proxy = &crawlFlags.proxy
-	}
-
 	crawlReq := &types.CrawlRequest{
-		URL:             targetURL,
-		MaxDepth:        &maxDepth,
-		MaxPages:        &maxPages,
-		Formats:         formats,
-		OnlyMainContent: crawlFlags.onlyMainContent,
-		RenderJS:        renderJS,
-		WaitFor:         waitFor,
-		Browser:         browser,
-		Query:           query,
-		TopK:            topK,
+		URL:          targetURL,
+		MaxDepth:  &maxDepth,
+		MaxPages:  &maxPages,
+		Formats:   formats,
+		RenderJS:  renderJS,
+		WaitFor:   waitFor,
+		Browser:   browser,
 	}
 	crawlReq.Defaults()
 
@@ -155,7 +127,6 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	rend, rendErr := renderer.NewFallbackRendererWithConfig(
 		&cfg.Renderer,
 		cfg.Crawler.UserAgent,
-		cfg.Crawler.Proxy,
 		&cfg.Crawler.Stealth,
 		cfg.Renderer.RenderJSDefault,
 	)
@@ -190,7 +161,6 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 			UserAgent:         cfg.Crawler.UserAgent,
 			StateCh:           stateCh,
 			LLMConfig:         cfg.Extraction.LLM,
-			Proxy:             proxy,
 			JitterFactor:      cfg.Crawler.Stealth.JitterFactor,
 		}
 		crawler.RunCrawl(opts)
