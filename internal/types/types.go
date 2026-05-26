@@ -20,12 +20,13 @@ type OutputFormat string
 
 // Supported output formats.
 const (
-	FormatMarkdown  OutputFormat = "markdown"  // Markdown format
-	FormatHtml      OutputFormat = "html"      // Clean HTML format
-	FormatRawHtml   OutputFormat = "rawHtml"   // Raw HTML as received
-	FormatPlainText OutputFormat = "plainText" // Plain text without markup
-	FormatLinks     OutputFormat = "links"     // Just the links found on page
-	FormatJson      OutputFormat = "json"      // JSON (LLM extracted)
+	FormatMarkdown   OutputFormat = "markdown"   // Markdown format (images stripped by default)
+	FormatHtml       OutputFormat = "html"       // Clean HTML format
+	FormatRawHtml    OutputFormat = "rawHtml"    // Raw HTML as received
+	FormatPlainText  OutputFormat = "plainText"  // Plain text without markup
+	FormatLinks      OutputFormat = "links"      // Just the links found on page
+	FormatJson       OutputFormat = "json"       // JSON (LLM extracted)
+	FormatImageLinks OutputFormat = "imageLinks" // All image src URLs
 )
 
 // UnmarshalJSON parses a JSON string into an OutputFormat.
@@ -47,6 +48,8 @@ func (f *OutputFormat) UnmarshalJSON(data []byte) error {
 		*f = FormatLinks
 	case "json", "extract", "llm-extract":
 		*f = FormatJson
+	case "imageLinks":
+		*f = FormatImageLinks
 	default:
 		return fmt.Errorf("unknown format '%s'", s)
 	}
@@ -75,6 +78,7 @@ type ScrapeRequest struct {
 	JSONSchema          *json.RawMessage  `json:"jsonSchema,omitempty"`          // Schema for JSON output
 	Headers             map[string]string `json:"headers,omitempty"`             // Custom HTTP headers
 	CSSSelector         *string           `json:"cssSelector,omitempty"`         // Extract specific element
+	OnlyMain            bool              `json:"onlyMain,omitempty"`            // Extract only main content area
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
@@ -108,14 +112,15 @@ type PageMetadata struct {
 
 // ScrapeData contains the result of a scrape operation.
 type ScrapeData struct {
-	Markdown  *string         `json:"markdown,omitempty"`  // Markdown conversion
-	HTML      *string         `json:"html,omitempty"`      // Clean HTML
-	RawHTML   *string         `json:"rawHtml,omitempty"`   // Raw HTML as received
-	PlainText *string         `json:"plainText,omitempty"` // Plain text
-	Links     []string        `json:"links,omitempty"`     // URLs found on page
-	JSON      json.RawMessage `json:"json,omitempty"`      // LLM extracted JSON
-	Warning   *string         `json:"warning,omitempty"`   // Non-fatal warning
-	Metadata  PageMetadata    `json:"metadata"`            // Page metadata
+	Markdown   *string         `json:"markdown,omitempty"`   // Markdown conversion (images stripped)
+	HTML       *string         `json:"html,omitempty"`       // Clean HTML
+	RawHTML    *string         `json:"rawHtml,omitempty"`   // Raw HTML as received
+	PlainText  *string         `json:"plainText,omitempty"` // Plain text
+	Links      []string        `json:"links,omitempty"`     // URLs found on page
+	ImageLinks []string        `json:"imageLinks,omitempty"` // Image URLs found on page
+	JSON       json.RawMessage `json:"json,omitempty"`      // LLM extracted JSON
+	Warning    *string         `json:"warning,omitempty"`   // Non-fatal warning
+	Metadata   PageMetadata    `json:"metadata"`            // Page metadata
 }
 
 // APIResponse wraps API responses with success/error information.
