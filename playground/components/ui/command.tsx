@@ -8,9 +8,9 @@ import * as React from "react"
 import {
   Dialog,
   DialogContent,
-  DialogpDescription,
+  DialogDescription,
   DialogHeader,
-  DialogpTitle,
+  DialogTitle,
 } from "@/components/ui/dialog"
 
 import { cn } from "@/lib/utils"
@@ -43,8 +43,8 @@ function CommandDialog({
   return (
     <Dialog {...props}>
       <DialogHeader className="sr-only">
-        <DialogpTitle>{title}</DialogpTitle>
-        <DialogpDescription>{description}</DialogpDescription>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent className="overflow-hidden p-0 rounded-[0px]! shadow-shadow border-0">
         <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-heading [&_[cmdk-group-heading]]:mb-1 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">

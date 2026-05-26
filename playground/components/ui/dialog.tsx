@@ -96,7 +96,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function DialogpTitle({
+function DialogTitle({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
@@ -112,7 +112,7 @@ function DialogpTitle({
   )
 }
 
-function DialogpDescription({
+function DialogDescription({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
@@ -134,6 +134,6 @@ export {
   DialogContent,
   DialogHeader,
   DialogFooter,
-  DialogpTitle,
-  DialogpDescription,
+  DialogTitle,
+  DialogDescription,
 }
