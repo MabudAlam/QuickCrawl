@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // FallbackRenderer is the main rendering orchestrator that coordinates multiple
@@ -44,9 +45,17 @@ func NewFallbackRendererWithConfig(
 	stealth *types.StealthConfig,
 	renderJSDefault *bool,
 ) (*FallbackRenderer, *types.QuickCrawlError) {
-	// Initialize HTTP fetcher with optional header injection for stealth
-	injectHeaders := stealth != nil && stealth.InjectHeaders
-	httpFetcher := NewHTTPFetcher(userAgent, injectHeaders)
+	// Determine if stealth headers should be injected
+	var stealthProfile *utils.HeaderProfile
+	stealthEnabled := stealth != nil && stealth.Enabled && stealth.InjectHeaders
+	if stealthEnabled {
+		// Get a header profile based on the configured strategy (modern_browser, mobile_device, bot_friendly)
+		profile := utils.GetHeaderProfile(utils.HeaderStrategy(stealth.Strategy))
+		stealthProfile = &profile
+	}
+
+	// Initialize HTTP fetcher with stealth profile (nil if stealth is disabled)
+	httpFetcher := NewHTTPFetcher(userAgent, stealthProfile)
 
 	var jsRenderers []PageFetcher
 	var cleanup func()
@@ -62,7 +71,7 @@ func NewFallbackRendererWithConfig(
 	}
 
 	// Determine configured WebSocket URLs for each browser type
-	stealthEnabled := stealth != nil && stealth.Enabled
+	stealthEnabled = stealth != nil && stealth.Enabled
 	lightpandaWSURL := getLightPandaWSURL(rendererCfg)
 	chromeWSURL := getChromeWSURL(rendererCfg)
 
