@@ -66,7 +66,7 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
-export type Format = "markdown" | "html" | "rawHtml" | "plainText" | "links" | "json";
+export type Format = "markdown" | "html" | "rawHtml" | "plainText" | "links" | "json" | "imageLinks";
 
 export interface ScrapeData {
   markdown?: string;
