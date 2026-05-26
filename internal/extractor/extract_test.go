@@ -3,6 +3,8 @@ package extractor
 import (
 	"strings"
 	"testing"
+
+	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
 func BenchmarkCleanHTML(b *testing.B) {
@@ -220,6 +222,31 @@ func TestExtractMainContentPrefersArticleOverSidebar(t *testing.T) {
 	}
 	if strings.Contains(content, "Home") || strings.Contains(content, "About") || strings.Contains(content, "Docs") {
 		t.Fatalf("expected sidebar noise to be excluded, got: %s", content)
+	}
+}
+
+func TestExtractHtmlPreservesSemanticTagsThroughWrapperUnwrap(t *testing.T) {
+	html := `<html><body><div><div><h1>Title</h1><p>Body text with enough length to survive cleaning.</p></div></div></body></html>`
+
+	data := Extract(ExtractOptions{
+		RawHTML:   html,
+		SourceURL: "https://example.com",
+		Formats:   []types.OutputFormat{types.FormatHtml},
+	})
+
+	if data.HTML == nil {
+		t.Fatal("expected HTML output")
+	}
+
+	got := *data.HTML
+	if !strings.Contains(got, "<h1>Title</h1>") {
+		t.Fatalf("expected heading to remain in HTML output, got: %s", got)
+	}
+	if !strings.Contains(got, "<p>Body text with enough length to survive cleaning.</p>") {
+		t.Fatalf("expected paragraph to remain in HTML output, got: %s", got)
+	}
+	if strings.Contains(got, "<div><div>") {
+		t.Fatalf("expected nested wrapper divs to be unwrapped, got: %s", got)
 	}
 }
 
