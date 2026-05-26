@@ -9,6 +9,7 @@ import {
   XCircle,
   Clock,
   ExternalLink,
+  Copy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,6 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { NeumorphCombobox } from "@/components/ui/neumorph-combobox"
 import ReactMarkdown from "react-markdown"
 
 interface ScrapeResult {
@@ -26,6 +28,8 @@ interface ScrapeResult {
     markdown?: string
     html?: string
     plainText?: string
+    imageLinks?: string[]
+    rawHtml?: string
     metadata?: {
       title?: string
       description?: string
@@ -70,7 +74,8 @@ async function fetchWithTimeout(
 async function scrapeWithQuickCrawl(
   url: string,
   sharedStartTime: number,
-  renderJs: boolean = false
+  renderJs: boolean = false,
+  formatList: string[] = ["markdown"]
 ): Promise<ScrapeResult> {
   const baseUrl = getBaseUrl()
 
@@ -80,8 +85,9 @@ async function scrapeWithQuickCrawl(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url,
-        formats: ["markdown"],
+        formats: formatList,
         renderJs,
+        onlyMain: true,
       }),
     })
 
@@ -102,6 +108,8 @@ async function scrapeWithQuickCrawl(
         markdown: data.data?.markdown,
         html: data.data?.html,
         plainText: data.data?.plainText,
+        imageLinks: data.data?.imageLinks,
+        rawHtml: data.data?.rawHtml,
         metadata: {
           title: data.data?.metadata?.title,
           description: data.data?.metadata?.description,
@@ -122,7 +130,8 @@ async function scrapeWithQuickCrawl(
 
 async function scrapeWithTinyFish(
   url: string,
-  sharedStartTime: number
+  sharedStartTime: number,
+  formatList: string[] = ["markdown"]
 ): Promise<ScrapeResult> {
   const apiKey = process.env.NEXT_PUBLIC_TINY_FISH_API_KEY
 
@@ -135,35 +144,80 @@ async function scrapeWithTinyFish(
   }
 
   try {
-    const response = await fetch("https://api.fetch.tinyfish.ai", {
-      method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        urls: [url],
-        format: "markdown",
-      }),
-    })
+    const stringResults: Record<string, string> = {}
+    let imageLinks: string[] | undefined
 
-    const timeTaken = Date.now() - sharedStartTime
-    const data = await response.json()
+    if (formatList.includes("markdown") && formatList.includes("imageLinks")) {
+      const combinedResponse = await fetch("https://api.fetch.tinyfish.ai", {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          urls: [url],
+          format: "markdown",
+          image_links: true,
+        }),
+      })
 
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || response.statusText,
-        timeTaken,
+      const combinedData = await combinedResponse.json()
+      const combinedResult = combinedData.results?.[0]
+      if (combinedResult && !combinedResult.error) {
+        stringResults.markdown = combinedResult.text
+        imageLinks = combinedResult.image_links
+      }
+    } else if (formatList.includes("markdown")) {
+      const mdResponse = await fetch("https://api.fetch.tinyfish.ai", {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          urls: [url],
+          format: "markdown",
+        }),
+      })
+
+      const mdData = await mdResponse.json()
+      const mdResult = mdData.results?.[0]
+      if (mdResult && !mdResult.error) {
+        stringResults.markdown = mdResult.text
       }
     }
 
-    const result = data.results?.[0]
+    if (formatList.includes("html")) {
+      const htmlResponse = await fetch("https://api.fetch.tinyfish.ai", {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          urls: [url],
+          format: "html",
+          image_links: formatList.includes("imageLinks"),
+        }),
+      })
 
-    if (!result || result.error) {
+      const htmlData = await htmlResponse.json()
+      const htmlResult = htmlData.results?.[0]
+      if (htmlResult && !htmlResult.error) {
+        stringResults.html = htmlResult.text
+        if (formatList.includes("imageLinks") && !imageLinks) {
+          imageLinks = htmlResult.image_links
+        }
+      }
+    }
+
+    const timeTaken = Date.now() - sharedStartTime
+
+    const firstResult = Object.values(stringResults)[0]
+    if (!firstResult && !imageLinks) {
       return {
         success: false,
-        error: result?.error || "No content returned",
+        error: "No content returned from TinyFish",
         timeTaken,
       }
     }
@@ -171,12 +225,13 @@ async function scrapeWithTinyFish(
     return {
       success: true,
       data: {
-        markdown: result.text,
-        html: result.html,
-        plainText: result.text,
+        markdown: stringResults.markdown || stringResults.html,
+        html: stringResults.html || stringResults.markdown,
+        plainText: stringResults.markdown || stringResults.html,
+        imageLinks,
         metadata: {
-          title: result.title,
-          description: result.description,
+          title: undefined,
+          description: undefined,
           timeTaken,
         },
       },
@@ -196,11 +251,28 @@ function ResultCard({
   title,
   result,
   badgeColor,
+  showHtml,
+  showImageLinks,
+  showRawHtml,
 }: {
   title: string
   result: ScrapeResult
   badgeColor: string
+  showHtml?: boolean
+  showImageLinks?: boolean
+  showRawHtml?: boolean
 }) {
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+      setTimeout(() => setCopied(null), 2000)
+    } catch {
+      // Clipboard API not available
+    }
+  }
   return (
     <Card className="min-w-0 flex-1">
       <CardHeader className="pb-3">
@@ -233,25 +305,111 @@ function ResultCard({
             <span>Waiting for result...</span>
           </div>
         ) : (
-          <Tabs defaultValue="markdown">
-            <TabsList className="mb-3">
+          <Tabs defaultValue={showHtml ? "html" : showImageLinks ? "imageLinks" : "markdown"}>
+<TabsList className="mb-3">
+              {showImageLinks && <TabsTrigger value="imageLinks">Image Links</TabsTrigger>}
+              {showHtml && <TabsTrigger value="html">HTML</TabsTrigger>}
+              {showHtml && <TabsTrigger value="html-preview">HTML Preview</TabsTrigger>}
               <TabsTrigger value="markdown">Markdown</TabsTrigger>
               <TabsTrigger value="preview">Preview</TabsTrigger>
+              {showRawHtml && <TabsTrigger value="rawHtml">Raw HTML</TabsTrigger>}
             </TabsList>
+            {showImageLinks && (
+              <TabsContent value="imageLinks">
+                <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                  {result.data?.imageLinks && result.data.imageLinks.length > 0 ? (
+                    <ul className="space-y-2">
+                      {result.data.imageLinks.map((link, i) => (
+                        <li key={i} className="text-xs break-all">
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            {link}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No image links found</p>
+                  )}
+                </div>
+              </TabsContent>
+            )}
+            {showHtml && (
+              <>
+                <TabsContent value="html">
+                  <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                    <div className="flex justify-end mb-1">
+                      <Button
+                        variant="noShadow"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => copyToClipboard(result.data?.html || "", "html")}
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        {copied === "html" ? "Copied!" : "Copy"}
+                      </Button>
+                    </div>
+                    <pre className="font-mono text-xs break-words whitespace-pre-wrap">
+                      {result.data?.html || "No HTML content"}
+                    </pre>
+                  </div>
+                </TabsContent>
+                <TabsContent value="html-preview">
+                  <div className="rounded-md border overflow-hidden" style={{ height: "500px" }}>
+                    <iframe
+                      srcDoc={result.data?.html || ""}
+                      className="w-full h-full"
+                      sandbox="allow-scripts allow-same-origin"
+                      title="HTML Preview"
+                    />
+                  </div>
+                </TabsContent>
+              </>
+            )}
             <TabsContent value="markdown">
               <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                <div className="flex justify-end mb-1">
+                  <Button
+                    variant="noShadow"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => copyToClipboard(result.data?.markdown || "", "markdown")}
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    {copied === "markdown" ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
                 <pre className="font-mono text-xs break-words whitespace-pre-wrap">
                   {result.data?.markdown || "No content"}
                 </pre>
               </div>
             </TabsContent>
-            <TabsContent value="preview">
+<TabsContent value="preview">
               <div className="prose prose-sm max-h-[500px] max-w-none overflow-auto rounded-md border p-4">
                 <ReactMarkdown>
                   {result.data?.markdown || "No content"}
                 </ReactMarkdown>
               </div>
             </TabsContent>
+            {showRawHtml && (
+              <TabsContent value="rawHtml">
+                <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                  <div className="flex justify-end mb-1">
+                    <Button
+                      variant="noShadow"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => copyToClipboard(result.data?.rawHtml || "", "rawHtml")}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      {copied === "rawHtml" ? "Copied!" : "Copy"}
+                    </Button>
+                  </div>
+                  <pre className="font-mono text-xs break-words whitespace-pre-wrap">
+                    {result.data?.rawHtml || "No content"}
+                  </pre>
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         )}
       </CardContent>
@@ -265,6 +423,12 @@ export default function BattlePage() {
   const [results, setResults] = useState<BattleResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [renderJs, setRenderJs] = useState(false)
+  const [formats, setFormats] = useState<{ markdown: boolean; html: boolean; imageLinks: boolean; rawHtml: boolean }>({
+    markdown: true,
+    html: true,
+    imageLinks: false,
+    rawHtml: false,
+  })
 
   const handleCompare = async () => {
     if (!url.trim()) {
@@ -297,13 +461,17 @@ export default function BattlePage() {
 
       // Start both at the exact same time
       const startTime = Date.now()
+      const formatList = Object.entries(formats)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name)
 
       const quickcrawlPromise = scrapeWithQuickCrawl(
         normalizedUrl,
         startTime,
-        renderJs
+        renderJs,
+        formatList
       )
-      const tinyfishPromise = scrapeWithTinyFish(normalizedUrl, startTime)
+      const tinyfishPromise = scrapeWithTinyFish(normalizedUrl, startTime, formatList)
 
       // Update results as each one completes (independently)
       quickcrawlPromise.then((result) => {
@@ -353,47 +521,119 @@ export default function BattlePage() {
           </p>
         </div>
 
-        <Card className="mb-8">
+          <Card className="mb-8">
           <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <Input
-                placeholder="Enter URL to compare (e.g., https://example.com)"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <div className="flex items-center gap-2 border-l pl-3">
-                <Switch
-                  id="render-js"
-                  checked={renderJs}
-                  onCheckedChange={setRenderJs}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Input
+                  placeholder="Enter URL to compare (e.g., https://example.com)"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   disabled={isLoading}
+                  className="flex-1 min-w-0"
                 />
-                <Label htmlFor="render-js" className="cursor-pointer">
-                  JS
-                </Label>
+<NeumorphCombobox
+                  value={url}
+                  onValueChange={(value) => setUrl(value)}
+                  placeholder="Examples"
+                  className="w-full sm:w-[180px]"
+                  disabled={isLoading}
+                  options={[
+                    { value: "https://www.xda-developers.com/a-self-hosted-llms-is-way-more-powerful-than-a-chat-interface/", label: "XDA Developers" },
+                    { value: "https://news.ycombinator.com/item?id=44741682", label: "Hacker News" },
+                    { value: "https://substack.com/home/post/p-193786550", label: "Substack" },
+                    { value: "https://www.jamesgPT.com/artificial-intelligence", label: "Blog Post" },
+                    { value: "https://github.com/MabudAlam/quickcrawl", label: "GitHub" },
+                  ]}
+                />
+                <Button
+                  onClick={handleCompare}
+                  disabled={isLoading || !url.trim()}
+                  className="w-full sm:w-auto"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Comparing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="mr-2 h-4 w-4" />
+                      Compare
+                    </>
+                  )}
+                </Button>
               </div>
-              <Button
-                onClick={handleCompare}
-                disabled={isLoading || !url.trim()}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Comparing...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Compare
-                  </>
-                )}
-              </Button>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="render-js"
+                    checked={renderJs}
+                    onCheckedChange={setRenderJs}
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="render-js" className="cursor-pointer text-sm">
+                    JS
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-markdown"
+                    checked={formats.markdown}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, markdown: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-markdown" className="cursor-pointer text-sm">
+                    Markdown
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-html"
+                    checked={formats.html}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, html: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-html" className="cursor-pointer text-sm">
+                    HTML
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-imageLinks"
+                    checked={formats.imageLinks}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, imageLinks: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-imageLinks" className="cursor-pointer text-sm">
+                    Image Links
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-rawHtml"
+                    checked={formats.rawHtml}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, rawHtml: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-rawHtml" className="cursor-pointer text-sm">
+                    Raw HTML
+                  </Label>
+                </div>
+              </div>
             </div>
             {error && (
-              <Alert variant="destructive" className="mt-3">
+              <Alert variant="destructive" className="mt-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -432,11 +672,16 @@ export default function BattlePage() {
                 title="QuickCrawl"
                 result={results.quickcrawl}
                 badgeColor="text-green-500"
+                showHtml={formats.html}
+                showImageLinks={formats.imageLinks}
+                showRawHtml={formats.rawHtml}
               />
               <ResultCard
                 title="TinyFish"
                 result={results.tinyfish}
                 badgeColor="text-blue-500"
+                showHtml={formats.html}
+                showImageLinks={formats.imageLinks}
               />
             </div>
           </div>
