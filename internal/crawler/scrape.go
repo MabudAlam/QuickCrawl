@@ -38,16 +38,14 @@ func ScrapeURL(
 	req *types.ScrapeRequest,
 	rend *renderer.FallbackRenderer,
 	llmConfig *types.LLMConfig,
-	defaultStealth bool,
+	needStealthFlag bool,
 	renderJSDefault *bool,
 	stealthStrategy utils.HeaderStrategy,
 ) (*types.ScrapeData, *types.QuickCrawlError) {
 	totalStart := time.Now()
 
-	injectStealth := defaultStealth
-
 	var stealthProfile utils.HeaderProfile
-	if injectStealth {
+	if needStealthFlag {
 		stealthProfile = utils.GetHeaderProfile(stealthStrategy)
 	}
 
@@ -57,7 +55,7 @@ func ScrapeURL(
 	)
 
 	headers := req.Headers
-	if injectStealth {
+	if needStealthFlag {
 		headers = stealthProfile.ToMap()
 		for k, v := range req.Headers {
 			headers[k] = v
@@ -84,6 +82,7 @@ func ScrapeURL(
 		IncludeTags:  req.IncludeTags,
 		ExcludeTags:  req.ExcludeTags,
 		CSSSelector:  req.CSSSelector,
+		OnlyMain:     req.OnlyMain,
 	})
 
 	extractElapsed := time.Since(extractStart)
