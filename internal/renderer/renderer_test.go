@@ -111,8 +111,40 @@ func TestFetchWithBrowserPrefersRicherHTTPOverThinBrowser(t *testing.T) {
 
 func TestDetectClientSideCrash(t *testing.T) {
 	html := "<html><body><main><h2>Application error: a client-side exception has occurred</h2></main></body></html>"
-	if !detectClientSideCrash(html) {
+	if !pageHasClientSideCrash(html) {
 		t.Fatal("expected client-side crash marker to be detected")
+	}
+}
+
+func TestDetectFailedRenderReason(t *testing.T) {
+	html := "<html><body><div id=\"__next-error-123\">error</div></body></html>"
+	reason, ok := pageLooksLikeFailedRender(html)
+	if !ok {
+		t.Fatal("expected failed render marker")
+	}
+	if reason != FailedRenderNextJsClientError {
+		t.Fatalf("expected nextjs failed render reason, got %q", reason)
+	}
+}
+
+func TestDetectVendorBlock(t *testing.T) {
+	html := "<html><head><title>Access denied</title><script src=\"/cdn-cgi/challenge-platform/foo.js\"></script></head><body></body></html>"
+	if got := pageLooksLikeVendorBlock(html); got != "cloudflare" {
+		t.Fatalf("expected cloudflare vendor block, got %q", got)
+	}
+}
+
+func TestDetectGenericBotWall(t *testing.T) {
+	html := "<html><body><h1>Checking your browser</h1><p>Verify you are human.</p></body></html>"
+	if !pageLooksLikeGenericBotWall(html) {
+		t.Fatal("expected generic bot wall marker")
+	}
+}
+
+func TestDetectThinHTML(t *testing.T) {
+	html := "<html><body><main><h1>Hi</h1></main></body></html>"
+	if !pageLooksLikeThinHTML(html) {
+		t.Fatal("expected thin html to be detected")
 	}
 }
 
