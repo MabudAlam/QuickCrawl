@@ -16,31 +16,29 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
-// managedBrowser represents a browser process that we control.
+// managedBrowser represents a browser process that this package launched.
 type managedBrowser struct {
-	cmd         *exec.Cmd // The browser process
-	userDataDir string    // Temporary user data directory (Chrome)
-	wsURL       string    // WebSocket URL for CDP connection
-	browserName string    // Browser name (lightpanda, chrome)
+	cmd         *exec.Cmd
+	userDataDir string
+	wsURL       string
+	browserName string
 }
 
-// Close terminates the browser process and cleans up temporary files.
+// Close terminates the browser process and deletes any temporary data directory.
 func (m *managedBrowser) Close() {
 	if m == nil {
 		return
 	}
-	// Kill the browser process
 	if m.cmd != nil && m.cmd.Process != nil {
 		_ = m.cmd.Process.Kill()
 		_, _ = m.cmd.Process.Wait()
 	}
-	// Remove temporary user data directory
 	if m.userDataDir != "" {
 		_ = os.RemoveAll(m.userDataDir)
 	}
 }
 
-// Name returns the browser name (lightpanda, chrome, etc).
+// Name returns the browser backend name for logging and diagnostics.
 func (m *managedBrowser) Name() string {
 	if m == nil || m.browserName == "" {
 		if m != nil && m.wsURL != "" && strings.Contains(m.wsURL, "lightpanda") {
@@ -51,37 +49,32 @@ func (m *managedBrowser) Name() string {
 	return m.browserName
 }
 
-// launchAllBrowsers attempts to launch both LightPanda and Chrome concurrently.
-// It returns successfully launched browsers. If no browsers can be launched,
-// an error is returned.
-func launchAllBrowsers(rendererCfg *types.RendererConfig) ([]*managedBrowser, error) {
+// launchAvailableBrowserBackends tries to start every supported native browser backend.
+func launchAvailableBrowserBackends(rendererCfg *types.RendererConfig) ([]*managedBrowser, error) {
 	type result struct {
-		browser     *managedBrowser
-		err         error
-		browserName string
+		browser *managedBrowser
+		err     error
 	}
 
 	results := make(chan result, 2)
 
-	// Launch LightPanda in background
+	// Start both supported browsers in parallel so the first available backend wins.
 	go func() {
-		browser, err := tryLightPandaNative()
+		browser, err := startLightPandaBrowser()
 		if browser != nil {
 			browser.browserName = "lightpanda"
 		}
-		results <- result{browser: browser, err: err, browserName: "lightpanda"}
+		results <- result{browser: browser, err: err}
 	}()
 
-	// Launch Chrome in background
 	go func() {
-		browser, err := tryChromeNative(rendererCfg)
+		browser, err := startChromeBrowser(rendererCfg)
 		if browser != nil {
 			browser.browserName = "chrome"
 		}
-		results <- result{browser: browser, err: err, browserName: "chrome"}
+		results <- result{browser: browser, err: err}
 	}()
 
-	// Collect successful launches
 	var browsers []*managedBrowser
 	for i := 0; i < 2; i++ {
 		r := <-results
@@ -97,23 +90,19 @@ func launchAllBrowsers(rendererCfg *types.RendererConfig) ([]*managedBrowser, er
 	return browsers, nil
 }
 
-// tryLightPandaNative launches a native LightPanda browser instance.
-// It finds or downloads the LightPanda binary, starts the serve process,
-// and returns a managedBrowser with the WebSocket URL for CDP connection.
-func tryLightPandaNative() (*managedBrowser, error) {
-	// Find or download the LightPanda binary
-	binary, err := findOrDownloadLightPanda()
+// startLightPandaBrowser launches LightPanda locally and waits for its CDP endpoint.
+func startLightPandaBrowser() (*managedBrowser, error) {
+	// LightPanda exposes CDP over HTTP after it starts serving.
+	binary, err := findOrDownloadLightPandaBinary()
 	if err != nil {
 		return nil, err
 	}
 
-	// Find an available port for CDP
-	port, err := findAvailablePort()
+	port, err := findAvailableLocalPort()
 	if err != nil {
 		return nil, err
 	}
 
-	// Start LightPanda as a server
 	cmd := exec.Command(binary, "serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -121,47 +110,37 @@ func tryLightPandaNative() (*managedBrowser, error) {
 		return nil, err
 	}
 
-	// Wait for CDP endpoint to become available
-	wsURL, err := pollCDPEndpoint(port, 5*time.Second)
+	wsURL, err := waitForCDPEndpointURL(port, 5*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 		return nil, err
 	}
 
-	return &managedBrowser{
-		cmd:   cmd,
-		wsURL: wsURL,
-	}, nil
+	return &managedBrowser{cmd: cmd, wsURL: wsURL}, nil
 }
 
-// tryChromeNative launches a native Chrome browser instance.
-// If wsURL is pre-configured in renderer config, it uses that URL.
-// Otherwise, it locates the Chrome binary and spawns a headless browser.
-func tryChromeNative(rendererCfg *types.RendererConfig) (*managedBrowser, error) {
+// startChromeBrowser launches Chrome locally unless the config already pins a WS URL.
+func startChromeBrowser(rendererCfg *types.RendererConfig) (*managedBrowser, error) {
 	wsURL := ""
 	if rendererCfg != nil {
 		wsURL = getChromeWSURL(rendererCfg)
 	}
 
-	// If wsURL is pre-configured, return without launching Chrome
 	if wsURL != "" {
 		return &managedBrowser{wsURL: wsURL, browserName: "chrome"}, nil
 	}
 
-	// Find Chrome binary
-	binary, err := findChromeBinary(rendererCfg)
+	binary, err := locateChromeBinary(rendererCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create temporary user data directory
 	userDataDir, err := os.MkdirTemp("", "quickcrawl-chrome-*")
 	if err != nil {
 		return nil, err
 	}
 
-	// Chrome command-line arguments
 	args := []string{
 		"--headless=new",
 		"--disable-gpu",
@@ -171,6 +150,7 @@ func tryChromeNative(rendererCfg *types.RendererConfig) (*managedBrowser, error)
 		"--remote-allow-origins=*",
 	}
 
+	// Chrome writes the DevTools URL to stderr after startup.
 	cmd := exec.Command(binary, args...)
 	cmd.Stdout = os.Stdout
 	stderr, err := cmd.StderrPipe()
@@ -183,8 +163,7 @@ func tryChromeNative(rendererCfg *types.RendererConfig) (*managedBrowser, error)
 		return nil, err
 	}
 
-	// Read WebSocket URL from stderr
-	wsURL, err = readWSURLFromStderrReader(stderr, cmd, 10*time.Second)
+	wsURL, err = readWebSocketURLFromStderr(stderr, 10*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
@@ -199,9 +178,8 @@ func tryChromeNative(rendererCfg *types.RendererConfig) (*managedBrowser, error)
 	}, nil
 }
 
-// findChromeBinary locates a Chrome or Chromium binary on the system.
-// It checks the BrowserBinary config first, then searches common installation paths.
-func findChromeBinary(rendererCfg *types.RendererConfig) (string, error) {
+// locateChromeBinary resolves the Chrome/Chromium binary path from config or common locations.
+func locateChromeBinary(rendererCfg *types.RendererConfig) (string, error) {
 	browserBinary := ""
 	if rendererCfg != nil {
 		browserBinary = rendererCfg.BrowserBinary
@@ -216,7 +194,6 @@ func findChromeBinary(rendererCfg *types.RendererConfig) (string, error) {
 		}
 	}
 
-	// Common installation paths
 	candidates := []string{
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -243,8 +220,6 @@ func findChromeBinary(rendererCfg *types.RendererConfig) (string, error) {
 	return "", fmt.Errorf("no browser binary found")
 }
 
-// lightpandaManagedPath returns the path to the managed LightPanda binary.
-// The binary is stored in ~/.quickcrawl/lightpanda.
 func lightpandaManagedPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -253,8 +228,6 @@ func lightpandaManagedPath() (string, error) {
 	return filepath.Join(home, ".quickcrawl", "lightpanda"), nil
 }
 
-// lightpandaDownloadURL returns the download URL for the current platform.
-// It supports macOS ARM64, Linux AMD64, and Linux ARM64.
 func lightpandaDownloadURL() string {
 	base := "https://github.com/lightpanda-io/browser/releases/download/nightly"
 	switch {
@@ -269,16 +242,12 @@ func lightpandaDownloadURL() string {
 	}
 }
 
-// findOrDownloadLightPanda finds or downloads the LightPanda binary.
-// It first checks if lightpanda is available in PATH, then checks the managed
-// installation location (~/.quickcrawl/lightpanda), and finally downloads if needed.
-func findOrDownloadLightPanda() (string, error) {
-	// Check if already in PATH
-	if path := findInPath("lightpanda"); path != "" {
+// findOrDownloadLightPandaBinary returns a LightPanda binary, downloading it if necessary.
+func findOrDownloadLightPandaBinary() (string, error) {
+	if path := lookPath("lightpanda"); path != "" {
 		return path, nil
 	}
 
-	// Check managed installation location
 	managedPath, err := lightpandaManagedPath()
 	if err != nil {
 		return "", fmt.Errorf("lightpanda binary not found")
@@ -288,25 +257,21 @@ func findOrDownloadLightPanda() (string, error) {
 		return managedPath, nil
 	}
 
-	// Download if not found
 	downloadURL := lightpandaDownloadURL()
 	if downloadURL == "" {
 		return "", fmt.Errorf("lightpanda binary not found for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	// Create directory
 	if err := os.MkdirAll(filepath.Dir(managedPath), 0o755); err != nil {
 		return "", fmt.Errorf("failed to create ~/.quickcrawl directory: %w", err)
 	}
 
-	// Download binary
 	output, err := exec.Command("curl", "-fsSL", "-o", managedPath, downloadURL).CombinedOutput()
 	if err != nil {
 		_ = os.Remove(managedPath)
 		return "", fmt.Errorf("failed to download lightpanda: %s", string(output))
 	}
 
-	// Make executable
 	if err := os.Chmod(managedPath, 0o755); err != nil {
 		_ = os.Remove(managedPath)
 		return "", fmt.Errorf("failed to chmod lightpanda: %w", err)
@@ -315,8 +280,8 @@ func findOrDownloadLightPanda() (string, error) {
 	return managedPath, nil
 }
 
-// findAvailablePort finds a free port on localhost.
-func findAvailablePort() (int, error) {
+// findAvailableLocalPort asks the OS for a free localhost TCP port.
+func findAvailableLocalPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
@@ -325,10 +290,8 @@ func findAvailablePort() (int, error) {
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
-// pollCDPEndpoint polls the CDP version endpoint until WebSocket URL is available.
-// It takes a port number and timeout duration, returning the WebSocket URL
-// or an error if the timeout is reached.
-func pollCDPEndpoint(port int, timeout time.Duration) (string, error) {
+// waitForCDPEndpointURL polls the browser /json/version endpoint until CDP is available.
+func waitForCDPEndpointURL(port int, timeout time.Duration) (string, error) {
 	url := fmt.Sprintf("http://127.0.0.1:%d/json/version", port)
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -353,10 +316,8 @@ func pollCDPEndpoint(port int, timeout time.Duration) (string, error) {
 	return "", fmt.Errorf("browser did not expose CDP at %s within %s", url, timeout)
 }
 
-// readWSURLFromStderrReader reads the WebSocket URL from Chrome's stderr output.
-// Chrome outputs "DevTools listening on ws://..." which we parse to extract the URL.
-// It returns the WebSocket URL or an error if not found within the timeout.
-func readWSURLFromStderrReader(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration) (string, error) {
+// readWebSocketURLFromStderr extracts Chrome's DevTools URL from stderr output.
+func readWebSocketURLFromStderr(stderr io.ReadCloser, timeout time.Duration) (string, error) {
 	defer stderr.Close()
 
 	buf := make([]byte, 4096)
@@ -388,9 +349,8 @@ func readWSURLFromStderrReader(stderr io.ReadCloser, cmd *exec.Cmd, timeout time
 	return "", fmt.Errorf("DevTools WS URL not found in output within %s", timeout)
 }
 
-// findInPath searches for a command in the system PATH.
-// It returns the full path to the command if found, or an empty string.
-func findInPath(name string) string {
+// lookPath returns the executable path for a command, if present.
+func lookPath(name string) string {
 	output, err := exec.Command("which", name).Output()
 	if err != nil {
 		return ""
