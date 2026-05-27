@@ -21,12 +21,7 @@ type FallbackRenderer struct {
 	cleanup         func()        // Cleanup function for terminating browser processes
 }
 
-// NewFallbackRenderer creates a new FallbackRenderer with default settings.
-// This is a convenience constructor that uses nil configuration and passes
-// NewFallbackRenderer creates a FallbackRenderer with explicit configuration.
-// It initializes the HTTP fetcher and optionally configures browser-based fetchers
-// based on the configured mode (auto, chrome, lightpanda, or none).
-// Browser mode is determined by RENDERER__MODE env var or renderer config.
+// NewFallbackRenderer creates a renderer with the default browser configuration.
 func NewFallbackRenderer(
 	userAgent string,
 	stealth *types.StealthConfig,
@@ -35,10 +30,7 @@ func NewFallbackRenderer(
 	return NewFallbackRendererWithConfig(nil, userAgent, stealth, renderJSDefault)
 }
 
-// NewFallbackRendererWithConfig creates a FallbackRenderer with explicit configuration.
-// It initializes the HTTP fetcher and optionally configures browser-based fetchers
-// based on the configured mode (auto, chrome, lightpanda, or none).
-// Browser mode is determined by RENDERER__MODE env var or renderer config.
+// NewFallbackRendererWithConfig creates a renderer using explicit renderer settings.
 func NewFallbackRendererWithConfig(
 	rendererCfg *types.RendererConfig,
 	userAgent string,
@@ -100,37 +92,33 @@ func NewFallbackRendererWithConfig(
 }
 
 // initializeLightPandaRenderer sets up the LightPanda browser fetcher.
-// If a WebSocket URL is provided, it connects to that endpoint. Otherwise,
-// it attempts to find or download the LightPanda binary and launch it natively.
 func initializeLightPandaRenderer(wsURL string, stealthEnabled bool, cleanup *func()) []PageFetcher {
 	if wsURL != "" {
-		return append([]PageFetcher{}, newBrowserFetcher("lightpanda", wsURL, nil, stealthEnabled))
+		return append([]PageFetcher{}, newBrowserPageFetcher("lightpanda", wsURL, nil, stealthEnabled))
 	}
 
-	// Try to launch LightPanda natively (auto-download/find binary)
-	browser, err := tryLightPandaNative()
+	// Launch LightPanda locally only when no WS endpoint is configured.
+	browser, err := startLightPandaBrowser()
 	if err != nil {
 		return nil
 	}
 	*cleanup = func() { browser.Close() }
-	return append([]PageFetcher{}, newBrowserFetcher("lightpanda", browser.wsURL, browser, stealthEnabled))
+	return append([]PageFetcher{}, newBrowserPageFetcher("lightpanda", browser.wsURL, browser, stealthEnabled))
 }
 
 // initializeChromeRenderer sets up the Chrome browser fetcher.
-// If a WebSocket URL is provided, it connects to that endpoint. Otherwise,
-// it attempts to find the Chrome binary and launch it with remote debugging.
 func initializeChromeRenderer(rendererCfg *types.RendererConfig, wsURL string, stealthEnabled bool, cleanup *func()) []PageFetcher {
 	if wsURL != "" {
-		return append([]PageFetcher{}, newBrowserFetcher("chrome", wsURL, nil, stealthEnabled))
+		return append([]PageFetcher{}, newBrowserPageFetcher("chrome", wsURL, nil, stealthEnabled))
 	}
 
-	// Try to launch Chrome natively with DevTools debugging enabled
-	browser, err := tryChromeNative(rendererCfg)
+	// Launch Chrome locally only when no WS endpoint is configured.
+	browser, err := startChromeBrowser(rendererCfg)
 	if err != nil {
 		return nil
 	}
 	*cleanup = func() { browser.Close() }
-	return append([]PageFetcher{}, newBrowserFetcher("chrome", browser.wsURL, browser, stealthEnabled))
+	return append([]PageFetcher{}, newBrowserPageFetcher("chrome", browser.wsURL, browser, stealthEnabled))
 }
 
 // initializeAutoRenderers sets up all available browser renderers in auto mode.
@@ -141,20 +129,20 @@ func initializeAutoRenderers(rendererCfg *types.RendererConfig, lightpandaWSURL,
 
 	// First, try to use pre-configured WebSocket URLs
 	if lightpandaWSURL != "" {
-		fetchers = append(fetchers, newBrowserFetcher("lightpanda", lightpandaWSURL, nil, stealthEnabled))
+		fetchers = append(fetchers, newBrowserPageFetcher("lightpanda", lightpandaWSURL, nil, stealthEnabled))
 	}
 	if chromeWSURL != "" {
-		fetchers = append(fetchers, newBrowserFetcher("chrome", chromeWSURL, nil, stealthEnabled))
+		fetchers = append(fetchers, newBrowserPageFetcher("chrome", chromeWSURL, nil, stealthEnabled))
 	}
 
 	// If no WebSocket URLs configured, launch browsers natively
 	if len(fetchers) == 0 {
-		browsers, err := launchAllBrowsers(rendererCfg)
+		browsers, err := launchAvailableBrowserBackends(rendererCfg)
 		if err != nil || len(browsers) == 0 {
 			return nil
 		}
 		for _, browser := range browsers {
-			fetchers = append(fetchers, newBrowserFetcher(browser.Name(), browser.wsURL, browser, stealthEnabled))
+			fetchers = append(fetchers, newBrowserPageFetcher(browser.Name(), browser.wsURL, browser, stealthEnabled))
 		}
 		// Set cleanup to close all launched browsers
 		*cleanup = func() {
@@ -214,13 +202,14 @@ func (r *FallbackRenderer) Fetch(
 		return nil, err
 	}
 
-	// Detect if JavaScript rendering is needed
-	needsJS := detectNeedsJS(result.HTML)
-	isBlocked := detectBlockInterstitial(result.HTML)
-	isAuthBlocked := result.StatusCode == 401 || result.StatusCode == 403
+	// Detect whether the HTTP result is incomplete or blocked enough to justify JS.
+	needsJS := pageNeedsJavaScript(result.HTML)
+	isBlocked := pageHasBlockInterstitial(result.HTML)
+	isThin := pageLooksLikeThinHTML(result.HTML)
+	isAuthBlocked := isSoftBlockedStatus(result.StatusCode)
 
 	// Determine if we need to use browser rendering
-	useBrowser := effective == nil && (needsJS || isBlocked || isAuthBlocked) ||
+	useBrowser := effective == nil && (needsJS || isBlocked || isAuthBlocked || isThin) ||
 		(effective != nil && *effective)
 
 	if useBrowser && len(r.jsRenderers) > 0 {
@@ -230,10 +219,10 @@ func (r *FallbackRenderer) Fetch(
 	}
 
 	// Add warnings for detected issues when we can't use browser
-	if needsJS || isBlocked || isAuthBlocked {
-		log.Printf("[renderer] HTTP result blocked: url=%s needs_js=%v is_blocked=%v auth_blocked=%v status=%d warning=%v",
-			rawURL, needsJS, isBlocked, isAuthBlocked, result.StatusCode, result.Warning)
-		result = appendRenderingWarning(result, needsJS, isBlocked, isAuthBlocked)
+	if needsJS || isBlocked || isAuthBlocked || isThin {
+		log.Printf("[renderer] HTTP result incomplete: url=%s needs_js=%v is_blocked=%v auth_blocked=%v is_thin=%v status=%d warning=%v",
+			rawURL, needsJS, isBlocked, isAuthBlocked, isThin, result.StatusCode, result.Warning)
+		result = appendRenderingWarning(result, needsJS, isBlocked, isAuthBlocked, isThin)
 	}
 
 	log.Printf("[renderer] using HTTP fetcher: url=%s status=%d", rawURL, result.StatusCode)
@@ -279,30 +268,47 @@ func (r *FallbackRenderer) fetchWithBrowser(
 			continue
 		}
 
-		// Check if result is still problematic (still needs JS, still blocked, or thin content)
-		stillNeedsJS := detectNeedsJS(browserResult.HTML)
-		stillBlocked := detectBlockInterstitial(browserResult.HTML)
-		hasCrash := detectClientSideCrash(browserResult.HTML)
-		isThin := hasMinimalContent(browserResult.HTML)
+		// Check whether the JS result is actually usable. Rust keeps trying the
+		// chain when the page is still a shell, placeholder, or vendor block.
+		// Note: we no longer check pageNeedsJavaScript on browser results because
+		// if the browser rendered *something* (even if it's a "not found" error page),
+		// the JavaScript execution itself succeeded - we just got real content.
+		// Only anti-bot patterns, crashes, placeholders, and thin content should
+		// cause us to try the next renderer in the chain.
+		stillBlocked := pageHasBlockInterstitial(browserResult.HTML)
+		crashReason, hasCrash := pageLooksLikeFailedRender(browserResult.HTML)
+		isPlaceholder := pageLooksLikeLoadingPlaceholder(browserResult.HTML)
+		isVendorBlocked := pageLooksLikeVendorBlock(browserResult.HTML)
+		isGenericBotWall := pageLooksLikeGenericBotWall(browserResult.HTML)
+		isThin := pageLooksLikeThinHTML(browserResult.HTML)
+		isStatusBlocked := isSoftBlockedStatus(browserResult.StatusCode)
+		isBad := stillBlocked || hasCrash || isPlaceholder || isVendorBlocked != "" || isGenericBotWall || isThin || isStatusBlocked
 
-		if stillNeedsJS || stillBlocked || hasCrash || isThin {
-			log.Printf("[renderer] browser result not good enough: browser=%s url=%s still_needs_js=%v still_blocked=%v has_crash=%v is_thin=%v",
-				js.Name(), rawURL, stillNeedsJS, stillBlocked, hasCrash, isThin)
+		if isBad {
 			if thinResult == nil {
+				thinResult = browserResult
+			} else if visibleTextLength(browserResult.HTML) > visibleTextLength(thinResult.HTML) {
 				thinResult = browserResult
 			}
 			continue
 		}
 
-		// Good result - add warning if needed for incomplete SPA/bot detection
+		// Good result - add a light warning if the page still looked borderline.
 		if browserResult.Warning == nil {
-			if stillNeedsJS {
-				warning := "SPA detected but JS rendering still looks incomplete"
-				browserResult.Warning = &warning
-			} else if stillBlocked {
+			if stillBlocked || isGenericBotWall || isVendorBlocked != "" {
 				warning := "Anti-bot challenge detected"
 				browserResult.Warning = &warning
+			} else if hasCrash {
+				warning := "Rendered page still looks like a framework crash"
+				browserResult.Warning = &warning
+			} else if isThin {
+				warning := "Rendered page still looks thin"
+				browserResult.Warning = &warning
 			}
+		}
+		if hasCrash {
+			log.Printf("[renderer] browser result contained failed render markup: browser=%s url=%s reason=%s",
+				js.Name(), rawURL, crashReason)
 		}
 		log.Printf("[renderer] browser rendering successful: browser=%s url=%s status=%d", js.Name(), rawURL, browserResult.StatusCode)
 		return browserResult, nil
@@ -310,7 +316,7 @@ func (r *FallbackRenderer) fetchWithBrowser(
 
 	// All browsers failed or returned thin content, return best available
 	if thinResult != nil {
-		if httpResult != nil && contentTextLength(httpResult.HTML) > contentTextLength(thinResult.HTML) {
+		if httpResult != nil && visibleTextLength(httpResult.HTML) > visibleTextLength(thinResult.HTML) {
 			if preferredBrowser != nil && *preferredBrowser != "" {
 				warning := "preferred renderer returned low-quality content"
 				thinResult.Warning = &warning
@@ -325,7 +331,7 @@ func (r *FallbackRenderer) fetchWithBrowser(
 		return thinResult, nil
 	}
 
-	// All browsers failed, return HTTP result with warning
+	// All browsers failed, return HTTP result with warning.
 	if preferredBrowser != nil && *preferredBrowser != "" {
 		return nil, types.ErrRendererError.New("preferred renderer '" + *preferredBrowser + "' failed")
 	}
@@ -339,7 +345,7 @@ func (r *FallbackRenderer) fetchWithBrowser(
 
 // appendRenderingWarning adds a warning message to the FetchResult when
 // issues are detected but browser rendering is not available.
-func appendRenderingWarning(result *types.FetchResult, needsJS, isBlocked, isAuthBlocked bool) *types.FetchResult {
+func appendRenderingWarning(result *types.FetchResult, needsJS, isBlocked, isAuthBlocked, isThin bool) *types.FetchResult {
 	var warning string
 	if needsJS {
 		warning = "SPA detected but JS rendering not available"
@@ -347,6 +353,8 @@ func appendRenderingWarning(result *types.FetchResult, needsJS, isBlocked, isAut
 		warning = "Anti-bot challenge detected"
 	} else if isAuthBlocked {
 		warning = "Auth blocked"
+	} else if isThin {
+		warning = "HTTP result was thin and JS rendering was not used"
 	}
 
 	if result.Warning != nil {
@@ -355,6 +363,15 @@ func appendRenderingWarning(result *types.FetchResult, needsJS, isBlocked, isAut
 		result.Warning = &warning
 	}
 	return result
+}
+
+func isSoftBlockedStatus(statusCode uint16) bool {
+	switch statusCode {
+	case 401, 403, 404, 405, 406, 410, 412, 429, 451, 500, 503:
+		return true
+	default:
+		return false
+	}
 }
 
 // Close releases all resources held by the renderer, including terminating

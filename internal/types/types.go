@@ -69,8 +69,8 @@ type ExtractOptions struct {
 
 // ScrapeRequest defines the parameters for a single URL scrape operation.
 type ScrapeRequest struct {
-	URL     string            `json:"url"`    // URL to scrape
-	Formats []OutputFormat    `json:"formats"` // Desired output formats
+	URL                 string            `json:"url"`                           // URL to scrape
+	Formats             []OutputFormat    `json:"formats"`                       // Desired output formats
 	RenderJS            *bool             `json:"renderJs,omitempty"`            // Force JavaScript rendering
 	WaitFor             *int64            `json:"waitFor,omitempty"`             // Wait time in ms after page load
 	IncludeTags         []string          `json:"includeTags,omitempty"`         // HTML tags to include
@@ -114,13 +114,13 @@ type PageMetadata struct {
 type ScrapeData struct {
 	Markdown   *string         `json:"markdown,omitempty"`   // Markdown conversion (images stripped)
 	HTML       *string         `json:"html,omitempty"`       // Clean HTML
-	RawHTML    *string         `json:"rawHtml,omitempty"`   // Raw HTML as received
-	PlainText  *string         `json:"plainText,omitempty"` // Plain text
-	Links      []string        `json:"links,omitempty"`     // URLs found on page
+	RawHTML    *string         `json:"rawHtml,omitempty"`    // Raw HTML as received
+	PlainText  *string         `json:"plainText,omitempty"`  // Plain text
+	Links      []string        `json:"links,omitempty"`      // URLs found on page
 	ImageLinks []string        `json:"imageLinks,omitempty"` // Image URLs found on page
-	JSON       json.RawMessage `json:"json,omitempty"`      // LLM extracted JSON
-	Warning    *string         `json:"warning,omitempty"`   // Non-fatal warning
-	Metadata   PageMetadata    `json:"metadata"`            // Page metadata
+	JSON       json.RawMessage `json:"json,omitempty"`       // LLM extracted JSON
+	Warning    *string         `json:"warning,omitempty"`    // Non-fatal warning
+	Metadata   PageMetadata    `json:"metadata"`             // Page metadata
 }
 
 // APIResponse wraps API responses with success/error information.
@@ -163,15 +163,15 @@ const (
 
 // CrawlRequest defines parameters for a crawl operation.
 type CrawlRequest struct {
-	URL              string          `json:"url"`                        // Starting URL
-	MaxDepth         *uint32         `json:"maxDepth,omitempty"`         // Maximum link depth
-	MaxPages         *uint32         `json:"maxPages,omitempty"`         // Maximum pages to crawl
-	Formats          []OutputFormat  `json:"formats"`                    // Desired output formats
+	URL      string         `json:"url"`                // Starting URL
+	MaxDepth *uint32        `json:"maxDepth,omitempty"` // Maximum link depth
+	MaxPages *uint32        `json:"maxPages,omitempty"` // Maximum pages to crawl
+	Formats  []OutputFormat `json:"formats"`            // Desired output formats
 
-	RenderJS         *bool           `json:"renderJs,omitempty"`         // Force JS rendering
-	WaitFor          *int64          `json:"waitFor,omitempty"`          // Wait time in ms
-	Browser          *string         `json:"browser,omitempty"`          // Browser to use (lightpanda, chrome)
-	Extract          *ExtractOptions `json:"extract,omitempty"`          // LLM extraction options
+	RenderJS *bool           `json:"renderJs,omitempty"` // Force JS rendering
+	WaitFor  *int64          `json:"waitFor,omitempty"`  // Wait time in ms
+	Browser  *string         `json:"browser,omitempty"`  // Browser to use (lightpanda, chrome)
+	Extract  *ExtractOptions `json:"extract,omitempty"`  // LLM extraction options
 }
 
 // Defaults sets default values for optional fields.
@@ -183,14 +183,14 @@ func (r *CrawlRequest) Defaults() {
 
 // CrawlState represents the current state of a crawl job.
 type CrawlState struct {
-	ID        string          `json:"id,omitempty"`      // Unique job ID
-	Success   bool            `json:"success"`           // Whether job succeeded
-	Status    CrawlStatus     `json:"status"`            // Current status
-	Total     uint32          `json:"total"`             // Total URLs discovered
-	Completed uint32          `json:"completed"`         // Pages successfully scraped
-	Data      []ScrapeData    `json:"data"`              // Scraped page data
-	Answer    json.RawMessage `json:"answer,omitempty"`  // Aggregated LLM answer (single answer from all pages)
-	Error     *string         `json:"error,omitempty"`   // Error message if failed
+	ID        string          `json:"id,omitempty"`     // Unique job ID
+	Success   bool            `json:"success"`          // Whether job succeeded
+	Status    CrawlStatus     `json:"status"`           // Current status
+	Total     uint32          `json:"total"`            // Total URLs discovered
+	Completed uint32          `json:"completed"`        // Pages successfully scraped
+	Data      []ScrapeData    `json:"data"`             // Scraped page data
+	Answer    json.RawMessage `json:"answer,omitempty"` // Aggregated LLM answer (single answer from all pages)
+	Error     *string         `json:"error,omitempty"`  // Error message if failed
 }
 
 // CrawlStartResponse is returned when a crawl job is started.
@@ -289,15 +289,27 @@ type SearchResponse struct {
 
 // FetchResult contains the raw result from a fetcher (HTTP or browser).
 type FetchResult struct {
-	URL          string  // URL that was fetched
-	FinalURL     *string // Final URL after redirects
-	StatusCode   uint16  // HTTP status code
-	HTML         string  // Fetched HTML content
-	ContentType  *string // Content-Type header value
-	RawBytes     []byte  // Raw bytes (for PDFs)
-	RenderedWith *string // How it was rendered (http/browser)
-	TimeTaken    uint64  // Time taken in milliseconds
-	Warning      *string // Non-fatal warning
+	URL               string  // URL that was fetched
+	FinalURL          *string // Final URL after redirects
+	StatusCode        uint16  // HTTP status code
+	HTML              string  // Fetched HTML content
+	ContentType       *string // Content-Type header value
+	RawBytes          []byte  // Raw bytes (for PDFs)
+	RenderedWith      *string // How it was rendered (http/browser)
+	TimeTaken         uint64  // Time taken in milliseconds
+	Warning           *string // Non-fatal warning
+	CapturedResponses []CapturedNetworkResponse
+}
+
+// CapturedNetworkResponse stores an XHR/fetch response body captured during a
+// browser render.
+type CapturedNetworkResponse struct {
+	URL           string  `json:"url"`
+	RequestID     string  `json:"requestId"`
+	Status        uint16  `json:"status"`
+	MimeType      *string `json:"mimeType,omitempty"`
+	BodySizeBytes int     `json:"bodySizeBytes"`
+	Body          *string `json:"body,omitempty"`
 }
 
 // RendererMode specifies which rendering backend to use.
@@ -429,9 +441,9 @@ func (l *LLMConfig) Defaults() {
 
 // ExtractionConfig configures the extraction subsystem.
 type ExtractionConfig struct {
-	DefaultFormat   string     `toml:"default_format" json:"defaultFormat"`      // Default output format
+	DefaultFormat string `toml:"default_format" json:"defaultFormat"` // Default output format
 
-	LLM             *LLMConfig `toml:"llm" json:"llm"`                           // LLM settings
+	LLM *LLMConfig `toml:"llm" json:"llm"` // LLM settings
 }
 
 // Defaults sets default values for unset fields.
