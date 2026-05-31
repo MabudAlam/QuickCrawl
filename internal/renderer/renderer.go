@@ -9,9 +9,10 @@ import (
 )
 
 // FallbackRenderer is the main rendering orchestrator that coordinates multiple
-// fetch strategies. It first tries HTTP, then optionally escalates to browser-based
-// rendering (Chrome DevTools Protocol) when JavaScript is needed or anti-bot
-// challenges are detected.
+// fetch strategies using a chain pattern:
+//   - renderJs=false: HTTP only
+//   - renderJs=true: HTTP → Lightpanda → Chrome (all, pick best)
+//   - renderJs=auto: HTTP first, then chain to browsers only if needed
 type FallbackRenderer struct {
 	http            *HTTPFetcher  // HTTP fetcher (always available)
 	jsRenderers     []PageFetcher // JavaScript-capable renderers (browser backends)
@@ -19,6 +20,12 @@ type FallbackRenderer struct {
 	pageTimeoutMs   int64         // Page load timeout in milliseconds
 	poolSize        int           // Browser pool size
 	cleanup         func()        // Cleanup function for terminating browser processes
+}
+
+// fetchChainItem represents a single step in the rendering chain
+type fetchChainItem struct {
+	name    string      // Name for logging
+	fetcher PageFetcher // The actual fetcher (HTTP or browser)
 }
 
 // NewFallbackRenderer creates a renderer with the default browser configuration.
@@ -169,12 +176,10 @@ func (r *FallbackRenderer) JSRendererNames() []string {
 	return names
 }
 
-// Fetch retrieves a URL using the most appropriate rendering strategy.
-// It first tries HTTP, then optionally escalates to browser rendering based on:
-// - The renderJS parameter (if non-nil, forces rendering decision)
-// - Auto-detection of SPA pages that need JavaScript
-// - Detection of anti-bot challenge pages (Cloudflare, CAPTCHA, etc.)
-// - HTTP 401/403 responses indicating authentication requirements
+// Fetch retrieves a URL using a chain pattern:
+//   - renderJs=false: HTTP only
+//   - renderJs=true: HTTP → Lightpanda → Chrome (all in chain, pick best)
+//   - renderJs=auto: HTTP first, chain to browser only if HTTP result is bad
 //
 // If preferredBrowser is specified, only that browser type will be used.
 func (r *FallbackRenderer) Fetch(
@@ -184,163 +189,182 @@ func (r *FallbackRenderer) Fetch(
 	waitForMs *int64,
 	preferredBrowser *string,
 ) (*types.FetchResult, *types.QuickCrawlError) {
-	// Resolve effective renderJS setting (request override or default)
+	// Resolve effective renderJS setting
 	effective := types.ResolveRenderJS(renderJS, r.renderJSDefault)
 	if effective == nil && preferredBrowser != nil && *preferredBrowser != "" {
 		forceJS := true
 		effective = &forceJS
 	}
 
-	// Explicit JS disabled - use HTTP only
+	// Explicit JS disabled - HTTP only
 	if effective != nil && !*effective {
 		return r.http.Fetch(rawURL, headers, waitForMs)
 	}
 
-	// Try HTTP first (fastest path, works for most static pages)
-	result, err := r.http.Fetch(rawURL, headers, waitForMs)
-	if err != nil {
-		return nil, err
+	// Build the fetch chain based on settings
+	chain := r.buildFetchChain(effective, preferredBrowser)
+	if len(chain) == 0 {
+		return r.http.Fetch(rawURL, headers, waitForMs)
 	}
 
-	// Detect whether the HTTP result is incomplete or blocked enough to justify JS.
-	needsJS := pageNeedsJavaScript(result.HTML)
-	isBlocked := pageHasBlockInterstitial(result.HTML)
-	isThin := pageLooksLikeThinHTML(result.HTML)
-	isAuthBlocked := isSoftBlockedStatus(result.StatusCode)
-
-	// Determine if we need to use browser rendering
-	useBrowser := effective == nil && (needsJS || isBlocked || isAuthBlocked || isThin) ||
-		(effective != nil && *effective)
-
-	if useBrowser && len(r.jsRenderers) > 0 {
-		log.Printf("[renderer] using browser rendering: url=%s needs_js=%v is_blocked=%v auth_blocked=%v status=%d",
-			rawURL, needsJS, isBlocked, isAuthBlocked, result.StatusCode)
-		return r.fetchWithBrowser(rawURL, headers, waitForMs, result, preferredBrowser)
-	}
-
-	// Add warnings for detected issues when we can't use browser
-	if needsJS || isBlocked || isAuthBlocked || isThin {
-		log.Printf("[renderer] HTTP result incomplete: url=%s needs_js=%v is_blocked=%v auth_blocked=%v is_thin=%v status=%d warning=%v",
-			rawURL, needsJS, isBlocked, isAuthBlocked, isThin, result.StatusCode, result.Warning)
-		result = appendRenderingWarning(result, needsJS, isBlocked, isAuthBlocked, isThin)
-	}
-
-	log.Printf("[renderer] using HTTP fetcher: url=%s status=%d", rawURL, result.StatusCode)
-	return result, nil
+	// Execute the chain
+	return r.executeFetchChain(rawURL, headers, waitForMs, chain, effective)
 }
 
-// fetchWithBrowser attempts to fetch the URL using browser-based renderers.
-// It tries each configured browser (optionally filtered by preferredBrowser)
-// and returns the first good result. If all browsers fail, it returns the
-// best available result with an appropriate warning.
-func (r *FallbackRenderer) fetchWithBrowser(
+// buildFetchChain constructs the chain of fetchers based on renderJS and preferredBrowser settings
+func (r *FallbackRenderer) buildFetchChain(effective *bool, preferredBrowser *string) []fetchChainItem {
+	var chain []fetchChainItem
+
+	// Determine if we should include HTTP in the chain
+	includeHTTP := effective == nil || (effective != nil && !*effective)
+	isForcedJS := effective != nil && *effective
+
+	// Determine which browsers to use
+	var browsers []PageFetcher
+	if preferredBrowser != nil && *preferredBrowser != "" {
+		// Use only the preferred browser
+		for _, js := range r.jsRenderers {
+			if js.Name() == *preferredBrowser {
+				browsers = append(browsers, js)
+			}
+		}
+	} else {
+		browsers = r.jsRenderers
+	}
+
+	// Build chain based on renderJS setting
+	if includeHTTP && !isForcedJS {
+		// Auto mode: HTTP first in chain, browsers only if HTTP is bad
+		chain = append(chain, fetchChainItem{name: "http", fetcher: r.http})
+	}
+
+	// Add browsers to chain
+	for _, browser := range browsers {
+		chain = append(chain, fetchChainItem{
+			name:    browser.Name(),
+			fetcher: browser,
+		})
+	}
+
+	return chain
+}
+
+// executeFetchChain runs each fetcher in order, applying heuristics to decide continue/stop
+func (r *FallbackRenderer) executeFetchChain(
 	rawURL string,
 	headers map[string]string,
 	waitForMs *int64,
-	httpResult *types.FetchResult,
-	preferredBrowser *string,
+	chain []fetchChainItem,
+	effective *bool,
 ) (*types.FetchResult, *types.QuickCrawlError) {
-	headers = copyHeaders(headers)
-	var thinResult *types.FetchResult
+	isForcedJS := effective != nil && *effective
+	var bestResult *types.FetchResult
+	var bestResultQuality *ContentQuality
 
-	// Filter to preferred browser if specified
-	var renderers []PageFetcher
-	if preferredBrowser != nil && *preferredBrowser != "" {
-		for _, js := range r.jsRenderers {
-			if js.Name() == *preferredBrowser {
-				renderers = append(renderers, js)
-			}
-		}
-		// Pinned renderer must be available; do not silently fall back to HTTP.
-		if len(renderers) == 0 {
-			return nil, types.ErrRendererError.New("preferred renderer '" + *preferredBrowser + "' not available")
-		}
-	} else {
-		renderers = r.jsRenderers
-	}
+	for i, item := range chain {
+		log.Printf("[renderer] trying fetcher: name=%s url=%s chain_pos=%d", item.name, rawURL, i)
 
-	// Try each browser renderer until one succeeds with good content
-	for _, js := range renderers {
-		log.Printf("[renderer] trying browser: browser=%s url=%s", js.Name(), rawURL)
-		browserResult, browserErr := js.Fetch(rawURL, headers, waitForMs)
-		if browserErr != nil || browserResult == nil {
-			log.Printf("[renderer] browser fetch failed: browser=%s url=%s error=%v", js.Name(), rawURL, browserErr)
+		result, err := item.fetcher.Fetch(rawURL, headers, waitForMs)
+		if err != nil || result == nil {
+			log.Printf("[renderer] fetcher failed: name=%s url=%s error=%v", item.name, rawURL, err)
 			continue
 		}
 
-		// Check whether the JS result is actually usable. Rust keeps trying the
-		// chain when the page is still a shell, placeholder, or vendor block.
-		// Note: we no longer check pageNeedsJavaScript on browser results because
-		// if the browser rendered *something* (even if it's a "not found" error page),
-		// the JavaScript execution itself succeeded - we just got real content.
-		// Only anti-bot patterns, crashes, placeholders, and thin content should
-		// cause us to try the next renderer in the chain.
-		stillBlocked := pageHasBlockInterstitial(browserResult.HTML)
-		crashReason, hasCrash := pageLooksLikeFailedRender(browserResult.HTML)
-		isPlaceholder := pageLooksLikeLoadingPlaceholder(browserResult.HTML)
-		isVendorBlocked := pageLooksLikeVendorBlock(browserResult.HTML)
-		isGenericBotWall := pageLooksLikeGenericBotWall(browserResult.HTML)
-		isThin := pageLooksLikeThinHTML(browserResult.HTML)
-		isStatusBlocked := isSoftBlockedStatus(browserResult.StatusCode)
-		isBad := stillBlocked || hasCrash || isPlaceholder || isVendorBlocked != "" || isGenericBotWall || isThin || isStatusBlocked
+		quality := assessContentQuality(result)
 
-		if isBad {
-			if thinResult == nil {
-				thinResult = browserResult
-			} else if visibleTextLength(browserResult.HTML) > visibleTextLength(thinResult.HTML) {
-				thinResult = browserResult
-			}
+		// If content is good, return it immediately (for auto mode)
+		if quality.isGood() && !isForcedJS {
+			log.Printf("[renderer] good content found: name=%s url=%s", item.name, rawURL)
+			return result, nil
+		}
+
+		// Track best result
+		if bestResult == nil || quality.isBetterThan(bestResultQuality) {
+			bestResult = result
+			bestResultCopy := quality
+			bestResultQuality = &bestResultCopy
+		}
+
+		// For forced JS mode, try all fetchers and pick the best
+		if isForcedJS {
 			continue
 		}
 
-		// Good result - add a light warning if the page still looked borderline.
-		if browserResult.Warning == nil {
-			if stillBlocked || isGenericBotWall || isVendorBlocked != "" {
-				warning := "Anti-bot challenge detected"
-				browserResult.Warning = &warning
-			} else if hasCrash {
-				warning := "Rendered page still looks like a framework crash"
-				browserResult.Warning = &warning
-			} else if isThin {
-				warning := "Rendered page still looks thin"
-				browserResult.Warning = &warning
-			}
+		// For auto mode with HTTP result, check if we should chain to next
+		if item.name == "http" && quality.isGood() {
+			// HTTP gave good content, no need for browsers
+			return result, nil
 		}
-		if hasCrash {
-			log.Printf("[renderer] browser result contained failed render markup: browser=%s url=%s reason=%s",
-				js.Name(), rawURL, crashReason)
-		}
-		log.Printf("[renderer] browser rendering successful: browser=%s url=%s status=%d", js.Name(), rawURL, browserResult.StatusCode)
-		return browserResult, nil
+
+		// Continue to next in chain
 	}
 
-	// All browsers failed or returned thin content, return best available
-	if thinResult != nil {
-		if httpResult != nil && visibleTextLength(httpResult.HTML) > visibleTextLength(thinResult.HTML) {
-			if preferredBrowser != nil && *preferredBrowser != "" {
-				warning := "preferred renderer returned low-quality content"
-				thinResult.Warning = &warning
-				return thinResult, nil
-			}
-			warning := "JS rendering returned low-quality browser content; returned richer HTTP result"
-			httpResult.Warning = &warning
-			return httpResult, nil
+	// Return best result we found
+	if bestResult != nil {
+		if !isForcedJS {
+			return bestResult, nil
 		}
-		warning := "JS rendering returned thin content; falling back to best available browser result"
-		thinResult.Warning = &warning
-		return thinResult, nil
+		// For forced JS, add warning if content is thin
+		if bestResultQuality != nil && bestResultQuality.isThin {
+			warning := "JS rendering returned thin content"
+			bestResult.Warning = &warning
+		}
+		return bestResult, nil
 	}
 
-	// All browsers failed, return HTTP result with warning.
-	if preferredBrowser != nil && *preferredBrowser != "" {
-		return nil, types.ErrRendererError.New("preferred renderer '" + *preferredBrowser + "' failed")
+	// All fetchers failed
+	return nil, types.ErrRendererError.New("all fetchers in chain failed")
+}
+
+// ContentQuality holds the quality assessment of fetched content
+type ContentQuality struct {
+	isThin      bool
+	isBlocked   bool
+	isCrash     bool
+	isPlaceholder bool
+	vendorBlock string // non-empty if blocked by specific vendor
+	reason      string
+}
+
+// isGood returns true if content is usable
+func (c *ContentQuality) isGood() bool {
+	return !c.isThin && !c.isBlocked && !c.isCrash && !c.isPlaceholder && c.vendorBlock == ""
+}
+
+// isBetterThan compares two content qualities, returns true if this is better
+func (c *ContentQuality) isBetterThan(other *ContentQuality) bool {
+	if other == nil {
+		return true
 	}
-	warning := "JS rendering requested but browser backend failed; returned HTTP result"
-	if httpResult.Warning != nil {
-		warning = *httpResult.Warning + "; JS rendering backend failed"
+	// Prefer non-thin content
+	if c.isThin && !other.isThin {
+		return false
 	}
-	httpResult.Warning = &warning
-	return httpResult, nil
+	if !c.isThin && other.isThin {
+		return true
+	}
+	// Prefer blocked content over other issues
+	if c.isBlocked && !other.isBlocked {
+		return false
+	}
+	if !c.isBlocked && other.isBlocked {
+		return true
+	}
+	return false
+}
+
+// assessContentQuality evaluates the quality of a fetch result
+func assessContentQuality(result *types.FetchResult) ContentQuality {
+	q := ContentQuality{}
+
+	q.isThin = pageLooksLikeThinHTML(result.HTML)
+	q.isBlocked = pageHasBlockInterstitial(result.HTML)
+	_, q.isCrash = pageLooksLikeFailedRender(result.HTML)
+	q.isPlaceholder = pageLooksLikeLoadingPlaceholder(result.HTML)
+	q.vendorBlock = pageLooksLikeVendorBlock(result.HTML)
+	q.isBlocked = q.isBlocked || q.vendorBlock != ""
+
+	return q
 }
 
 // appendRenderingWarning adds a warning message to the FetchResult when
