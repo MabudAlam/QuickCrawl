@@ -259,12 +259,120 @@ graph TD
 
 ```
 Request
-    ↓
+     ↓
 HTTP Fetcher (plain HTML, fastest)
-    ↓ (if SPA detected or JS requested)
+     ↓ (if SPA detected or JS requested)
 LightPanda (headless browser, fast)
-    ↓ (if LightPanda unavailable)
+     ↓ (if LightPanda unavailable)
 Chrome DevTools (full browser, most compatible)
+```
+
+### Scrape API End-to-End Flow
+
+When a client calls `POST /v1/scrape`, Quickcrawl executes the following pipeline:
+
+```
+HTTP POST /v1/scrape
+    │
+    ▼
+gin_handlers.Scrape()                  [internal/api/handlers/gin_handlers.go:68]
+    │  • Parse request JSON
+    │  • Validate URL
+    │  • Check robots.txt
+    ▼
+crawler.ScrapeURL()                     [internal/crawler/scrape.go:37]
+    │
+    ├─── (renderJs=false) ───────────────────────────────┐
+    │                                                    │
+    ▼                                                    ▼
+renderer.FallbackRenderer.Fetch()     [internal/renderer/renderer.go:185]
+    │
+    ├──────── (HTTP mode) ────────────────────────────►│
+    │                                                    │
+    │                                     HTTPFetcher.Fetch()
+    │                                     [internal/renderer/http.go:76]
+    │                                     • HTTP GET with headers
+    │                                     • Retry on transient errors
+    │                                     • Returns FetchResult{HTML}
+    │
+    └──────── (JS rendering mode) ─────────────────────┐
+                                                     │
+                                                     ▼
+BrowserFetcher.Fetch()               [internal/renderer/browser_fetcher.go:108]
+    │
+    ├── Dial CDP WebSocket               [internal/renderer/cdp_connection.go:131]
+    │   └── resolveBrowserWSURL() → WebSocket handshake
+    │
+    ├── Create browser tab
+    │   └── Target.createTarget → Target.attachToTarget → get sessionID
+    │
+    ├── Enable CDP domains
+    │   └── Page.enable, Runtime.enable, Network.enable
+    │
+    ├── Inject stealth scripts
+    │   └── Page.addScriptToEvaluateOnNewDocument (masks webdriver flag)
+    │
+    ├── Apply headers
+    │   └── Network.setUserAgentOverride, Network.setExtraHTTPHeaders
+    │
+    ├── Start background pumps (goroutines)
+    │   ├─ runNetworkIdlePump     → tracks in-flight requests via
+    │   │                          Network.requestWillBeSent / loadingFinished
+    │   └─ runNetworkCapturePump  → captures XHR/Fetch JSON responses
+    │                                 via Network.responseReceived
+    │
+    ├── Navigate to URL
+    │   └── Page.navigate → WaitForPageReady (Page.loadEventFired)
+    │
+    ├── Dismiss CMP / cookie banners
+    │   └── Runtime.evaluate(cookieBannerDismissScript)
+    │
+    ├── Wait for SPA readiness
+    │   └── waitForSpaContent() — polls for selector + 800+ body chars
+    │                              also blocks on networkTracker.IsIdle()
+    │
+    ├── HTML snapshot
+    │   └── readRenderedHTMLWithShadowDOM()
+    │       └── Runtime.evaluate(shadowDOMFlattenScript)
+    │
+    ├── Stability check (if loading placeholder detected)
+    │   └── waitForPageContentToStabilizeWithShadowDOM()
+    │
+    ├── Auto-scroll (if lazy markers: loading="lazy", data-src, etc.)
+    │   └── Runtime.evaluate(autoScrollScript) → re-snapshot
+    │
+    ├── Auto-click "load more" / "show more" buttons
+    │   └── Runtime.evaluate(autoClickRevealScript) → re-snapshot
+    │
+    ├── Anti-bot challenge retry (up to 3 × 3s)
+    │   └── detectAntiBotChallengePage() → retry loop
+    │
+    └── Cleanup
+        └── Target.closeTarget
+
+    Returns: FetchResult{HTML, StatusCode, CapturedResponses, RenderedWith}
+    │
+    ▼
+extractor.Extract()                    [internal/extractor/extract.go:110]
+    │
+    ├── ExtractMetadata               — title, description, OG tags, canonical
+    ├── preprocessHTML()              — strip noise, apply CSS selectors
+    ├── postprocessHTML()             — sanitize, cleanup, dedupe
+    ├── HTMLToMarkdown()              — primary markdown conversion
+    │                                    (falls back: fullClean → structural → plaintext)
+    ├── HTMLToPlaintext()
+    ├── ExtractLinks()
+    ├── ExtractImageURLs()
+    │
+    ▼ Returns: ScrapeData{Markdown, HTML, PlainText, Links, Images, Metadata}
+    │
+    ▼
+(Optional) LLM Structured Extraction
+    ├── buildLLMInput() → callOpenAIAPI(v1/chat/completions)
+    └── validateDataAgainstSchema()
+    │
+    ▼
+c.JSON(http.StatusOK, APIResponse{ScrapeData})
 ```
 
 ---

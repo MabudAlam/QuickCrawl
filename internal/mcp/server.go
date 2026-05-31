@@ -90,6 +90,10 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		forceJS := true
 		scrapeReq.RenderJS = &forceJS
 	}
+	if scrapeReq.RenderJS != nil && *scrapeReq.RenderJS && scrapeReq.WaitFor == nil {
+		defaultWaitFor := int64(2000)
+		scrapeReq.WaitFor = &defaultWaitFor
+	}
 	if scrapeReq.Headers == nil {
 		scrapeReq.Headers = make(map[string]string)
 	}

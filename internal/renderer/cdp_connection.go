@@ -175,7 +175,7 @@ func resolveBrowserWSURL(wsURL string, timeout time.Duration) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Host", "localhost")
+	req.Header.Set("Host", req.URL.Host)
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -63,6 +63,14 @@ func (f *HTTPFetcher) IsAvailable() bool {
 	return true
 }
 
+func (f *HTTPFetcher) Name() string {
+	return "http"
+}
+
+func (f *HTTPFetcher) SupportsJS() bool {
+	return false
+}
+
 // Fetch performs an HTTP GET request and returns the result.
 // It retries once on transient errors (connection/timeout) or gateway errors (502-504).
 func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs *int64) (*types.FetchResult, *types.QuickCrawlError) {
