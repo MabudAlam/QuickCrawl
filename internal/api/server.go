@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
@@ -16,12 +17,13 @@ import (
 // It is the central state manager for the API server, coordinating between
 // the HTTP handlers, renderer, and crawl job tracking.
 type AppState struct {
-	Config    *types.AppConfig           // Application configuration
-	Renderer  *renderer.FallbackRenderer // Page renderer (HTTP/browser)
-	CrawlJobs map[string]CrawlJob        // Active crawl jobs (protected by mu)
-	mu        sync.RWMutex               // Mutex for thread-safe CrawlJobs access
-	ctx       context.Context            // Context for controlling background goroutines
-	cancel    context.CancelFunc         // Cancel function to stop background goroutines
+	Config      *types.AppConfig           // Application configuration
+	Renderer    *renderer.FallbackRenderer // Page renderer (HTTP/browser)
+	CoreScraper *core.Scraper              // Core scraper using chromedp
+	CrawlJobs   map[string]CrawlJob        // Active crawl jobs (protected by mu)
+	mu          sync.RWMutex               // Mutex for thread-safe CrawlJobs access
+	ctx         context.Context            // Context for controlling background goroutines
+	cancel      context.CancelFunc         // Cancel function to stop background goroutines
 }
 
 // CrawlJob represents a single crawl job with its metadata and current state.

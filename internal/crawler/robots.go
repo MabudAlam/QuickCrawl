@@ -2,11 +2,13 @@ package crawler
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/temoto/robotstxt"
 )
 
@@ -82,4 +84,30 @@ func FetchRobotsTxt(origin, userAgent string) *RobotsTxt {
 	}
 
 	return ParseRobotsTxt(string(body), userAgent)
+}
+
+func CheckRobotsTxt(rawURL, userAgent string) *types.QuickCrawlError {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL == nil {
+		return nil
+	}
+
+	origin := parsedURL.Scheme + "://" + parsedURL.Host
+	log.Printf("[robots] checking robots.txt for origin=%s with userAgent=%q", origin, userAgent)
+
+	robots := FetchRobotsTxt(origin, userAgent)
+	if robots == nil {
+		return nil
+	}
+
+	if !robots.IsAllowed(parsedURL.Path) {
+		log.Printf("[robots] denied: path=%s", parsedURL.Path)
+		return &types.QuickCrawlError{
+			Message: "access denied by robots.txt",
+			Code:    types.CodeForbidden,
+		}
+	}
+
+	log.Printf("[robots] allowed: path=%s", parsedURL.Path)
+	return nil
 }

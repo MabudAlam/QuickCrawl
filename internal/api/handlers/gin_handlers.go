@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -114,21 +113,13 @@ func (h *Handler) Scrape(c *gin.Context) {
 
 	// Check robots.txt if respect_robots_txt is enabled
 	if h.State.Config.Crawler.RespectRobotsTxt {
-		parsedURL, _ := url.Parse(req.URL)
-		if parsedURL != nil {
-			origin := parsedURL.Scheme + "://" + parsedURL.Host
-			log.Printf("[robots] checking robots.txt for origin=%s with userAgent=%q", origin, h.State.Config.Crawler.UserAgent)
-			robots := crawler.FetchRobotsTxt(origin, h.State.Config.Crawler.UserAgent)
-			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
-				log.Printf("[robots] denied: path=%s", parsedURL.Path)
-				c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
-					Success:   false,
-					Error:     stringPtr("access denied by robots.txt"),
-					ErrorCode: stringPtr(string(types.CodeForbidden)),
-				})
-				return
-			}
-			log.Printf("[robots] allowed: path=%s", parsedURL.Path)
+		if err := crawler.CheckRobotsTxt(req.URL, h.State.Config.Crawler.UserAgent); err != nil {
+			c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
+				Success:   false,
+				Error:     &err.Message,
+				ErrorCode: stringPtr(string(err.Code)),
+			})
+			return
 		}
 	}
 
