@@ -3,10 +3,10 @@ package routes
 import (
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/handlers"
 	"github.com/MabudAlam/quickcrawl/internal/api/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 // Router holds the Gin engine and application state for setting up HTTP routes.
@@ -59,6 +59,7 @@ func (r *Router) setupGlobalMiddleware(engine *gin.Engine) {
 // setupRoutes registers all API route handlers.
 func (r *Router) setupRoutes(engine *gin.Engine) {
 	h := handlers.NewHandler(r.State)
+	ch := handlers.NewCoreHandler(r.State)
 
 	// Health check endpoint - returns renderer/browser availability and active job count
 	engine.GET("/health", h.Health)
@@ -68,6 +69,9 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 	{
 		// POST /v1/scrape - Scrape a single URL and return content in various formats
 		v1.POST("/scrape", h.Scrape)
+
+		// POST /v1/scrape-core - Scrape using chromedp-based core implementation
+		v1.POST("/scrape-core", ch.ScrapeHandler)
 
 		// POST /v1/crawl - Start an async BFS crawl of a website
 		v1.POST("/crawl", h.StartCrawl)

@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // main initializes and starts the quickcrawl HTTP server.
@@ -52,6 +55,30 @@ func main() {
 	}
 
 	state.Renderer = rend
+
+	// Step 3b: Build a shared *renderer.HTTPFetcher so both endpoints use the
+	// same HTTP code path (no duplication). The FallbackRenderer keeps its own
+	// internal instance because its API is fixed.
+	var coreStealthProfile *utils.HeaderProfile
+	if cfg.Crawler.Stealth.Enabled && cfg.Crawler.Stealth.InjectHeaders {
+		profile := utils.GetHeaderProfile(utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy))
+		coreStealthProfile = &profile
+	}
+	coreHTTPFetcher := renderer.NewHTTPFetcher(cfg.Crawler.UserAgent, coreStealthProfile)
+
+	// Step 3c: Initialize the core scraper (chromedp-based) with the shared HTTP fetcher.
+	coreCfg := core.DefaultConfig()
+	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
+		coreCfg.Browser.WSURL = strings.TrimSpace(cfg.Renderer.Chrome.WSURL)
+	}
+	if cfg.Renderer.PoolSize > 0 {
+		coreCfg.Browser.PoolSize = cfg.Renderer.PoolSize
+	}
+	coreScraper, coreErr := core.NewScraper(coreCfg, coreHTTPFetcher, cfg.Extraction.LLM)
+	if coreErr != nil {
+		log.Fatalf("failed to initialize core scraper: %s", coreErr.Message)
+	}
+	state.CoreScraper = coreScraper
 
 	// Step 4: Ensure cleanup on shutdown.
 	defer state.Close()
