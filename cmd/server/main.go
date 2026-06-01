@@ -38,7 +38,25 @@ func main() {
 		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
 	}
 
-	// Step 3: Initialize the page renderer.
+	// Step 3a: Discover the current Chrome WebSocket URL.
+	// The hardcoded browser ID in the config goes stale every time Chrome
+	// restarts (the WS upgrade would then 404). Probing /json/version
+	// returns the current session's URL, which is what Puppeteer,
+	// Playwright, and chromedp all use as their canonical discovery path.
+	// Both the FallbackRenderer (Step 3) and the core scraper (Step 3c)
+	// must be initialized with the same discovered URL, so this happens
+	// before either.
+	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
+		discovered, discErr := utils.DiscoverBrowserWSURL(context.Background(), cfg.Renderer.Chrome.WSURL)
+		if discErr != nil {
+			log.Printf("warning: browser WS URL discovery failed (%v) — falling back to configured value %q", discErr, cfg.Renderer.Chrome.WSURL)
+		} else {
+			log.Printf("discovered chrome WS URL: %s", discovered)
+			cfg.Renderer.Chrome.WSURL = discovered
+		}
+	}
+
+	// Step 3b: Initialize the page renderer.
 	// FallbackRenderer orchestrates multiple fetch strategies:
 	// - HTTP fetcher (always available, fastest)
 	// - Browser-based fetchers (Chrome, LightPanda) for JS-heavy pages
@@ -56,7 +74,7 @@ func main() {
 
 	state.Renderer = rend
 
-	// Step 3b: Build a shared *renderer.HTTPFetcher so both endpoints use the
+	// Step 3c: Build a shared *renderer.HTTPFetcher so both endpoints use the
 	// same HTTP code path (no duplication). The FallbackRenderer keeps its own
 	// internal instance because its API is fixed.
 	var coreStealthProfile *utils.HeaderProfile
@@ -66,7 +84,7 @@ func main() {
 	}
 	coreHTTPFetcher := renderer.NewHTTPFetcher(cfg.Crawler.UserAgent, coreStealthProfile)
 
-	// Step 3c: Initialize the core scraper (chromedp-based) with the shared HTTP fetcher.
+	// Step 3d: Initialize the core scraper (chromedp-based) with the shared HTTP fetcher.
 	coreCfg := core.DefaultConfig()
 	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
 		coreCfg.Browser.WSURL = strings.TrimSpace(cfg.Renderer.Chrome.WSURL)

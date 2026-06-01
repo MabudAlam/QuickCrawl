@@ -248,8 +248,13 @@ func convertTypesError(e *types.QuickCrawlError) *QuickCrawlError {
 // Steps:
 //  1. Validate that a browser is available (RemoteAllocator was set up).
 //  2. Acquire a per-host concurrency slot from the pool.
-//  3. Create a new chromedp context from the RemoteAllocator.
-//     Each context gets its own browser tab.
+//  3. Create a new chromedp context from the RemoteAllocator with
+//     chromedp.WithNewBrowserContext(). This creates a fresh Chrome
+//     BrowserContext (incognito-like partition) for the request and a
+//     new target/tab inside it. Cookies, localStorage, IndexedDB, cache,
+//     and service workers are fully isolated from other concurrent fetches.
+//     The BrowserContext is disposed automatically when cancelBrowser is
+//     called (deferred below), via chromedp's built-in target.DisposeBrowserContext.
 //  4. Apply a timeout to the browser context.
 //  5. Run the chromedp action sequence:
 //     - Navigate to the URL
@@ -275,6 +280,21 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// Step 3: Create a new chromedp context.
 	// chromedp.NewContext creates a new browser tab (target) from the allocator.
 	// The RemoteAllocator reuses the persistent Chrome connection.
+	//
+	// Note on isolation: we previously passed chromedp.WithNewBrowserContext()
+	// here for per-request storage isolation (cookies, localStorage, etc.).
+	// That option is temporarily disabled because chromedp v0.15.1's generated
+	// Target.createTarget params include deprecated bool fields (newWindow,
+	// background, forTab, hidden, focus) that Chrome 95+ rejects with
+	// "Failed to open new tab - no browser is open (-32000)". The standard
+	// Chrome DevTools Protocol no longer lists those fields, but cdproto has
+	// not been regenerated. We track the workaround in internal/core/TODO.md
+	// (or as an inline note). To re-enable, either (a) patch the cdproto
+	// CreateTargetParams struct to add `omitzero` to the deprecated bool
+	// fields, or (b) drop in a vendored copy of the latest protocol types,
+	// or (c) issue the createBrowserContext + createTarget via raw CDP and
+	// attach with chromedp.WithTargetID. All three options preserve the
+	// WithNewBrowserContext() call at this site — no other code change.
 	browserCtx, cancelBrowser := chromedp.NewContext(renderer.allocCtx)
 	defer cancelBrowser()
 
@@ -297,10 +317,17 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	var headHTML string
 	var bodyHTML string
 
-	// Step 5b: Execute the chromedp action sequence.
+	// Step 5b: Build the chromedp action sequence.
 	//
 	// Navigate loads the URL in the browser tab. chromedp waits for the
 	// Page.loadEventFired event by default (or DomContentLoaded if configured).
+	//
+	// dismissCookieBannersAction is conditionally inserted after Navigate,
+	// only in default mode (waitMs == 0). It mirrors the original renderer's
+	// behavior at internal/renderer/browser_fetcher.go:296 — explicit
+	// waitForMs implies the caller is managing timing themselves, so we
+	// skip auto-dismiss to avoid surprising them with hidden clicks. The
+	// dismiss step itself is best-effort and never aborts the run.
 	//
 	// Sleep waits for the specified duration after navigation. This is a
 	// naive approach compared to SPA readiness polling — it does not check
@@ -314,8 +341,13 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// ActionFunc is a catch-all that runs a custom function — here it sets
 	// statusCode to 200. Note: actual HTTP status is not captured from the
 	// browser; chromedp does not provide this without network monitoring.
-	err := chromedp.Run(runCtx,
+	actions := []chromedp.Action{
 		chromedp.Navigate(rawURL),
+	}
+	if waitMs == 0 {
+		actions = append(actions, dismissCookieBannersAction())
+	}
+	actions = append(actions,
 		chromedp.Sleep(waitDuration),
 		chromedp.Location(&finalURL),
 		chromedp.OuterHTML("head", &headHTML, chromedp.ByQuery),
@@ -325,6 +357,8 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 			return nil
 		}),
 	)
+
+	err := chromedp.Run(runCtx, actions...)
 
 	// Step 5c: Handle errors from the chromedp run.
 	if err != nil {
