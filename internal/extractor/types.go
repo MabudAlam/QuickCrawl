@@ -39,9 +39,6 @@ type ExtractOptions struct {
 
 	// CSSSelector extracts content from elements matching this selector
 	CSSSelector *string
-
-	// OnlyMain extracts only the main content area, ignoring sidebars, footers, nav, etc.
-	OnlyMain bool
 }
 
 // ExtractedMetadata contains page metadata extracted from HTML.

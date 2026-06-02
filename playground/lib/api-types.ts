@@ -4,10 +4,9 @@ export interface ScrapeRequest {
   renderJs?: boolean;
   waitFor?: number;
   headers?: Record<string, string>;
-cssSelector?: string;
+  cssSelector?: string;
   includeTags?: string[];
   excludeTags?: string[];
-  browser?: "lightpanda" | "chrome";
   extract?: {
     schema: Record<string, unknown>;
     prompt?: string;
@@ -25,12 +24,6 @@ export interface CrawlRequest {
   waitFor?: number;
   includeTags?: string[];
   excludeTags?: string[];
-  browser?: "lightpanda" | "chrome";
-  extract?: {
-    schema: Record<string, unknown>;
-    prompt?: string;
-    responseFormat?: string;
-  };
   maxMarkdownChars?: number;
 }
 
@@ -143,7 +136,6 @@ export interface ScrapeOptions {
   cssSelector: string;
   includeTags: string;
   excludeTags: string;
-  browser: "lightpanda" | "chrome" | undefined;
   jsonSchema: string;
   extractionPrompt: string;
   extractionResponseFormat: string;
@@ -158,10 +150,6 @@ export interface CrawlOptions {
   waitFor: number;
   includeTags: string;
   excludeTags: string;
-  browser: "lightpanda" | "chrome" | undefined;
-  jsonSchema: string;
-  extractionPrompt: string;
-  extractionResponseFormat: string;
   maxMarkdownChars: number | undefined;
 }
 

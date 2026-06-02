@@ -2,7 +2,6 @@ package quickcrawl
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 )
 
@@ -37,82 +36,13 @@ func TestJsonString(t *testing.T) {
 	}
 }
 
-func TestFormatScrapeDataNil(t *testing.T) {
-	result := formatScrapeData(nil)
+func TestFormatCoreScrapeDataNil(t *testing.T) {
+	result := formatCoreScrapeData(nil)
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(result), &data); err != nil {
-		t.Fatalf("formatScrapeData(nil) returned invalid JSON: %v", err)
+		t.Fatalf("formatCoreScrapeData(nil) returned invalid JSON: %v", err)
 	}
 	if _, ok := data["error"]; !ok {
 		t.Error("expected error field in result")
-	}
-}
-
-func TestNormalizePinnedRenderer(t *testing.T) {
-	chrome := "chrome"
-	auto := "auto"
-	lightpanda := "lightpanda"
-	tests := []struct {
-		name      string
-		renderer  *string
-		browser   *string
-		want      *string
-		expectErr bool
-	}{
-		{name: "renderer only", renderer: &chrome, want: &chrome},
-		{name: "browser only", browser: &chrome, want: &chrome},
-		{name: "auto clears pin", renderer: &auto, want: nil},
-		{name: "matching values", renderer: &chrome, browser: &chrome, want: &chrome},
-		{name: "conflicting values", renderer: &chrome, browser: &lightpanda, expectErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizePinnedRenderer(tt.renderer, tt.browser)
-			if tt.expectErr {
-				if err == nil {
-					t.Fatal("expected error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("normalizePinnedRenderer() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestScrapeInputSchemaAdvertisesRenderer(t *testing.T) {
-	schema := scrapeInputSchema()
-	props := schema["properties"].(map[string]any)
-	renderer := props["renderer"].(map[string]any)
-
-	if renderer["type"] != "string" {
-		t.Fatalf("renderer type = %v, want string", renderer["type"])
-	}
-
-	enumVals := renderer["enum"].([]string)
-	want := []string{"auto", "lightpanda", "chrome"}
-	if !reflect.DeepEqual(enumVals, want) {
-		t.Fatalf("renderer enum = %v, want %v", enumVals, want)
-	}
-}
-
-func TestCrawlInputSchemaAdvertisesRenderer(t *testing.T) {
-	schema := crawlInputSchema()
-	props := schema["properties"].(map[string]any)
-	renderer := props["renderer"].(map[string]any)
-
-	if renderer["type"] != "string" {
-		t.Fatalf("renderer type = %v, want string", renderer["type"])
-	}
-
-	enumVals := renderer["enum"].([]string)
-	want := []string{"auto", "lightpanda", "chrome"}
-	if !reflect.DeepEqual(enumVals, want) {
-		t.Fatalf("renderer enum = %v, want %v", enumVals, want)
 	}
 }

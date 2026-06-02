@@ -25,7 +25,6 @@ type ExtractOptions struct {
 	IncludeTags  []string
 	ExcludeTags  []string
 	CSSSelector  *string
-	OnlyMain     bool
 }
 
 type ScrapeData struct {
@@ -66,7 +65,6 @@ func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
 		IncludeTags:  opts.IncludeTags,
 		ExcludeTags:  opts.ExcludeTags,
 		CSSSelector:  opts.CSSSelector,
-		OnlyMain:     opts.OnlyMain,
 	}
 
 	data := extractor.Extract(internalOpts)

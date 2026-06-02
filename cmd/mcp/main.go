@@ -7,10 +7,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/MabudAlam/quickcrawl/internal/api"
-	"github.com/MabudAlam/quickcrawl/internal/mcp"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/browser"
+	"github.com/MabudAlam/quickcrawl/internal/core"
+	quickcrawl "github.com/MabudAlam/quickcrawl/internal/mcp"
+	"github.com/MabudAlam/quickcrawl/internal/types"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -24,25 +26,58 @@ func main() {
 		log.Fatalf("failed to load config: %s", err.Error())
 	}
 
+	// Log deprecation notice for the legacy renderer.mode field. The new
+	// scraper uses chromedp only; mode is accepted for backward-compat
+	// but ignored at runtime. renderer.lightpanda is no longer ignored:
+	// if no Chrome WS URL is configured, MCP auto-launches LightPanda.
+	if cfg.Renderer.Mode != "" && string(cfg.Renderer.Mode) != "auto" {
+		log.Printf("warning: renderer.mode=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Mode)
+	}
+
+	// If the user has not configured a Chrome WS URL, fall back to
+	// auto-launching a local LightPanda. The HTTP server path does not
+	// do this — it requires an explicit WS URL — but the MCP path is
+	// expected to be self-contained, so we provide a default browser
+	// here. The launched process is killed on shutdown.
+	var lightpanda *browser.LightPandaLauncher
+	chromeConfigured := cfg.Renderer.Chrome != nil && cfg.Renderer.Chrome.WSURL != ""
+	if !chromeConfigured {
+		log.Printf("no Chrome WS URL configured; auto-starting LightPanda...")
+		lp, lpErr := browser.StartLightPanda()
+		if lpErr != nil {
+			log.Fatalf("failed to auto-start LightPanda: %s\nhint: set [renderer.chrome] ws_url in quickcrawl.toml to point at a running Chrome", lpErr.Error())
+		}
+		lightpanda = lp
+		if cfg.Renderer.Chrome == nil {
+			cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: lp.WSURL()}
+		} else {
+			cfg.Renderer.Chrome.WSURL = lp.WSURL()
+		}
+		log.Printf("LightPanda started: ws=%s", lp.WSURL())
+	}
+	defer func() {
+		if lightpanda != nil {
+			lightpanda.Stop()
+			log.Println("LightPanda stopped")
+		}
+	}()
+
+	// Build the shared *core.Scraper. This is the single render path
+	// used by every MCP tool — the same code path as the HTTP API.
+	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if scrapeErr != nil {
+		log.Fatalf("failed to initialize core scraper: %s", scrapeErr.Message)
+	}
+
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
+		_ = scraper.Close()
 		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
 	}
-
-	rend, rendererErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendererErr != nil {
-		log.Fatalf("failed to initialize renderer: %s", rendererErr.Message)
-	}
-
-	state.Renderer = rend
+	state.CoreScraper = scraper
 	defer state.Close()
 
-	browsers := rend.BrowsersInfo()
+	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
 		for _, b := range browsers {
 			log.Printf("browser started: %s (%s)", b.Name, b.WSURL)

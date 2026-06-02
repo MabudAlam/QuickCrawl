@@ -120,8 +120,7 @@ Example MCP tool arguments:
   "url": "https://www.notion.so/",
   "formats": ["markdown"],
   "renderJs": true,
-  "renderer": "chrome",
-  "onlyMainContent": true
+  "renderer": "chrome"
 }
 ```
 
@@ -391,7 +390,6 @@ c.JSON(http.StatusOK, APIResponse{ScrapeData})
 {
   "url": "https://www.mabud.dev/",
   "formats": ["markdown"],
-  "onlyMainContent": true,
   "renderJs": false,
   "topK": 5
 }
@@ -435,7 +433,6 @@ c.JSON(http.StatusOK, APIResponse{ScrapeData})
   "maxDepth": 2,
   "maxPages": 100,
   "formats": ["markdown"],
-  "onlyMainContent": true,
   "renderJs": false
 }
 ```
@@ -502,7 +499,6 @@ Quickcrawl supports JSON Schema-based extraction for structured data:
 {
   "url": "https://news.example.com",
   "formats": ["markdown", "json"],
-  "onlyMainContent": true,
   "extract": {
     "schema": {
       "type": "object",
@@ -694,3 +690,10 @@ docker run -p 3000:3000 quickcrawl-playground
 7. Focus on scalablity
 8. Cache System
 9. Improve the SDK perfomance
+
+
+
+MCP Testing on Inspector
+
+CONFIG=/Users/skmabudalam/Desktop/quickcrawl/quickcrawl.toml \
+npx @modelcontextprotocol/inspector /Users/skmabudalam/Desktop/quickcrawl/bin/quickcrawl-mcp
