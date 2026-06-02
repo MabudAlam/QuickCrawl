@@ -135,18 +135,48 @@ func extractHost(rawURL string) string {
 	return rawURL
 }
 
+// ellipsis clips s to at most n bytes and appends "..." if the
+// original was longer. Used for debug logging where we want a
+// short, single-line representation of a long string.
+func ellipsis(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // isAntiBotPage checks page HTML for generic anti-bot challenge markers.
 // This includes Cloudflare "Just a Moment" pages, CAPTCHA pages, and generic
 // access denied messages. It is a simple string search and does not detect
 // vendor-specific blocks (Akamai, PerimeterX, Datadome, etc. are only in
 // the original renderer).
+//
+// The marker set is intentionally broad — false positives are cheap (a
+// block page is returned with a warning instead of waiting 15s for the
+// SPA poll to time out and 3s for autoscroll to give up). Real content
+// pages very rarely contain these substrings in their first 1KB of
+// body text.
 func isAntiBotPage(html string) bool {
 	html = strings.ToLower(html)
 	markers := []string{
+		// Cloudflare variants — covers "Just a Moment" challenges,
+		// generic blocks, and the per-incident "Ray ID" error pages.
 		"just a moment",
 		"attention required",
 		"cf-browser-verification",
 		"cf-challenge",
+		"checking your browser before accessing",
+		"this site is using a security service to protect itself",
+		"ray id",                      // Cloudflare incident id on error pages
+		"cloudflare",                  // generic CF identifier
+		"blocked by network security", // Reddit's Cloudflare-block text
+		"your request has been blocked",
+		// Generic / vendor-agnostic. We intentionally omit the
+		// very common word "forbidden" — it false-positives on
+		// book titles and code comments, and 403 status codes
+		// already cover the legitimate-block case at the HTTP
+		// level. "captcha" is kept because it is a strong
+		// anti-bot signal and rarely appears in regular content.
 		"captcha",
 		"access denied",
 	}
@@ -303,12 +333,23 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	runCtx, cancel := context.WithTimeout(browserCtx, renderer.cfg.PageTimeout)
 	defer cancel()
 
-	// Step 5a: Determine the wait duration after navigation.
-	// If waitMs is not provided or is 0, default to 2 seconds.
-	// This gives SPAs time to hydrate and lazy-load content.
-	waitDuration := time.Duration(waitMs) * time.Millisecond
-	if waitDuration == 0 {
-		waitDuration = 2 * time.Second
+	// Step 5a: Determine the readiness budget after navigation.
+	// The browser-side waiting is now driven by WaitForSPAReady (see
+	// internal/core/spa.go) which polls for content readiness instead
+	// of sleeping for a fixed duration. The budget is the SPA poll
+	// timeout; it is bounded by the overall PageTimeout above.
+	//
+	// In default mode (waitMs == 0) we give the poll the same 15s the
+	// original renderer uses for SPA readiness (see
+	// internal/renderer/browser_fetcher.go:spaSelectorMaxMs).
+	//
+	// In explicit mode (waitMs > 0) the caller has asked for a fixed
+	// wait duration. We honor that as a single Sleep rather than the
+	// poll, mirroring the original's `else { time.Sleep(wait) }`
+	// branch at internal/renderer/browser_fetcher.go:321.
+	spaTimeout := 15 * time.Second
+	if waitMs > 0 {
+		spaTimeout = time.Duration(waitMs) * time.Millisecond
 	}
 
 	// Variables populated by the chromedp action sequence below.
@@ -316,11 +357,54 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	var statusCode uint16
 	var headHTML string
 	var bodyHTML string
+	var spaResult SPAReadinessResult
+
+	// blockDetected is set by the early anti-bot check (a quick
+	// OuterHTML of <body> right after Navigate) when the page
+	// looks like a Cloudflare / generic anti-bot challenge. When
+	// true, the SPA readiness poll and the autoscroll loop are
+	// skipped — they would both waste ~5-15s of budget on a page
+	// that will never hydrate. The final OuterHTMLs still run so
+	// the block page itself is returned (it is informative: it
+	// tells the caller what challenge they hit).
+	var blockDetected bool
+	var blockWarning string
+
+	// networkTracker captures the actual HTTP status code of the main
+	// document response. See internal/core/network.go for the full
+	// design rationale. We declare it here so the chromedp action batch
+	// can register the listener before Navigate fires, and so we can
+	// read .Status() after the run completes.
+	networkTracker := &networkStatusTracker{}
 
 	// Step 5b: Build the chromedp action sequence.
 	//
-	// Navigate loads the URL in the browser tab. chromedp waits for the
-	// Page.loadEventFired event by default (or DomContentLoaded if configured).
+	// enableNetworkStatusTracking is inserted FIRST. It enables the
+	// Network CDP domain and registers a typed-event listener that
+	// captures the document response's status code. Without this, the
+	// chromedp high-level APIs do not surface the response status —
+	// Navigate only signals "load event fired", not "server returned
+	// status N". See internal/core/network.go for details.
+	//
+	// stealthInjectionAction is inserted SECOND. It registers our stealth
+	// payload with Page.addScriptToEvaluateOnNewDocument, which makes the
+	// browser run the script on every new document it loads — and crucially
+	// runs it BEFORE the page's own scripts. Anti-bot systems inspect
+	// navigator.webdriver, navigator.plugins and other fingerprinting
+	// surfaces during page load; if we patch them after the page's scripts
+	// have already run, the bot detection has already fired. The action is
+	// best-effort (errors are swallowed) — see internal/core/stealth.go
+	// for the trade-off discussion.
+	//
+	// Navigate loads the URL in the browser tab. We use a custom
+	// navigateIgnoringHTTPStatus action instead of chromedp.Navigate
+	// because the latter aborts on any non-2xx response (returns
+	// "page load error net::ERR_HTTP_RESPONSE_CODE_FAILURE"), which
+	// would prevent us from ever capturing 4xx/5xx status codes via
+	// the networkTracker. The custom action issues the raw
+	// page.Navigate CDP call, ignores the errorText field, and
+	// waits for Page.loadEventFired before returning. See
+	// internal/core/network.go for the full design rationale.
 	//
 	// dismissCookieBannersAction is conditionally inserted after Navigate,
 	// only in default mode (waitMs == 0). It mirrors the original renderer's
@@ -329,34 +413,168 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// skip auto-dismiss to avoid surprising them with hidden clicks. The
 	// dismiss step itself is best-effort and never aborts the run.
 	//
-	// Sleep waits for the specified duration after navigation. This is a
-	// naive approach compared to SPA readiness polling — it does not check
-	// whether content has actually loaded.
+	// The next action is either the SPA readiness poll (default mode) or
+	// a single Sleep (explicit waitMs). The poll polls every 200ms for
+	// content selectors + body text + optional JS predicate, exiting
+	// early on success or timing out at spaTimeout. See
+	// internal/core/spa.go:WaitForSPAReady for details.
+	//
+	// AutoScrollAction is appended after the readiness check (in both
+	// default and explicit-waitMs modes) and before the HTML extract.
+	// It is best-effort and never aborts the scrape. The default
+	// AutoScrollOptions yield 30 steps of 90% viewport scroll, 200ms
+	// pause, 3 stagnant-step limit, and eager lazy-image loading. See
+	// internal/core/autoscroll.go for the design rationale.
 	//
 	// Location captures the final URL after any client-side redirects.
 	//
 	// OuterHTML extracts the serialized HTML of the head and body elements
 	// as plain strings (not CDP's compressed JSON encoding).
 	//
-	// ActionFunc is a catch-all that runs a custom function — here it sets
-	// statusCode to 200. Note: actual HTTP status is not captured from the
-	// browser; chromedp does not provide this without network monitoring.
+	// ActionFunc is a catch-all that runs a custom function — here it
+	// reads the captured network status from the tracker (set by the
+	// listener registered in enableNetworkStatusTracking). If the listener
+	// never saw a document response (extremely rare, e.g. browser closed
+	// mid-navigation), the tracker returns 200 by default.
 	actions := []chromedp.Action{
-		chromedp.Navigate(rawURL),
+		enableNetworkStatusTracking(networkTracker),
+		stealthInjectionAction(),
+		navigateIgnoringHTTPStatus(rawURL, nil),
+		// Early anti-bot short-circuit: a two-signal check that
+		// fires before the SPA poll and autoscroll.
+		//
+		// The block page's body content is rendered by JavaScript
+		// AFTER the load event, so a body-only OuterHTML at this
+		// point would return empty. Instead we use two reliable
+		// pre-body signals:
+		//
+		//  1. The HTTP status code captured by the network
+		//     tracker. 4xx/5xx for the main document strongly
+		//     suggests a challenge or block page (a real content
+		//     page very rarely returns 403 for the document
+		//     itself; static 403s do happen but the cost of a
+		//     false positive is "return a 403 page with a
+		//     warning" — same as the unoptimized path).
+		//
+		//  2. A quick OuterHTML of <body>. This catches dynamic
+		//     challenges that return 200 but render the block
+		//     page client-side — once the JS has had a brief
+		//     moment to populate the body. We add a 250ms sleep
+		//     first so the body has a chance to be non-empty.
+		//     The cost (250ms) is dwarfed by the savings
+		//     (5-15s on block pages).
+		//
+		// The block page is still captured in the final
+		// OuterHTMLs below and surfaced via Warning.
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Signal 1: HTTP status.
+			if st := networkTracker.Status(); st >= 400 && st < 600 {
+				blockDetected = true
+				blockWarning = fmt.Sprintf("blocked by anti-bot protection (server returned HTTP %d on initial document; SPA poll and auto-scroll skipped)", st)
+				return nil
+			}
+			// Signal 2: brief wait for JS-rendered block content.
+			//
+			// The unconditional 250ms sleep is removed for non-block pages.
+			// navigateIgnoringHTTPStatus already waited for Page.loadEventFired,
+			// so the page has finished loading. For static/SSR pages the body
+			// is already populated; for SPA block pages the 250ms delay was a
+			// best-effort to let client-side JS render. We keep the delay
+			// ONLY when the initial body snapshot is empty (suggests the page
+			// is still hydrating or is a block page that JS will populate).
+			var earlyBody string
+			if err := chromedp.OuterHTML("body", &earlyBody, chromedp.ByQuery).Do(ctx); err != nil {
+				return nil
+			}
+			if isAntiBotPage(earlyBody) {
+				blockDetected = true
+				blockWarning = "blocked by anti-bot protection (detected on initial body render; SPA poll and auto-scroll skipped)"
+				return nil
+			}
+			// If body is empty or trivially short, give JS a brief moment
+			// to render. This is the only path that still pays the 250ms
+			// cost; for populated pages we skip it entirely.
+			if len(earlyBody) < 200 {
+				_ = chromedp.Sleep(250 * time.Millisecond).Do(ctx)
+			}
+			return nil
+		}),
 	}
 	if waitMs == 0 {
 		actions = append(actions, dismissCookieBannersAction())
+		// Wrap WaitForSPAReady in an ActionFunc so the polling runs
+		// inside the same chromedp.Run batch as Navigate and the
+		// subsequent OuterHTML extractions — they all share the
+		// browser context that Run initializes.
+		//
+		// The SPA poll is skipped when blockDetected — the page is
+		// a challenge, no amount of polling will change that, and
+		// the default 15s budget is pure waste.
+		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
+			if blockDetected {
+				// Mark as timed-out so the post-run warning
+				// path (which already exists for the
+				// "thin content" case) does not produce a
+				// redundant message. The blockWarning set
+				// above is the primary signal.
+				spaResult = SPAReadinessResult{State: StateTimeout}
+				return nil
+			}
+			res, err := WaitForSPAReady(ctx, SPAReadinessOptions{
+				URL:     rawURL,
+				Timeout: spaTimeout,
+				// Selectors, MinBodyText, PollInterval, Predicate
+				// left zero — WaitForSPAReady substitutes the
+				// original renderer's default selector set
+				// ("main, article, [role=main], #content,
+				// #root > *, #app > *") and 800-char text
+				// threshold when no conditions are configured.
+			})
+			spaResult = res
+			return err
+		}))
+	} else {
+		actions = append(actions, chromedp.Sleep(time.Duration(waitMs)*time.Millisecond))
+	}
+	// AutoScrollAction runs in both default and explicit-waitMs modes
+	// so that pages requiring scroll-to-load trigger correctly under
+	// both timing models. EndSelector is left empty in v1 (no
+	// page-specific sentinel hint); a future ScrapeRequest field can
+	// thread a caller-provided selector through to AutoScrollOptions.
+	//
+	// Skipped on block pages for the same reason as the SPA poll:
+	// the challenge page has no lazy-loaded content to scroll
+	// into view, and the loop would just hit the stagnant
+	// termination after a few steps.
+	if !blockDetected {
+		// actions = append(actions, AutoScrollAction(AutoScrollOptions{
+		// 	MaxSteps: 20,
+		// }))
 	}
 	actions = append(actions,
-		chromedp.Sleep(waitDuration),
 		chromedp.Location(&finalURL),
 		chromedp.OuterHTML("head", &headHTML, chromedp.ByQuery),
 		chromedp.OuterHTML("body", &bodyHTML, chromedp.ByQuery),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			statusCode = 200
+			statusCode = uint16(networkTracker.Status())
 			return nil
 		}),
 	)
+
+	// Detect chrome-error://chromewebdata/ — the URL Chrome redirects to
+	// when the main document navigation fails (e.g. 4xx/5xx HTTP status,
+	// DNS failure, connection refused). We set statusCode to 502 in this
+	// case as a fallback when the network tracker didn't capture the
+	// real status (which is a known chromedp limitation discussed in
+	// internal/core/network.go).
+	//
+	// The actual HTTP status code from the server (e.g. 404 vs 503) is
+	// not available without deeper chromedp/CDP plumbing; 502 is the
+	// closest semantic match since it indicates "we got a response but
+	// it was an error" without claiming a specific server status.
+	if strings.HasPrefix(finalURL, "chrome-error://") && !networkTracker.Seen() {
+		statusCode = 502
+	}
 
 	err := chromedp.Run(runCtx, actions...)
 
@@ -389,8 +607,31 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 
 	// Step 6: Detect generic anti-bot challenge pages (Cloudflare, CAPTCHA, etc.).
 	// This uses simple string matching on page content.
-	if isAntiBotPage(result.HTML) {
+	//
+	// blockDetected was set by the early anti-bot check right after
+	// Navigate. We prefer the early warning (more diagnostic detail,
+	// set before we burned time on the SPA/autoscroll skip) but fall
+	// back to the late check as a safety net for any markers the early
+	// scan might have missed.
+	if blockDetected && blockWarning != "" {
+		w := blockWarning
+		result.Warning = &w
+	} else if isAntiBotPage(result.HTML) {
 		w := "blocked by anti-bot protection"
+		result.Warning = &w
+	}
+
+	// Step 7: Surface a "thin content" warning when the SPA readiness
+	// poll timed out. The original renderer emits this when
+	// waitForSpaContent returns false after exhausting its budget; we
+	// mirror that with StateTimeout from WaitForSPAReady. The warning
+	// is non-fatal — the snapshot is still returned, since partial
+	// content is usually better than no content.
+	if waitMs == 0 && spaResult.State == StateTimeout {
+		w := fmt.Sprintf("SPA readiness timeout after %s (text=%d chars, %d polls)",
+			spaResult.Duration.Round(100*time.Millisecond),
+			spaResult.BodyTextLength,
+			spaResult.PollCount)
 		result.Warning = &w
 	}
 

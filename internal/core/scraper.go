@@ -65,11 +65,11 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 		return nil, err
 	}
 
-	//If the renderJS field is not specified in the request, default to false (no JavaScript rendering). If waitFor is not specified, default to 2000 milliseconds (2 seconds) to wait after page load before scraping.
+	//If the renderJS field is not specified in the request, default to false (no JavaScript rendering). If waitFor is not specified, default to 0 (no extra wait beyond what the load event signals).
 	renderJS := resolveRenderJS(req.RenderJS, false)
 
-	//if the wait is not specified, default to 2000 milliseconds (2 seconds) to wait after page load before scraping.
-	waitMs := resolveWaitMs(req.WaitFor, 2000)
+	//If the wait is not specified, default to 0 (no extra wait). The page is considered ready as soon as the browser's load event fires, which the renderer already waits for. Callers who want extra hydration time should pass an explicit waitFor.
+	waitMs := resolveWaitMs(req.WaitFor, 0)
 
 	//Call the fetcher
 	result, err := s.renderer.FetchOrchestrator(ctx, req.URL, req.Headers, renderJS, waitMs)
