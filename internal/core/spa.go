@@ -100,6 +100,25 @@ type SPAReadinessOptions struct {
 	// `return` or a bare statement block. Any thrown error counts
 	// as falsy.
 	Predicate string
+
+	// NetworkTracker, when non-nil, enables a network-idle fast exit
+	// mirroring the original /v1/scrape renderer's behavior at
+	// internal/renderer/browser_render_helpers.go:97. Each tick, the
+	// helper calls tracker.isIdle(500ms); if true (no in-flight
+	// requests AND no activity in the last 500ms), the helper returns
+	// StateReady immediately.
+	//
+	// This is the key reason static/SSR pages scrape quickly: the
+	// load event fires, all assets settle within 500ms, the next
+	// poll tick returns true on the network-idle check, and the
+	// SPA poll exits without waiting for the text-threshold or
+	// selector match. Without this, sites that don't have any of
+	// the default SPA selectors (e.g. table-based layouts) would
+	// hit the full Timeout budget.
+	//
+	// Nil disables the check — the helper falls back to
+	// selector/text/predicate-only readiness.
+	NetworkTracker *networkActivityTracker
 }
 
 // SPAReadinessState describes the outcome of a WaitForSPAReady call.
@@ -379,6 +398,24 @@ func evaluateTickInto(ctx context.Context, expr string, opts SPAReadinessOptions
 	selectorOK := !selectorCheckEnabledFor(opts) || snap.Selector != ""
 	textOK := opts.MinBodyText <= 0 || snap.Text >= opts.MinBodyText
 	predicateOK := opts.Predicate == "" || snap.Predicate
+
+	// Network-idle fast exit: mirrors the original /v1/scrape renderer's
+	// behavior at internal/renderer/browser_render_helpers.go:97. When
+	// the caller provides a NetworkTracker and the network has been
+	// idle for 500ms (no in-flight requests, no activity in the last
+	// 500ms), the page is considered ready regardless of selector/
+	// text/predicate state. This is the dominant exit for static/SSR
+	// pages: the load event fires, all assets settle, and the next
+	// poll tick returns true.
+	//
+	// The 500ms quiet window (matching the original) avoids false
+	// positives from requests that fire-and-complete in <500ms — those
+	// keep lastChanged recent, so isIdle returns false until the
+	// quiet window has truly elapsed.
+	if opts.NetworkTracker != nil && opts.NetworkTracker.isIdle(500*time.Millisecond) {
+		result.MatchedSelector = "network-idle"
+		return true
+	}
 
 	// Lenient exit: if body text is already substantial, treat as ready
 	// even when no selector matched. Pages like Hacker News use plain

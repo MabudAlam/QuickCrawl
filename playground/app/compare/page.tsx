@@ -94,13 +94,18 @@ function buildRequestBody(
   renderJs: boolean,
   jsonSchema: string,
   extractionPrompt: string,
-  extractionResponseFormat: string
+  extractionResponseFormat: string,
+  browser: string
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     url,
     formats: formatList,
     renderJs,
     onlyMain: true,
+  }
+
+  if (browser) {
+    body.browser = browser
   }
 
   const includesJson = formatList.includes("json")
@@ -551,7 +556,8 @@ export default function ComparePage() {
         renderJs,
         jsonSchema,
         extractionPrompt,
-        extractionResponseFormat
+        extractionResponseFormat,
+        renderJs ? "chrome" : ""
       )
 
       const originalPromise = scrapeOriginal(normalizedUrl, startTime, body)
