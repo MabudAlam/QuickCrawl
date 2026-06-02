@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
@@ -14,20 +15,21 @@ import (
 const maxDiscoveredURLs = 5000
 
 // CrawlOptions contains all parameters for a crawl operation.
+//
+// The Scraper field is the shared *core.Scraper used to fetch each page.
+// It owns the HTTP fetcher and the chromedp-based browser pipeline, so
+// crawl pages use the same code path as the /v1/scrape endpoint.
 type CrawlOptions struct {
-	ID       string              // Unique crawl job ID
-	Req      *types.CrawlRequest // Crawl request parameters
-	Renderer interface {         // Renderer to fetch pages
-		Fetch(rawURL string, headers map[string]string, renderJS *bool, waitForMs *int64, browser *string) (*types.FetchResult, *types.QuickCrawlError)
-	}
-	MaxConcurrency    int                     // Maximum concurrent page fetches
-	RespectRobots     bool                    // Whether to follow robots.txt rules
-	RequestsPerSecond float64                 // Rate limit for requests
-	UserAgent         string                  // User-Agent header for requests
+	ID                string                 // Unique crawl job ID
+	Req               *types.CrawlRequest    // Crawl request parameters
+	Scraper           *core.Scraper          // Scraper used to fetch each page
+	MaxConcurrency    int                    // Maximum concurrent page fetches
+	RespectRobots     bool                   // Whether to follow robots.txt rules
+	RequestsPerSecond float64                // Rate limit for requests
+	UserAgent         string                 // User-Agent header for requests
 	StateCh           chan<- types.CrawlState // Channel for progress updates
-	LLMConfig         *types.LLMConfig        // LLM configuration for extraction
-	JitterFactor      float64                 // Random delay factor (0.0 to 1.0)
-	StealthStrategy   utils.HeaderStrategy    // Stealth header strategy
+	JitterFactor      float64                // Random delay factor (0.0 to 1.0)
+	StealthStrategy   utils.HeaderStrategy   // Stealth header strategy
 }
 
 // RateLimiter implements per-domain rate limiting with configurable RPS.

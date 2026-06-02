@@ -7,51 +7,6 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
-func BenchmarkCleanHTML(b *testing.B) {
-	html := `<html>
-<head>
-<script>console.log('evil')</script>
-<style>body{color:red}</style>
-</head>
-<body>
-<nav class="sidebar">Navigation</nav>
-<article>
-<h1>Title</h1>
-<p>Content paragraph with <strong>bold</strong> text.</p>
-<script>alert('inline')</script>
-<footer>Footer text</footer>
-</article>
-</body>
-</html>`
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = CleanHTML(html, true, nil, nil)
-	}
-}
-
-func BenchmarkCleanHTMLMinimal(b *testing.B) {
-	html := `<p>Simple paragraph with <em>emphasis</em>.</p>`
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = CleanHTML(html, nil, nil)
-	}
-}
-
-func BenchmarkCleanHTMLNoMainContent(b *testing.B) {
-	html := `<html>
-<head><script>evil</script></head>
-<body>
-<nav>Nav</nav>
-<article>Content</article>
-<footer>Footer</footer>
-</body>
-</html>`
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = CleanHTML(html, nil, nil)
-	}
-}
-
 func BenchmarkHTMLToMarkdown(b *testing.B) {
 	html := `<html>
 <body>
@@ -173,17 +128,6 @@ Paragraph after`
 	}
 }
 
-func TestCleanHTML(t *testing.T) {
-	html := `<html><head><script>evil</script></head><body><p>Hello</p></body></html>`
-	result := CleanHTML(html, nil, nil)
-	if strings.Contains(result, "evil") {
-		t.Error("Script should have been removed")
-	}
-	if !strings.Contains(result, "Hello") {
-		t.Error("Content should be preserved")
-	}
-}
-
 func TestHTMLToMarkdown(t *testing.T) {
 	html := `<h1>Title</h1><p>Paragraph with <strong>bold</strong> text.</p>`
 	md := HTMLToMarkdown(html)
@@ -247,17 +191,6 @@ func TestExtractHtmlPreservesSemanticTagsThroughWrapperUnwrap(t *testing.T) {
 	}
 	if strings.Contains(got, "<div><div>") {
 		t.Fatalf("expected nested wrapper divs to be unwrapped, got: %s", got)
-	}
-}
-
-func TestApplyXPathSupportsSimpleIdSelection(t *testing.T) {
-	html := `<html><body><div id="main"><p>Chosen</p></div><div id="other"><p>Ignored</p></div></body></html>`
-	got := applyXPath(html, "//*[@id='main']")
-	if !strings.Contains(got, "Chosen") {
-		t.Fatalf("expected XPath selection to return the main node, got: %s", got)
-	}
-	if strings.Contains(got, "Ignored") {
-		t.Fatalf("expected XPath selection to exclude other nodes, got: %s", got)
 	}
 }
 

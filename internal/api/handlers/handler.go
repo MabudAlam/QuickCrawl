@@ -6,12 +6,12 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -19,35 +19,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handler holds the application state and implements HTTP handlers for all API endpoints.
+// Handler is the single HTTP entry point. It owns the application state
+// and implements every endpoint in the API: /health, /v1/scrape, /v1/crawl,
+// /v1/crawl/:id, /v1/map, /v1/search. All endpoints route through the
+// shared *core.Scraper so there is exactly one render path.
 type Handler struct {
 	State *api.AppState
 }
 
-// NewHandler creates a new Handler with the given application state.
+// NewHandler creates a new Handler bound to the given application state.
 func NewHandler(state *api.AppState) *Handler {
 	return &Handler{State: state}
 }
 
 // Health returns the service health status including available renderers,
-// running browser instances, and count of active crawl jobs.
+// running browser instances, and the count of active crawl jobs.
 func (h *Handler) Health(c *gin.Context) {
-	// Build map of renderer availability (http always available)
-	renderers := map[string]bool{"http": true}
+	renderers := h.State.CheckHealth()
 	browsersInfo := []map[string]string{}
-	if h.State != nil && h.State.Renderer != nil {
-		for name, ok := range h.State.Renderer.CheckHealth() {
-			renderers[name] = ok
-		}
-		for _, b := range h.State.RendererBrowsersInfo() {
-			browsersInfo = append(browsersInfo, map[string]string{
-				"name":  b.Name,
-				"wsUrl": b.WSURL,
-			})
-		}
+	for _, b := range h.State.RendererBrowsersInfo() {
+		browsersInfo = append(browsersInfo, map[string]string{
+			"name":  b.Name,
+			"wsUrl": b.WSURL,
+		})
 	}
 
-	// Count active crawl jobs
 	activeJobs := 0
 	if h.State != nil {
 		activeJobs = h.State.ActiveCrawlJobCount()
@@ -62,56 +58,35 @@ func (h *Handler) Health(c *gin.Context) {
 	})
 }
 
-// Scrape handles POST /v1/scrape - scrapes a single URL and returns content.
-// It accepts a ScrapeRequest JSON body and returns ScrapeData in the requested formats.
+// Scrape handles POST /v1/scrape - the single canonical scrape endpoint.
+// It uses the chromedp-based *core.Scraper for both the HTTP and browser
+// paths and the shared *extractor for content transformation.
 func (h *Handler) Scrape(c *gin.Context) {
-	// Parse request bodyue
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Failed to read request body"))
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("failed to read request body"))
 		return
 	}
 
-	req, parseErr := parseScrapeRequest(body)
-	if parseErr != nil {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Invalid JSON request"))
+	var req core.ScrapeRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("invalid JSON request"))
 		return
 	}
 
-	// Validate URL is provided
 	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("URL is required"))
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("url is required"))
+		return
+	}
+	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("url must start with http:// or https://"))
 		return
 	}
 
-	// Validate URL format
-	if _, urlErr := types.ValidateURL(req.URL); urlErr != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
-			Success:   false,
-			Error:     stringPtr(urlErr.Error()),
-			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
-		})
-		return
-	}
-
-	// Apply default settings if not provided in request
-	//If the user don't mention what output format that they want , we will return the default format that is specified in the config file (markdown/html/plaintext/rawhtml)
 	if len(req.Formats) == 0 {
-		req.Formats = []types.OutputFormat{types.OutputFormat(h.State.Config.Extraction.DefaultFormat)}
+		req.Formats = []string{"markdown"}
 	}
 
-	// Ensure renderer is initialized
-	rend := h.State.Renderer
-	if rend == nil {
-		c.JSON(http.StatusInternalServerError, types.APIResponse[struct{}]{
-			Success:   false,
-			Error:     stringPtr("renderer is not initialized"),
-			ErrorCode: stringPtr(string(types.CodeRendererError)),
-		})
-		return
-	}
-
-	// Check robots.txt if respect_robots_txt is enabled
 	if h.State.Config.Crawler.RespectRobotsTxt {
 		if err := crawler.CheckRobotsTxt(req.URL, h.State.Config.Crawler.UserAgent); err != nil {
 			c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
@@ -123,47 +98,51 @@ func (h *Handler) Scrape(c *gin.Context) {
 		}
 	}
 
-	//Initialize the LLM config for extraction from the application state
-	llmConfig := h.State.Config.Extraction.LLM
-
-	// Perform the scrape using the renderer (HTTP + optional browser fallback)
-	stealthStrategy := utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy)
-	data, scrapeErr := crawler.ScrapeURL(
-		&req,
-		rend,
-		llmConfig,
-		h.State.Config.Crawler.Stealth.Enabled,
-		h.State.Config.Renderer.RenderJSDefault,
-		stealthStrategy,
-	)
-
-	// Handle scrape errors
-	if scrapeErr != nil && hasErrorOccurred(scrapeErr) {
-		log.Printf("scrape error type=%T value=%v", scrapeErr, scrapeErr)
-		writequickcrawlErrorGin(c, scrapeErr)
+	scraper := h.State.CoreScraper
+	if scraper == nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("core scraper not initialized"))
 		return
 	}
-	if data == nil {
-		c.JSON(http.StatusInternalServerError, types.APIResponse[struct{}]{
+
+	ctx := c.Request.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	data, scrapeErr := scraper.Scrape(ctx, &req)
+	if scrapeErr != nil {
+		status, code := mapScrapeError(scrapeErr)
+		c.JSON(status, types.APIResponse[struct{}]{
 			Success:   false,
-			Error:     stringPtr("internal error"),
-			ErrorCode: stringPtr(string(types.CodeInternalErr)),
+			Error:     &scrapeErr.Message,
+			ErrorCode: &code,
 		})
 		return
 	}
 
-	// Build response
-	resp := types.APIResponse[types.ScrapeData]{
+	if data == nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("internal error"))
+		return
+	}
+
+	resp := types.APIResponse[core.ScrapeData]{
 		Success: true,
 		Data:    data,
 		Warning: data.Warning,
 	}
 
-	// If target returned HTTP 4xx with small body, treat as error rather than success
-	if statusCode := data.Metadata.StatusCode; statusCode >= 400 {
-		bodyLen := calculateMaxResponseLength(data)
+	// If the scraped data indicates an HTTP error status code (e.g., 4xx or 5xx),
+	// and the body is small enough to be an error page, surface it as a failure.
+	if data.Metadata.StatusCode >= 400 {
+		bodyLen := 0
+		if data.Markdown != nil {
+			bodyLen = len(*data.Markdown)
+		}
+		if data.PlainText != nil && len(*data.PlainText) > bodyLen {
+			bodyLen = len(*data.PlainText)
+		}
 		if bodyLen < 200 {
-			errorMsg := "Target returned HTTP " + http.StatusText(int(statusCode))
+			errorMsg := "target returned HTTP " + http.StatusText(int(data.Metadata.StatusCode))
 			if data.Warning != nil && *data.Warning != "" {
 				errorMsg = *data.Warning
 			}
@@ -179,9 +158,10 @@ func (h *Handler) Scrape(c *gin.Context) {
 }
 
 // StartCrawl handles POST /v1/crawl - starts an async BFS crawl of a website.
-// Returns immediately with a job ID that can be used to track progress via GetCrawlStatus.
+// Returns immediately with a job ID that can be used to track progress via
+// GetCrawlStatus. The actual crawling is performed by crawler.RunCrawl which
+// uses the shared *core.Scraper for every page fetch.
 func (h *Handler) StartCrawl(c *gin.Context) {
-	// Parse request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Failed to read request body"))
@@ -194,13 +174,11 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		return
 	}
 
-	// Validate URL is provided
 	if req.URL == "" {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("URL is required"))
 		return
 	}
 
-	// Validate URL format
 	if _, urlErr := types.ValidateURL(req.URL); urlErr != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
@@ -210,7 +188,6 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		return
 	}
 
-	// Apply default crawl settings if not provided
 	if req.MaxDepth == nil {
 		depth := uint32(h.State.Config.Crawler.DefaultMaxDepth)
 		req.MaxDepth = &depth
@@ -220,51 +197,59 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		req.MaxPages = &pages
 	}
 
-	// Register the job in AppState and get a unique ID
+	if req.Browser != nil && *req.Browser != "" {
+		log.Printf("[crawl] warning: 'browser' field is deprecated and ignored; the new scraper uses chromedp only (value=%q)", *req.Browser)
+	}
+
+	for _, f := range req.Formats {
+		if f == types.FormatJson {
+			c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
+				Success:   false,
+				Error:     stringPtr("'json' format is not supported on /v1/crawl. Use /v1/scrape for LLM-based JSON extraction."),
+				ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
+			})
+			return
+		}
+	}
+
 	id := h.State.StartCrawlJob(&req)
 
-	// Ensure renderer is initialized
-	rend := h.State.Renderer
-	if rend == nil {
+	scraper := h.State.CoreScraper
+	if scraper == nil {
 		c.JSON(http.StatusInternalServerError, types.APIResponse[struct{}]{
 			Success:   false,
-			Error:     stringPtr("renderer is not initialized"),
-			ErrorCode: stringPtr(string(types.CodeRendererError)),
+			Error:     stringPtr("scraper is not initialized"),
+			ErrorCode: stringPtr(string(types.CodeInternalErr)),
 		})
 		return
 	}
 
-	// Channel for receiving state updates from crawler
 	stateCh := make(chan types.CrawlState, 100)
 
-	// Goroutine: forward state updates from crawler to AppState
 	go func() {
 		for state := range stateCh {
 			h.State.UpdateCrawlJob(id, state)
 		}
 	}()
 
-	// Goroutine: run the actual crawl job asynchronously
 	go func() {
 		defer close(stateCh)
 		stealthStrategy := utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy)
 		opts := crawler.CrawlOptions{
 			ID:                id,
 			Req:               &req,
-			Renderer:          rend,
+			Scraper:           scraper,
 			MaxConcurrency:    h.State.Config.Crawler.MaxConcurrency,
 			RespectRobots:     h.State.Config.Crawler.RespectRobotsTxt,
 			RequestsPerSecond: h.State.Config.Crawler.RequestsPerSecond,
 			UserAgent:         h.State.Config.Crawler.UserAgent,
 			StateCh:           stateCh,
-			LLMConfig:         h.State.Config.Extraction.LLM,
 			JitterFactor:      h.State.Config.Crawler.Stealth.JitterFactor,
 			StealthStrategy:   stealthStrategy,
 		}
 		crawler.RunCrawl(opts)
 	}()
 
-	// Return immediately with job ID
 	c.JSON(http.StatusOK, types.CrawlStartResponse{
 		Success: true,
 		ID:      id,
@@ -272,8 +257,6 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 }
 
 // GetCrawlStatus handles GET /v1/crawl/:id - returns the current state of a crawl job.
-// Includes status (in_progress, completed, failed), progress (total/completed),
-// and the scraped data if completed.
 func (h *Handler) GetCrawlStatus(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -291,7 +274,6 @@ func (h *Handler) GetCrawlStatus(c *gin.Context) {
 }
 
 // CancelCrawl handles DELETE /v1/crawl/:id - cancels a running crawl job.
-// Removes the job from tracking; the running crawler goroutine will stop on next iteration.
 func (h *Handler) CancelCrawl(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -304,11 +286,11 @@ func (h *Handler) CancelCrawl(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Map handles POST /v1/map - discovers all URLs on a website without scraping content.
-// Uses BFS traversal and optionally sitemap.xml to find URLs.
-// Returns a list of discovered links.
+// Map handles POST /v1/map - discovers all URLs on a website without scraping
+// content. Uses BFS traversal and optionally sitemap.xml to find URLs.
+// The actual URL discovery is performed by crawler.DiscoverUrls which uses
+// the shared *core.Scraper for HTML fetches.
 func (h *Handler) Map(c *gin.Context) {
-	// Parse request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Failed to read request body"))
@@ -321,13 +303,11 @@ func (h *Handler) Map(c *gin.Context) {
 		return
 	}
 
-	// Validate URL is provided
 	if req.URL == "" {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("URL is required"))
 		return
 	}
 
-	// Validate URL format
 	if _, urlErr := types.ValidateURL(req.URL); urlErr != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
@@ -337,20 +317,17 @@ func (h *Handler) Map(c *gin.Context) {
 		return
 	}
 
-	// Apply request settings with defaults
 	useSitemap := true
 	if req.UseSitemap != nil {
 		useSitemap = *req.UseSitemap
 	}
 
 	respectRobots := h.State.Config.Crawler.RespectRobotsTxt
-
 	maxDepth := uint32(h.State.Config.Crawler.DefaultMaxDepth)
 	if req.MaxDepth != nil {
 		maxDepth = uint32(*req.MaxDepth)
 	}
 
-	// Set timeout for URL discovery
 	timeout := 30 * time.Second
 	if req.Timeout != nil && *req.Timeout > 0 {
 		timeout = time.Duration(*req.Timeout) * time.Millisecond
@@ -358,19 +335,17 @@ func (h *Handler) Map(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Ensure renderer is initialized
-	rend := h.State.Renderer
-	if rend == nil {
-		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("renderer is not initialized"))
+	scraper := h.State.CoreScraper
+	if scraper == nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("scraper is not initialized"))
 		return
 	}
 
-	// Discover URLs via BFS and optional sitemap parsing
 	urls, discoverErr := crawler.DiscoverUrls(
 		req.URL,
 		maxDepth,
 		useSitemap,
-		rend,
+		scraper,
 		respectRobots,
 		h.State.Config.Crawler.MaxConcurrency,
 		h.State.Config.Crawler.RequestsPerSecond,
@@ -399,7 +374,9 @@ func (h *Handler) Map(c *gin.Context) {
 	})
 }
 
-// Search handles POST /v1/search - searches DuckDuckGo and returns results with scraped content.
+// Search handles POST /v1/search - searches DuckDuckGo and returns results
+// with scraped content. Each result is fetched via the shared *core.Scraper
+// so the search path uses the same code as /v1/scrape.
 func (h *Handler) Search(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -431,12 +408,11 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	rend := h.State.Renderer
-	if rend == nil {
-		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("renderer is not initialized"))
+	scraper := h.State.CoreScraper
+	if scraper == nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("scraper is not initialized"))
 		return
 	}
-	llmConfig := h.State.Config.Extraction.LLM
 
 	const maxWorkers = 10
 	semaphore := make(chan struct{}, maxWorkers)
@@ -478,9 +454,9 @@ func (h *Handler) Search(c *gin.Context) {
 			}
 
 			renderJS := req.RenderJS
-			scrapeReq := &types.ScrapeRequest{
+			scrapeReq := &core.ScrapeRequest{
 				URL:      result.Href,
-				Formats:  req.Formats,
+				Formats:  scrapeFormatsToStrings(req.Formats),
 				RenderJS: &renderJS,
 			}
 
@@ -490,29 +466,27 @@ func (h *Handler) Search(c *gin.Context) {
 				URL:         result.Href,
 			}
 
-			data, scrapeErr := crawler.ScrapeURL(
-				scrapeReq,
-				rend,
-				llmConfig,
-				h.State.Config.Crawler.Stealth.Enabled,
-				&renderJS,
-				utils.HeaderStrategy(h.State.Config.Crawler.Stealth.Strategy),
-			)
-
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
+			cancel()
 			if scrapeErr != nil {
 				log.Printf("search: failed to scrape %s: %v (type=%T)", result.Href, scrapeErr, scrapeErr)
 			} else if data != nil {
 				if data.Markdown != nil {
-					searchResult.Markdown = data.Markdown
+					s := *data.Markdown
+					searchResult.Markdown = &s
 				}
 				if data.HTML != nil {
-					searchResult.HTML = data.HTML
+					s := *data.HTML
+					searchResult.HTML = &s
 				}
 				if data.RawHTML != nil {
-					searchResult.RawHTML = data.RawHTML
+					s := *data.RawHTML
+					searchResult.RawHTML = &s
 				}
 				if data.PlainText != nil {
-					searchResult.PlainText = data.PlainText
+					s := *data.PlainText
+					searchResult.PlainText = &s
 				}
 				if data.Links != nil {
 					searchResult.Links = data.Links
@@ -540,15 +514,26 @@ func (h *Handler) Search(c *gin.Context) {
 	})
 }
 
-// parseScrapeRequest deserializes a ScrapeRequest from JSON.
-func parseScrapeRequest(body []byte) (types.ScrapeRequest, error) {
-	var req types.ScrapeRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return req, err
+// mapScrapeError converts a *core.QuickCrawlError from the scraper into
+// the (HTTP status, API error code) pair to return to the caller.
+func mapScrapeError(scrapeErr *core.QuickCrawlError) (int, string) {
+	status := http.StatusInternalServerError
+	code := string(types.CodeInternalErr)
+	switch scrapeErr.Code {
+	case core.CodeInvalidURL, core.CodeInvalidRequest:
+		status = http.StatusBadRequest
+		code = string(types.CodeInvalidRequest)
+	case core.CodeExtractionError:
+		status = http.StatusUnprocessableEntity
+		code = string(types.CodeExtractionErr)
+	case core.CodeTimeout:
+		status = http.StatusGatewayTimeout
+		code = string(types.CodeTimeout)
+	case core.CodeRateLimited:
+		status = http.StatusTooManyRequests
+		code = string(types.CodeRateLimited)
 	}
-
-	req.Defaults()
-	return req, nil
+	return status, code
 }
 
 // parseCrawlRequest deserializes a CrawlRequest from JSON.
@@ -557,7 +542,6 @@ func parseCrawlRequest(body []byte) (types.CrawlRequest, error) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		return req, err
 	}
-
 	req.Defaults()
 	return req, nil
 }
@@ -568,7 +552,6 @@ func parseMapRequest(body []byte) (types.MapRequest, error) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		return req, err
 	}
-
 	req.Defaults()
 	return req, nil
 }
@@ -579,109 +562,22 @@ func parseSearchRequest(body []byte) (types.SearchRequest, error) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		return req, err
 	}
-
 	req.Defaults()
 	return req, nil
 }
 
-// hasJSONField checks if the JSON body contains a specific field.
-// Used to detect if a boolean field was explicitly set (vs defaulted).
-func hasJSONField(body []byte, field string) bool {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return false
+// scrapeFormatsToStrings converts []types.OutputFormat into []string for
+// the core.ScrapeRequest. Format values are already strings, this is just
+// a type conversion.
+func scrapeFormatsToStrings(formats []types.OutputFormat) []string {
+	out := make([]string, len(formats))
+	for i, f := range formats {
+		out[i] = string(f)
 	}
-	_, ok := raw[field]
-	return ok
+	return out
 }
 
 // stringPtr is a helper to create a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
-}
-
-// calculateMaxResponseLength finds the largest content length among all output formats.
-// Used to determine if a 4xx response is actually an error or just small content.
-func calculateMaxResponseLength(data *types.ScrapeData) int {
-	maxLen := 0
-	if data.Markdown != nil && len(*data.Markdown) > maxLen {
-		maxLen = len(*data.Markdown)
-	}
-	if data.PlainText != nil && len(*data.PlainText) > maxLen {
-		maxLen = len(*data.PlainText)
-	}
-	if data.HTML != nil && len(*data.HTML) > maxLen {
-		maxLen = len(*data.HTML)
-	}
-	if data.RawHTML != nil && len(*data.RawHTML) > maxLen {
-		maxLen = len(*data.RawHTML)
-	}
-	return maxLen
-}
-
-// hasErrorOccurred checks if an interface/slice/map/pointer error is non-nil.
-// More thorough than err != nil for interface error types.
-func hasErrorOccurred(err error) bool {
-	if err == nil {
-		return false
-	}
-	v := reflect.ValueOf(err)
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return !v.IsNil()
-	default:
-		return true
-	}
-}
-
-// getErrorMessageSafe extracts error message, returning "internal error" on panic.
-func getErrorMessageSafe(err error) (message string) {
-	message = "internal error"
-	defer func() {
-		if recover() != nil {
-			message = "internal error"
-		}
-	}()
-	if err != nil {
-		message = err.Error()
-	}
-	return message
-}
-
-// writequickcrawlErrorGin writes an error response, mapping QuickCrawlError codes to HTTP status codes.
-func writequickcrawlErrorGin(c *gin.Context, err error) {
-	if err == nil {
-		c.JSON(http.StatusInternalServerError, types.APIResponse[struct{}]{
-			Success:   false,
-			Error:     stringPtr("internal error"),
-			ErrorCode: stringPtr(string(types.CodeInternalErr)),
-		})
-		return
-	}
-
-	status := http.StatusInternalServerError
-	message := "internal error"
-	code := types.CodeInternalErr
-
-	// Handle QuickCrawlError with structured error codes
-	if quickcrawlErr, ok := err.(*types.QuickCrawlError); ok && quickcrawlErr != nil {
-		message = quickcrawlErr.Message
-		code = quickcrawlErr.Code
-		switch quickcrawlErr.Code {
-		case types.CodeInvalidURL, types.CodeInvalidRequest:
-			status = http.StatusBadRequest
-		case types.CodeTimeout:
-			status = http.StatusGatewayTimeout
-		case types.CodeRateLimited:
-			status = http.StatusTooManyRequests
-		}
-	} else if hasErrorOccurred(err) {
-		message = getErrorMessageSafe(err)
-	}
-
-	c.JSON(status, types.APIResponse[struct{}]{
-		Success:   false,
-		Error:     &message,
-		ErrorCode: stringPtr(string(code)),
-	})
 }

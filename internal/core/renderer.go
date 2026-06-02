@@ -273,6 +273,42 @@ func convertTypesError(e *types.QuickCrawlError) *QuickCrawlError {
 	}
 }
 
+// toTypesFetchResult is the inverse of toCoreFetchResult: it adapts a
+// *core.FetchResult back into a *types.FetchResult for the legacy crawl
+// pipeline (and any other consumer that expects the types shape). Fields
+// are mapped 1:1; *string fields become pointers to local string copies.
+func toTypesFetchResult(r *FetchResult) *types.FetchResult {
+	if r == nil {
+		return nil
+	}
+	out := &types.FetchResult{
+		URL:          r.URL,
+		StatusCode:   r.StatusCode,
+		HTML:         r.HTML,
+		RawBytes:     r.RawBytes,
+		TimeTaken:    r.TimeTakenMs,
+	}
+	finalURL := r.FinalURL
+	if finalURL == "" {
+		finalURL = r.URL
+	}
+	out.FinalURL = &finalURL
+	contentType := r.ContentType
+	if contentType != "" {
+		out.ContentType = &contentType
+	}
+	rendered := r.RenderedWith
+	if rendered == "" {
+		rendered = "http"
+	}
+	out.RenderedWith = &rendered
+	if r.Warning != nil {
+		w := *r.Warning
+		out.Warning = &w
+	}
+	return out
+}
+
 // fetchWithCDPBrowser loads a URL in a headless Chrome browser via chromedp.
 // It acquires a per-host concurrency slot, creates an isolated browser context,
 // navigates to the URL, waits for JavaScript to render, and extracts the HTML.

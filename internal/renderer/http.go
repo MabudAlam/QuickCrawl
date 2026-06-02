@@ -1,3 +1,8 @@
+// Package renderer provides the shared HTTP fetcher used by the
+// chromedp-based *core.Scraper. The legacy FallbackRenderer, CDP
+// transports, browser pool, and LightPanda support have been removed;
+// internal/core now owns the browser pipeline and shares this HTTP
+// fetcher for the no-JS path.
 package renderer
 
 import (

@@ -128,7 +128,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		IncludeTags: opts.IncludeTags,
 		ExcludeTags: opts.ExcludeTags,
 		CSSSelector: opts.CSSSelector,
-		OnlyMain:    opts.OnlyMain,
 	})
 
 	// ── Step 3: Post-process HTML ─────────────────────────────────────────────

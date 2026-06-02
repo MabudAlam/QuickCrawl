@@ -140,18 +140,16 @@ ok "Server is up."
 #   F4 multi-format        (markdown + html + links + imageLinks)
 #   F5 cssSelector         (targeted extraction)
 #   F6 include/excludeTags (sanitization path)
-#   F7 onlyMain=false      (full-page extraction)
-#   F8 browser=chrome      (pin to chrome for /scrape chain)
+#   F7 browser=chrome      (pin to chrome for /scrape chain)
 #
 FEATURE_BODIES=(
-  "F1_http_baseline|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true}"
-  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\"}"
-  "F3_renderJs_wait2s|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\",\"waitFor\":2000}"
-  "F4_multi_format|{\"url\":\"__URL__\",\"formats\":[\"markdown\",\"html\",\"links\",\"imageLinks\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\"}"
-  "F5_css_selector|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\",\"cssSelector\":\"body\"}"
-  "F6_tag_filter|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\",\"includeTags\":[\"h1\",\"h2\",\"p\"],\"excludeTags\":[\"script\",\"style\",\"nav\"]}"
-  "F7_onlyMain_false|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":false,\"renderJs\":true,\"browser\":\"chrome\"}"
-  "F8_browser_chrome_pin|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\"}"
+  "F1_http_baseline|{\"url\":\"__URL__\",\"formats\":[\"markdown\"]}"
+  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\"}"
+  "F3_renderJs_wait2s|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"waitFor\":2000}"
+  "F4_multi_format|{\"url\":\"__URL__\",\"formats\":[\"markdown\",\"html\",\"links\",\"imageLinks\"],\"renderJs\":true,\"browser\":\"chrome\"}"
+  "F5_css_selector|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"cssSelector\":\"body\"}"
+  "F6_tag_filter|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"includeTags\":[\"h1\",\"h2\",\"p\"],\"excludeTags\":[\"script\",\"style\",\"nav\"]}"
+  "F7_browser_chrome_pin|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\"}"
 )
 
 # ---------------------------------------------------------------------------

@@ -168,7 +168,6 @@ type HTMLPreprocessOptions struct {
 	IncludeTags   []string
 	ExcludeTags   []string
 	CSSSelector   *string
-	OnlyMain      bool
 	BypassFilters bool
 }
 
@@ -188,10 +187,6 @@ func preprocessHTML(rawHTML string, opts HTMLPreprocessOptions) string {
 	}
 
 	cleaned = applyNoisePatterns(cleaned)
-
-	if !opts.BypassFilters && opts.OnlyMain {
-		cleaned = ExtractMainContent(cleaned)
-	}
 
 	if !opts.BypassFilters && opts.CSSSelector != nil {
 		cleaned = applyCSSSelector(cleaned, *opts.CSSSelector)
