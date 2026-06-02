@@ -146,6 +146,7 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
   const [searchTimeLimit, setSearchTimeLimit] = useState("");
   const [searchFormats, setSearchFormats] = useState<Format[]>(["markdown"]);
   const [searchRenderJs, setSearchRenderJs] = useState(false);
+  const [searchScrape, setSearchScrape] = useState(false);
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -238,9 +239,10 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           timelimit: searchTimeLimit || undefined,
           renderJs: searchRenderJs,
           formats: searchFormats,
+          scrape: searchScrape,
         } as SearchRequest;
     }
-  }, [endpoint, url, scrapeOptions, crawlOptions, mapOptions, searchQuery, searchRegion, searchTimeLimit, searchRenderJs, searchFormats]);
+  }, [endpoint, url, scrapeOptions, crawlOptions, mapOptions, searchQuery, searchRegion, searchTimeLimit, searchRenderJs, searchFormats, searchScrape]);
 
   const handleSubmit = async () => {
     const request = buildRequest();
@@ -332,6 +334,7 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
         timelimit: searchTimeLimit || undefined,
         renderJs: searchRenderJs,
         formats: searchFormats,
+        scrape: searchScrape,
       };
 
       const res = await search(request);
@@ -378,6 +381,7 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     setSearchTimeLimit("");
     setSearchFormats(["markdown"]);
     setSearchRenderJs(false);
+    setSearchScrape(false);
     setAdvancedExpanded(false);
     setSchemaBuilderOpen(false);
     setSchemaFields([{ name: "title", type: "string", description: "" }]);
@@ -1069,36 +1073,49 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
 
                   <div className="flex items-center gap-2">
                     <Switch
-                      id="search-render-js"
-                      checked={searchRenderJs}
-                      onCheckedChange={(checked) => setSearchRenderJs(checked)}
+                      id="search-scrape"
+                      checked={searchScrape}
+                      onCheckedChange={(checked) => setSearchScrape(checked)}
                     />
-                    <Label htmlFor="search-render-js" className="text-sm">Render JS</Label>
+                    <Label htmlFor="search-scrape" className="text-sm">Scrape each result</Label>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Output Formats</Label>
-                    <div className="flex flex-wrap gap-3">
-                      {(["markdown", "html", "rawHtml", "plainText", "links"] as Format[]).map(
-                        (format) => (
-                          <div key={format} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`search-${format}`}
-                              checked={searchFormats.includes(format)}
-                              onCheckedChange={(checked) =>
-                                setSearchFormats(checked
-                                  ? [...searchFormats, format]
-                                  : searchFormats.filter((f) => f !== format))
-                              }
-                            />
-                            <Label htmlFor={`search-${format}`} className="text-sm font-normal">
-                              {format}
-                            </Label>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
+                  {searchScrape && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="search-render-js"
+                          checked={searchRenderJs}
+                          onCheckedChange={(checked) => setSearchRenderJs(checked)}
+                        />
+                        <Label htmlFor="search-render-js" className="text-sm">Render JS</Label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Output Formats</Label>
+                        <div className="flex flex-wrap gap-3">
+                          {(["markdown", "html", "rawHtml", "plainText", "links"] as Format[]).map(
+                            (format) => (
+                              <div key={format} className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`search-${format}`}
+                                  checked={searchFormats.includes(format)}
+                                  onCheckedChange={(checked) =>
+                                    setSearchFormats(checked
+                                      ? [...searchFormats, format]
+                                      : searchFormats.filter((f) => f !== format))
+                                  }
+                                />
+                                <Label htmlFor={`search-${format}`} className="text-sm font-normal">
+                                  {format}
+                                </Label>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <Button
                     className="w-full"

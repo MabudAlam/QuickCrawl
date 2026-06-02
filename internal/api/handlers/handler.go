@@ -408,6 +408,24 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
+	if !req.Scrape {
+		searchResults := make([]types.SearchResult, 0, len(results))
+		for _, r := range results {
+			searchResults = append(searchResults, types.SearchResult{
+				Title:       r.Title,
+				Description: r.Body,
+				URL:         r.Href,
+			})
+		}
+		c.JSON(http.StatusOK, types.SearchResponse{
+			Success: true,
+			Data: &types.SearchData{
+				Results: searchResults,
+			},
+		})
+		return
+	}
+
 	scraper := h.State.CoreScraper
 	if scraper == nil {
 		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("scraper is not initialized"))

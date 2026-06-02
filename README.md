@@ -481,7 +481,17 @@ No body required.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/search` | Search DuckDuckGo and scrape results in parallel |
+| `POST` | `/v1/search` | Search DuckDuckGo and optionally scrape results in parallel |
+
+By default `/v1/search` returns only search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content (markdown/html/etc.) from each result URL — 10 workers in parallel.
+
+```json
+{
+  "query": "golang web scraping",
+  "scrape": true,
+  "formats": ["markdown"]
+}
+```
 
 ### 🏥 Health — `/health`
 

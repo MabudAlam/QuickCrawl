@@ -244,6 +244,7 @@ type SearchRequest struct {
 	Timelimit  string         `json:"timelimit,omitempty"`  // Time limit filter (e.g., "d" for day)
 	RenderJS   bool           `json:"renderJs"`             // Enable JavaScript rendering
 	Formats    []OutputFormat `json:"formats"`              // Desired output formats
+	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false)
 }
 
 // Defaults sets default values for optional fields.
