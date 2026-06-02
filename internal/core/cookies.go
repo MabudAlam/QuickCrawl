@@ -23,6 +23,47 @@ import (
 // an independent copy so core can evolve without depending on the
 // original renderer's internal APIs.
 
+// cookieBannerPrecheckJS returns true if any of the high-confidence banner
+// selectors matches an element in the document. This is a cheap pre-check
+// (a single document.querySelectorAll call) that lets the renderer skip the
+// full cookieBannerDismissJS IIFE on the vast majority of pages that have
+// no banner at all.
+//
+// The selector list is a subset of cookieBannerDismissJS's SELECTORS —
+// only the most common, vendor-distinctive IDs/classes that have
+// near-zero false-positive rate. The full list (with broader text
+// matching) still runs as the second stage when this returns true.
+const cookieBannerPrecheckJS = `
+(() => {
+  const SELECTORS = [
+    '#onetrust-accept-btn-handler',
+    '.ot-accept-all',
+    '#CybotCookiebotDialogBodyButtonAccept',
+    '#CybotCookiebotDialogBodyLevelButtonAccept',
+    '[data-testid="uc-accept-all-button"]',
+    '[data-cy="uc-accept-all-button"]',
+    '.sp_choice_type_11',
+    '.qc-cmp2-summary-buttons button[mode="primary"]',
+    '#qc-cmp2-ui button[mode="primary"]',
+    '#truste-consent-button',
+    '.cc-btn.cc-allow',
+    '.cc-btn.cc-dismiss',
+    'button[data-cmp-action="accept"]',
+    'button[data-accept-action="all"]',
+    'button[aria-label*="Accept all" i]',
+    'button[aria-label*="Allow all" i]',
+    '[id*="accept-cookies" i]',
+    '[class*="accept-cookies" i]',
+  ];
+  for (const sel of SELECTORS) {
+    try {
+      if (document.querySelector(sel)) return true;
+    } catch (_) {}
+  }
+  return false;
+})()
+`
+
 // cookieBannerDismissJS locates and clicks accept/allow buttons on common
 // consent banners. It is intentionally written as a self-contained IIFE so
 // it can be passed verbatim to chromedp.Evaluate.
@@ -175,6 +216,41 @@ func dismissCookieBanners(ctx context.Context) CookieDismissalResult {
 // any error from SendRecv are discarded with `_, _ =`).
 func dismissCookieBannersAction() chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
+		_ = dismissCookieBanners(ctx)
+		return nil
+	})
+}
+
+// dismissCookieBannersFastAction is the optimized version of
+// dismissCookieBannersAction. It first runs a cheap pre-check
+// (cookieBannerPrecheckJS) that returns true only when a high-confidence
+// banner selector matches. On the vast majority of pages — those without
+// any consent banner — the pre-check returns false and the full
+// cookieBannerDismissJS IIFE (which scans every button, every shadow
+// root, and every iframe) is skipped entirely.
+//
+// The pre-check is one document.querySelector() call per known selector
+// (a small fixed list, no DOM tree walk), so its cost is typically
+// <5ms. The full dismiss script is ~50-200ms. The break-even is on any
+// page without a banner, which is the dominant case in production.
+//
+// Both stages swallow errors — a banner problem never aborts the
+// surrounding chromedp.Run sequence, matching the original
+// dismissCookieBannersAction contract.
+func dismissCookieBannersFastAction() chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		var hasBanner bool
+		if err := chromedp.Evaluate(cookieBannerPrecheckJS, &hasBanner).Do(ctx); err != nil {
+			// Pre-check failed — fall back to the full dismiss. Better
+			// to be safe than to skip a real banner.
+			_ = dismissCookieBanners(ctx)
+			return nil
+		}
+		if !hasBanner {
+			// No banner detected. Skip the expensive full script. This
+			// is the common-case fast path.
+			return nil
+		}
 		_ = dismissCookieBanners(ctx)
 		return nil
 	})

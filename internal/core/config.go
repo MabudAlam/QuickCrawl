@@ -10,11 +10,12 @@ type Config struct {
 }
 
 type BrowserConfig struct {
-	Mode        BrowserMode
-	WSURL       string
-	NumBrowsers int
-	PageTimeout time.Duration
-	PoolSize    int
+	Mode            BrowserMode
+	WSURL           string
+	NumBrowsers     int
+	PageTimeout     time.Duration
+	PoolSize        int
+	StealthEnabled  bool // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
 }
 
 type BrowserMode string

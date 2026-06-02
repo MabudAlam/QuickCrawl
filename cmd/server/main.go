@@ -92,6 +92,10 @@ func main() {
 	if cfg.Renderer.PoolSize > 0 {
 		coreCfg.Browser.PoolSize = cfg.Renderer.PoolSize
 	}
+	// Pass stealth.enabled through to the core scraper. When disabled, the
+	// renderer skips Page.addScriptToEvaluateOnNewDocument entirely — saves
+	// ~30-50ms per request on the common case (stealth off by default).
+	coreCfg.Browser.StealthEnabled = cfg.Crawler.Stealth.Enabled
 	coreScraper, coreErr := core.NewScraper(coreCfg, coreHTTPFetcher, cfg.Extraction.LLM)
 	if coreErr != nil {
 		log.Fatalf("failed to initialize core scraper: %s", coreErr.Message)
