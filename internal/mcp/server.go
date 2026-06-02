@@ -50,6 +50,7 @@ type SearchArgs struct {
 	Timelimit  string   `json:"timelimit,omitempty"`
 	RenderJS   bool     `json:"renderJs,omitempty"`
 	Formats    []string `json:"formats,omitempty"`
+	Scrape     bool     `json:"scrape,omitempty"`
 }
 
 func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, any, error) {
@@ -338,6 +339,27 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: `{"results": [], "count": 0}`},
+			},
+		}, nil, nil
+	}
+
+	if !args.Scrape {
+		orderedResults := make([]types.SearchResult, 0, len(results))
+		for _, r := range results {
+			orderedResults = append(orderedResults, types.SearchResult{
+				Title:       r.Title,
+				Description: r.Body,
+				URL:         r.Href,
+			})
+		}
+		response := map[string]interface{}{
+			"results": orderedResults,
+			"count":   len(orderedResults),
+		}
+		data, _ := json.Marshal(response)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: string(data)},
 			},
 		}, nil, nil
 	}
@@ -640,6 +662,10 @@ func searchInputSchema() map[string]any {
 			"renderJs": map[string]any{
 				"type":        "boolean",
 				"description": "Enable JavaScript rendering",
+			},
+			"scrape": map[string]any{
+				"type":        "boolean",
+				"description": "Scrape each result URL and include extracted content (default: false; when false, only metadata is returned)",
 			},
 			"formats": map[string]any{
 				"type":        "array",

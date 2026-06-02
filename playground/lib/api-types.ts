@@ -41,6 +41,7 @@ export interface SearchRequest {
   timelimit?: string;
   renderJs?: boolean;
   formats?: Format[];
+  scrape?: boolean;
 }
 
 export interface SearchResult {
