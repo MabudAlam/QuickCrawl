@@ -101,7 +101,6 @@ function buildRequestBody(
     url,
     formats: formatList,
     renderJs,
-    onlyMain: true,
   }
 
   if (browser) {

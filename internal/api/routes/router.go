@@ -59,7 +59,6 @@ func (r *Router) setupGlobalMiddleware(engine *gin.Engine) {
 // setupRoutes registers all API route handlers.
 func (r *Router) setupRoutes(engine *gin.Engine) {
 	h := handlers.NewHandler(r.State)
-	ch := handlers.NewCoreHandler(r.State)
 
 	// Health check endpoint - returns renderer/browser availability and active job count
 	engine.GET("/health", h.Health)
@@ -67,11 +66,9 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 	// v1 API group
 	v1 := engine.Group("/v1")
 	{
-		// POST /v1/scrape - Scrape a single URL and return content in various formats
+		// POST /v1/scrape - Scrape a single URL using the chromedp-based
+		// *core.Scraper. This is the single canonical scrape path.
 		v1.POST("/scrape", h.Scrape)
-
-		// POST /v1/scrape-core - Scrape using chromedp-based core implementation
-		v1.POST("/scrape-core", ch.ScrapeHandler)
 
 		// POST /v1/crawl - Start an async BFS crawl of a website
 		v1.POST("/crawl", h.StartCrawl)

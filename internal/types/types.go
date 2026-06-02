@@ -78,11 +78,12 @@ type ScrapeRequest struct {
 	JSONSchema          *json.RawMessage  `json:"jsonSchema,omitempty"`          // Schema for JSON output
 	Headers             map[string]string `json:"headers,omitempty"`             // Custom HTTP headers
 	CSSSelector         *string           `json:"cssSelector,omitempty"`         // Extract specific element
-	OnlyMain            bool              `json:"onlyMain,omitempty"`            // Extract only main content area
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
-	Browser             *string           `json:"browser,omitempty"`             // Browser to use (lightpanda, chrome)
+	// Deprecated: Browser is accepted for backward compatibility but ignored.
+	// The new scraper uses chromedp only — there is a single render path.
+	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
 }
 
 // Defaults sets default values for optional fields.
@@ -168,10 +169,11 @@ type CrawlRequest struct {
 	MaxPages *uint32        `json:"maxPages,omitempty"` // Maximum pages to crawl
 	Formats  []OutputFormat `json:"formats"`            // Desired output formats
 
-	RenderJS *bool           `json:"renderJs,omitempty"` // Force JS rendering
-	WaitFor  *int64          `json:"waitFor,omitempty"`  // Wait time in ms
-	Browser  *string         `json:"browser,omitempty"`  // Browser to use (lightpanda, chrome)
-	Extract  *ExtractOptions `json:"extract,omitempty"`  // LLM extraction options
+	RenderJS *bool    `json:"renderJs,omitempty"` // Force JS rendering
+	WaitFor  *int64   `json:"waitFor,omitempty"`  // Wait time in ms
+	// Deprecated: Browser is accepted for backward compatibility but ignored.
+	// The new scraper uses chromedp only.
+	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
 }
 
 // Defaults sets default values for optional fields.
@@ -183,14 +185,13 @@ func (r *CrawlRequest) Defaults() {
 
 // CrawlState represents the current state of a crawl job.
 type CrawlState struct {
-	ID        string          `json:"id,omitempty"`     // Unique job ID
-	Success   bool            `json:"success"`          // Whether job succeeded
-	Status    CrawlStatus     `json:"status"`           // Current status
-	Total     uint32          `json:"total"`            // Total URLs discovered
-	Completed uint32          `json:"completed"`        // Pages successfully scraped
-	Data      []ScrapeData    `json:"data"`             // Scraped page data
-	Answer    json.RawMessage `json:"answer,omitempty"` // Aggregated LLM answer (single answer from all pages)
-	Error     *string         `json:"error,omitempty"`  // Error message if failed
+	ID        string       `json:"id,omitempty"`    // Unique job ID
+	Success   bool         `json:"success"`         // Whether job succeeded
+	Status    CrawlStatus  `json:"status"`          // Current status
+	Total     uint32       `json:"total"`           // Total URLs discovered
+	Completed uint32       `json:"completed"`       // Pages successfully scraped
+	Data      []ScrapeData `json:"data"`            // Scraped page data
+	Error     *string      `json:"error,omitempty"` // Error message if failed
 }
 
 // CrawlStartResponse is returned when a crawl job is started.
@@ -328,19 +329,34 @@ type CdpEndpoint struct {
 	WSURL string `toml:"ws_url" json:"wsUrl"` // WebSocket URL
 }
 
+// BrowserInfo contains information about a running browser instance.
+// The Name and WSURL are surfaced via the /health endpoint and the
+// MCP tool output.
+type BrowserInfo struct {
+	Name  string `json:"name"`  // Browser name (e.g., "chrome")
+	WSURL string `json:"wsUrl"` // Chrome DevTools Protocol WebSocket URL
+}
+
 // =============================================================================
 // Configuration Types
 // =============================================================================
 
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
-	Mode            RendererMode `toml:"mode" json:"mode"`                         // Rendering mode
-	PageTimeoutMs   int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`     // Page load timeout
-	PoolSize        int          `toml:"pool_size" json:"poolSize"`                // Browser pool size
-	RenderJSDefault *bool        `toml:"render_js_default" json:"renderJsDefault"` // Default JS rendering
-	BrowserBinary   string       `toml:"browser_binary" json:"browserBinary"`      // Chrome binary path
-	Lightpanda      *CdpEndpoint `toml:"lightpanda" json:"lightpanda"`             // LightPanda config
-	Chrome          *CdpEndpoint `toml:"chrome" json:"chrome"`                     // Chrome config
+	// Deprecated: Mode is accepted for backward compatibility but ignored.
+	// The new scraper uses chromedp only — there is a single render path.
+	Mode          RendererMode `toml:"mode" json:"mode"`                             // Rendering mode
+	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`         // Page load timeout
+	PoolSize      int          `toml:"pool_size" json:"poolSize"`                    // Browser pool size
+	// Deprecated: RenderJSDefault is accepted for backward compatibility but
+	// ignored. The new scraper defaults to chromedp when the caller does not
+	// set RenderJS explicitly on the request.
+	RenderJSDefault *bool        `toml:"render_js_default" json:"renderJsDefault"`   // Default JS rendering
+	BrowserBinary   string       `toml:"browser_binary" json:"browserBinary"`        // Chrome binary path
+	// Deprecated: Lightpanda is accepted for backward compatibility but
+	// ignored. The new scraper uses chromedp only.
+	Lightpanda *CdpEndpoint `toml:"lightpanda" json:"lightpanda"` // LightPanda config
+	Chrome     *CdpEndpoint `toml:"chrome" json:"chrome"`         // Chrome config
 }
 
 // Defaults sets default values for unset fields.

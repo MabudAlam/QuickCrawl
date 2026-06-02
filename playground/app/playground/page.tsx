@@ -75,10 +75,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
   const [schemaFields, setSchemaFields] = useState<{ name: string; type: string; description: string; itemType?: string }[]>([
     { name: "title", type: "string", description: "" },
   ]);
-  const [crawlSchemaBuilderOpen, setCrawlSchemaBuilderOpen] = useState(false);
-  const [crawlSchemaFields, setCrawlSchemaFields] = useState<{ name: string; type: string; description: string; itemType?: string }[]>([
-    { name: "title", type: "string", description: "" },
-  ]);
 
   const [scrapeOptions, setScrapeOptions] = useState<ScrapeOptions>({
     formats: ["markdown"] as Format[],
@@ -88,7 +84,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     cssSelector: "",
     includeTags: "",
     excludeTags: "",
-    browser: undefined as "lightpanda" | "chrome" | undefined,
     jsonSchema: "",
     extractionPrompt: "",
     extractionResponseFormat: "",
@@ -129,40 +124,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     );
   };
 
-  const generateCrawlSchema = () => {
-    const properties: Record<string, { type: string; description?: string; items?: { type: string } }> = {};
-    const required: string[] = [];
-
-    crawlSchemaFields.forEach((field) => {
-      if (field.name.trim()) {
-        if (field.type === "array") {
-          properties[field.name] = {
-            type: "array",
-            items: { type: field.itemType || "string" },
-            ...(field.description ? { description: field.description } : {}),
-          };
-        } else {
-          properties[field.name] = {
-            type: field.type,
-            ...(field.description ? { description: field.description } : {}),
-          };
-        }
-        required.push(field.name);
-      }
-    });
-
-    return JSON.stringify(
-      {
-        type: "object",
-        properties,
-        required,
-        additionalProperties: false,
-      },
-      null,
-      2
-    );
-  };
-
   const [crawlOptions, setCrawlOptions] = useState<CrawlOptions>({
     maxDepth: 2,
     maxPages: 100,
@@ -171,10 +132,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     waitFor: 0,
     includeTags: "",
     excludeTags: "",
-    browser: undefined as "lightpanda" | "chrome" | undefined,
-    jsonSchema: "",
-    extractionPrompt: "",
-    extractionResponseFormat: "",
     maxMarkdownChars: undefined,
   });
 
@@ -216,15 +173,12 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
             : prev.formats.filter((f) => f !== format),
         }));
       } else {
-        setCrawlOptions((prev) => {
-          const newFormats = checked
+        setCrawlOptions((prev) => ({
+          ...prev,
+          formats: checked
             ? [...prev.formats, format]
-            : prev.formats.filter((f) => f !== format);
-          return {
-            ...prev,
-            formats: newFormats,
-          };
-        });
+            : prev.formats.filter((f) => f !== format),
+        }));
       }
     },
     []
@@ -255,25 +209,11 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           cssSelector: scrapeOptions.cssSelector || undefined,
           includeTags: scrapeOptions.includeTags ? scrapeOptions.includeTags.split(",").map(s => s.trim()) : undefined,
           excludeTags: scrapeOptions.excludeTags ? scrapeOptions.excludeTags.split(",").map(s => s.trim()) : undefined,
-          browser: scrapeOptions.browser,
           extract,
           maxMarkdownChars: scrapeOptions.maxMarkdownChars || undefined,
         } as ScrapeRequest;
       }
       case "crawl": {
-        let extract: CrawlRequest["extract"] = undefined;
-        if (crawlOptions.formats.includes("json") && crawlOptions.jsonSchema.trim()) {
-          try {
-            extract = {
-              schema: JSON.parse(crawlOptions.jsonSchema),
-              prompt: crawlOptions.extractionPrompt.trim() || undefined,
-              responseFormat: crawlOptions.extractionResponseFormat.trim() || undefined,
-            };
-          } catch {
-            // Invalid JSON schema, skip extract
-          }
-        }
-        const includesJson = crawlOptions.formats.includes("json");
         return {
           url,
           maxDepth: crawlOptions.maxDepth,
@@ -281,8 +221,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
           formats: crawlOptions.formats.length ? crawlOptions.formats : ["markdown"],
           renderJs: crawlOptions.renderJs,
           waitFor: crawlOptions.waitFor || undefined,
-          browser: crawlOptions.browser,
-          extract,
           maxMarkdownChars: crawlOptions.maxMarkdownChars || undefined,
         } as CrawlRequest;
       }
@@ -443,8 +381,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
     setAdvancedExpanded(false);
     setSchemaBuilderOpen(false);
     setSchemaFields([{ name: "title", type: "string", description: "" }]);
-    setCrawlSchemaBuilderOpen(false);
-    setCrawlSchemaFields([{ name: "title", type: "string", description: "" }]);
     setScrapeOptions({
       formats: ["markdown"] as Format[],
       renderJs: false,
@@ -453,7 +389,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
       cssSelector: "",
       includeTags: "",
       excludeTags: "",
-      browser: undefined as "lightpanda" | "chrome" | undefined,
       jsonSchema: "",
       extractionPrompt: "",
       extractionResponseFormat: "",
@@ -467,10 +402,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
       waitFor: 0,
       includeTags: "",
       excludeTags: "",
-      browser: undefined as "lightpanda" | "chrome" | undefined,
-      jsonSchema: "",
-      extractionPrompt: "",
-      extractionResponseFormat: "",
       maxMarkdownChars: undefined,
     });
     setMapOptions({
@@ -837,32 +768,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                       />
                       <Label htmlFor="scrape-render" className="text-sm">Render JS</Label>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm">Browser:</Label>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild disabled={!scrapeOptions.renderJs}>
-                          <Button variant="default" size="sm" className="h-8">
-                            {scrapeOptions.browser || "Auto"}
-                            <ChevronDown className="ml-1 h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuRadioGroup
-                            value={scrapeOptions.browser || ""}
-                            onValueChange={(v) =>
-                              setScrapeOptions({
-                                ...scrapeOptions,
-                                browser: v === "" ? undefined : v as "lightpanda" | "chrome",
-                              })
-                            }
-                          >
-                            <DropdownMenuRadioItem value="">Auto</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="lightpanda">LightPanda</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="chrome">Chrome</DropdownMenuRadioItem>
-                          </DropdownMenuRadioGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
                   </div>
 
                   {scrapeOptions.renderJs && (
@@ -989,7 +894,7 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                   <div className="space-y-2">
                     <Label>Output Formats</Label>
                     <div className="flex flex-wrap gap-3">
-                      {(["markdown", "html", "rawHtml", "plainText", "links", "json"] as Format[]).map(
+                      {(["markdown", "html", "rawHtml", "plainText", "links"] as Format[]).map(
                         (format) => (
                           <div key={format} className="flex items-center gap-2">
                             <Checkbox
@@ -1008,159 +913,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                     </div>
                   </div>
 
-                  {crawlOptions.formats.includes("json") && (
-                    <div className="p-3 bg-muted rounded-lg space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">JSON Extraction (requires OpenAI API key)</p>
-                        <Button
-                          variant="noShadow"
-                          size="sm"
-                          onClick={() => setCrawlSchemaBuilderOpen(!crawlSchemaBuilderOpen)}
-                          className="h-7 text-xs"
-                        >
-                          {crawlSchemaBuilderOpen ? "Hide" : "Build"} Schema
-                        </Button>
-                      </div>
-
-                      {crawlSchemaBuilderOpen && (
-                        <div className="p-3 bg-background rounded border space-y-3">
-                          <p className="text-xs text-muted-foreground">Define fields to generate JSON schema</p>
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {crawlSchemaFields.map((field, index) => (
-                              <div key={index} className="flex gap-2 items-center">
-                                <Input
-                                  placeholder="Field name"
-                                  value={field.name}
-                                  onChange={(e) => {
-                                    const updated = [...crawlSchemaFields];
-                                    updated[index].name = e.target.value;
-                                    setCrawlSchemaFields(updated);
-                                  }}
-                                  className="text-sm h-8 flex-1"
-                                />
-                                <select
-                                  value={field.type}
-                                  onChange={(e) => {
-                                    const updated = [...crawlSchemaFields];
-                                    updated[index].type = e.target.value;
-                                    if (e.target.value !== "array") {
-                                      delete updated[index].itemType;
-                                    }
-                                    setCrawlSchemaFields(updated);
-                                  }}
-                                  className="h-8 px-2 text-sm border rounded bg-background"
-                                >
-                                  <option value="string">string</option>
-                                  <option value="number">number</option>
-                                  <option value="boolean">boolean</option>
-                                  <option value="array">array</option>
-                                  <option value="object">object</option>
-                                </select>
-                                {field.type === "array" && (
-                                  <select
-                                    value={field.itemType || "string"}
-                                    onChange={(e) => {
-                                      const updated = [...crawlSchemaFields];
-                                      updated[index].itemType = e.target.value;
-                                      setCrawlSchemaFields(updated);
-                                    }}
-                                    className="h-8 px-2 text-sm border rounded bg-background"
-                                  >
-                                    <option value="string">items: string</option>
-                                    <option value="number">items: number</option>
-                                    <option value="object">items: object</option>
-                                  </select>
-                                )}
-                                <Input
-                                  placeholder="Description (optional)"
-                                  value={field.description}
-                                  onChange={(e) => {
-                                    const updated = [...crawlSchemaFields];
-                                    updated[index].description = e.target.value;
-                                    setCrawlSchemaFields(updated);
-                                  }}
-                                  className="text-sm h-8 flex-1"
-                                />
-                                <Button
-                                  variant="noShadow"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() =>
-                                    setCrawlSchemaFields(crawlSchemaFields.filter((_, i) => i !== index))
-                                  }
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="noShadow"
-                              size="sm"
-                              onClick={() =>
-                                setCrawlSchemaFields([...crawlSchemaFields, { name: "", type: "string", description: "" }])
-                              }
-                              className="h-7 text-xs"
-                            >
-                              Add Field
-                            </Button>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => {
-                                setCrawlOptions({ ...crawlOptions, jsonSchema: generateCrawlSchema() });
-                              }}
-                              className="h-7 text-xs"
-                            >
-                              Generate Schema
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label htmlFor="crawl-jsonSchema">JSON Schema</Label>
-                        <Textarea
-                          id="crawl-jsonSchema"
-                          value={crawlOptions.jsonSchema}
-                          onChange={(e) =>
-                            setCrawlOptions({ ...crawlOptions, jsonSchema: e.target.value })
-                          }
-                          placeholder='{"type": "object", "properties": {"title": {"type": "string"}}}'
-                          className="font-mono text-sm"
-                          rows={4}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor="crawl-extractionPrompt" className="text-xs">Prompt</Label>
-                          <Input
-                            id="crawl-extractionPrompt"
-                            value={crawlOptions.extractionPrompt}
-                            onChange={(e) =>
-                              setCrawlOptions({ ...crawlOptions, extractionPrompt: e.target.value })
-                            }
-                            placeholder="Extraction prompt..."
-                            className="text-sm h-8"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="crawl-extractionResponseFormat" className="text-xs">Response Format</Label>
-                          <Input
-                            id="crawl-extractionResponseFormat"
-                            value={crawlOptions.extractionResponseFormat}
-                            onChange={(e) =>
-                              setCrawlOptions({ ...crawlOptions, extractionResponseFormat: e.target.value })
-                            }
-                            placeholder="format_name"
-                            className="text-sm h-8"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex flex-wrap items-center gap-2 sm:gap-6">
                     <div className="flex items-center gap-2">
                       <Switch
@@ -1171,32 +923,6 @@ export default function PlaygroundPage({ initialBaseUrl }: PlaygroundPageProps) 
                         }
                       />
                       <Label htmlFor="crawl-render" className="text-sm">Render JS</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm">Browser:</Label>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild disabled={!crawlOptions.renderJs}>
-                          <Button variant="default" size="sm" className="h-8">
-                            {crawlOptions.browser || "Auto"}
-                            <ChevronDown className="ml-1 h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuRadioGroup
-                            value={crawlOptions.browser || ""}
-                            onValueChange={(v) =>
-                              setCrawlOptions({
-                                ...crawlOptions,
-                                browser: v === "" ? undefined : v as "lightpanda" | "chrome",
-                              })
-                            }
-                          >
-                            <DropdownMenuRadioItem value="">Auto</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="lightpanda">LightPanda</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="chrome">Chrome</DropdownMenuRadioItem>
-                          </DropdownMenuRadioGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   </div>
 

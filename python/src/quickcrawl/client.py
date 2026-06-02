@@ -55,7 +55,6 @@ class QuickCrawlClient:
         self,
         url: str,
         formats: list[str] | None = None,
-        only_main_content: bool = True,
         include_tags: list[str] | None = None,
         exclude_tags: list[str] | None = None,
         **kwargs: Any,
@@ -65,7 +64,6 @@ class QuickCrawlClient:
         Args:
             url: The URL to scrape.
             formats: Output formats (markdown, html, links, json). Default: ["markdown"].
-            only_main_content: Extract only main content (no nav/footer). Default: True.
             include_tags: CSS selectors to include.
             exclude_tags: CSS selectors to exclude.
             **kwargs: Additional arguments passed to the CLI.
@@ -77,8 +75,6 @@ class QuickCrawlClient:
 
         if formats:
             args.extend(["--formats", ",".join(formats)])
-        if not only_main_content:
-            args.append("--no-only-main-content")
         if include_tags:
             args.extend(["--include-tags", ",".join(include_tags)])
         if exclude_tags:

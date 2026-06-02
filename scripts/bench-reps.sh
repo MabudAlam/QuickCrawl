@@ -18,8 +18,8 @@ REPS="${REPS:-3}"
 SITES="${SITES:-https://stripe.com/docs/api https://app.slack.com/ https://go.dev/doc/ https://www.cloudflare.com/}"
 
 FEATURES=(
-  "F1_http|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true}"
-  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":true,\"browser\":\"chrome\"}"
+  "F1_http|{\"url\":\"__URL__\",\"formats\":[\"markdown\"]}"
+  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true}"
 )
 
 OUT=$(mktemp -t bench-reps.XXXXXX.csv)

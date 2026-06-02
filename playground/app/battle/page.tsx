@@ -88,7 +88,6 @@ async function scrapeWithQuickCrawl(
         url,
         formats: formatList,
         renderJs,
-        onlyMain: true,
       }),
     })
 

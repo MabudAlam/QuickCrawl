@@ -9,21 +9,19 @@ import (
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/core"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
 // AppState holds the application state including configuration and running jobs.
 // It is the central state manager for the API server, coordinating between
-// the HTTP handlers, renderer, and crawl job tracking.
+// the HTTP handlers, scraper, and crawl job tracking.
 type AppState struct {
-	Config      *types.AppConfig           // Application configuration
-	Renderer    *renderer.FallbackRenderer // Page renderer (HTTP/browser)
-	CoreScraper *core.Scraper              // Core scraper using chromedp
-	CrawlJobs   map[string]CrawlJob        // Active crawl jobs (protected by mu)
-	mu          sync.RWMutex               // Mutex for thread-safe CrawlJobs access
-	ctx         context.Context            // Context for controlling background goroutines
-	cancel      context.CancelFunc         // Cancel function to stop background goroutines
+	Config      *types.AppConfig    // Application configuration
+	CoreScraper *core.Scraper       // Single source of truth for all scraping (HTTP + chromedp)
+	CrawlJobs   map[string]CrawlJob // Active crawl jobs (protected by mu)
+	mu          sync.RWMutex        // Mutex for thread-safe CrawlJobs access
+	ctx         context.Context     // Context for controlling background goroutines
+	cancel      context.CancelFunc  // Cancel function to stop background goroutines
 }
 
 // CrawlJob represents a single crawl job with its metadata and current state.
@@ -46,7 +44,6 @@ func NewAppState(cfg *types.AppConfig) (*AppState, *types.QuickCrawlError) {
 
 	state := &AppState{
 		Config:    cfg,
-		Renderer:  nil,
 		CrawlJobs: make(map[string]CrawlJob),
 		ctx:       ctx,
 		cancel:    cancel,
@@ -148,22 +145,34 @@ func (s *AppState) ActiveCrawlJobCount() int {
 	return len(s.CrawlJobs)
 }
 
-// RendererBrowsersInfo returns information about currently running browser instances.
-// Each BrowserInfo contains the browser name and its WebSocket endpoint URL.
-func (s *AppState) RendererBrowsersInfo() []renderer.BrowserInfo {
-	if s.Renderer == nil {
+// RendererBrowsersInfo returns information about configured browser instances.
+// In the new model there is at most one Chrome (the chromedp RemoteAllocator
+// is connected to a single persistent Chrome instance). The shape mirrors
+// the legacy FallbackRenderer.BrowsersInfo so the /health handler can
+// render it unchanged.
+func (s *AppState) RendererBrowsersInfo() []types.BrowserInfo {
+	if s.CoreScraper == nil {
 		return nil
 	}
-	return s.Renderer.BrowsersInfo()
+	return s.CoreScraper.BrowsersInfo()
+}
+
+// CheckHealth returns the fetcher availability map. Delegates to the
+// core scraper which owns both the HTTP and browser backends.
+func (s *AppState) CheckHealth() map[string]bool {
+	if s.CoreScraper == nil {
+		return map[string]bool{"http": true}
+	}
+	return s.CoreScraper.CheckHealth()
 }
 
 // Close releases all resources held by the application state, including
-// terminating any running browser processes used by the renderer and
-// stopping background goroutines.
+// the core scraper's chromedp RemoteAllocator and stopping background
+// goroutines.
 func (s *AppState) Close() {
 	s.cancel()
-	if s.Renderer != nil {
-		s.Renderer.Close()
+	if s.CoreScraper != nil {
+		_ = s.CoreScraper.Close()
 	}
 }
 

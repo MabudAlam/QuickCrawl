@@ -29,7 +29,6 @@ type ScrapeRequest struct {
 	JSONSchema          *json.RawMessage
 	Headers             map[string]string
 	CSSSelector         *string
-	OnlyMain            bool
 	Extract             *types.ExtractOptions
 	LLMExtractionPrompt *string
 	LLMResponseFormat   *string
@@ -98,7 +97,6 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 		IncludeTags:  req.IncludeTags,
 		ExcludeTags:  req.ExcludeTags,
 		CSSSelector:  req.CSSSelector,
-		OnlyMain:     req.OnlyMain,
 	}
 
 	data := s.extractor.Extract(extractOpts)
@@ -189,4 +187,74 @@ func resolveFormats(formats []string) []types.OutputFormat {
 
 func (s *Scraper) Close() error {
 	return s.renderer.Close()
+}
+
+// Renderer exposes the underlying *Renderer so callers (crawl, map) can do
+// their own raw fetch + extract without going through the full LLM-aware
+// Scrape pipeline. This is the single seam between the scraper and the
+// fetch-only paths that need HTML for link discovery or per-page markdown
+// generation.
+func (s *Scraper) Renderer() *Renderer {
+	return s.renderer
+}
+
+// CheckHealth reports fetcher availability. Returns one entry for "http"
+// (always true) and one for "chrome" (true when a browser WS URL is
+// configured). The shape mirrors the legacy FallbackRenderer.CheckHealth
+// so the Health handler can render it unchanged.
+func (s *Scraper) CheckHealth() map[string]bool {
+	return map[string]bool{
+		"http":  true,
+		"chrome": s.renderer != nil && s.renderer.allocCtx != nil,
+	}
+}
+
+// JSRendererNames returns the names of configured JS renderers. The new
+// model has a single backend (chromedp → Chrome), so the slice is either
+// empty (no browser configured) or ["chrome"].
+func (s *Scraper) JSRendererNames() []string {
+	if s.renderer == nil || s.renderer.allocCtx == nil {
+		return nil
+	}
+	return []string{"chrome"}
+}
+
+// BrowsersInfo returns information about configured browser instances.
+// In the new model there is at most one Chrome (connected via the
+// RemoteAllocator's WebSocket URL), so the slice has length 0 or 1.
+func (s *Scraper) BrowsersInfo() []types.BrowserInfo {
+	if s.renderer == nil || s.renderer.cfg.WSURL == "" {
+		return nil
+	}
+	return []types.BrowserInfo{
+		{
+			Name:  "chrome",
+			WSURL: s.renderer.cfg.WSURL,
+		},
+	}
+}
+
+// FetchHTML is a thin wrapper around the underlying *Renderer that returns
+// a *types.FetchResult. It is used by the crawl and map pipelines which
+// need a types.FetchResult shape to feed into the shared extractor.
+//
+// renderJS=false → HTTP-only fetch via the shared *renderer.HTTPFetcher.
+// renderJS=true  → chromedp-based browser fetch (full JavaScript).
+//
+// The preferredBrowser parameter is accepted for backwards compatibility
+// with the legacy FallbackRenderer.Fetch signature. The new model has a
+// single browser backend, so this argument is ignored.
+func (s *Scraper) FetchHTML(
+	ctx context.Context,
+	rawURL string,
+	headers map[string]string,
+	renderJS bool,
+	waitMs int64,
+	preferredBrowser *string,
+) (*types.FetchResult, *QuickCrawlError) {
+	result, err := s.renderer.FetchOrchestrator(ctx, rawURL, headers, renderJS, waitMs)
+	if err != nil {
+		return nil, err
+	}
+	return toTypesFetchResult(result), nil
 }

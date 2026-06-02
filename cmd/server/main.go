@@ -8,105 +8,54 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
 	"github.com/MabudAlam/quickcrawl/internal/core"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
-	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
-// main initializes and starts the quickcrawl HTTP server.
-// It loads configuration, sets up the renderer and handlers,
-// then listens for incoming requests.
 func main() {
 	// Step 1: Load configuration from TOML file + environment variables.
-	// Config includes server port, crawler settings, renderer mode, etc.
 	cfg, err := api.LoadConfig()
 	if err != nil {
 		log.Fatalf("failed to load config: %s", err.Error())
 	}
 
-	// Step 2: Initialize application state.
-	// AppState holds crawl job tracking (in-memory map protected by mutex),
-	// and manages job expiration via a background goroutine.
+	// Log deprecation notice for legacy renderer fields. The new scraper
+	// uses chromedp only; Mode and Lightpanda are accepted for
+	// backward-compat but ignored at runtime.
+	if cfg.Renderer.Mode != "" && string(cfg.Renderer.Mode) != "auto" {
+		log.Printf("warning: renderer.mode=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Mode)
+	}
+	if cfg.Renderer.Lightpanda != nil && cfg.Renderer.Lightpanda.WSURL != "" {
+		log.Printf("warning: renderer.lightpanda=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Lightpanda.WSURL)
+	}
+
+	// Step 2: Build the shared *core.Scraper.
+	// This is the single bootstrap that wires together the HTTP fetcher,
+	// the chromedp-based renderer, and the LLM extractor — and is the
+	// single render path used by /v1/scrape, /v1/crawl, /v1/map, and /v1/search.
+	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if scrapeErr != nil {
+		log.Fatalf("failed to initialize core scraper: %s", scrapeErr.Message)
+	}
+
+	// Step 3: Initialize application state.
+	// AppState holds the *core.Scraper and the crawl job tracking map.
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
+		_ = scraper.Close()
 		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
 	}
-
-	// Step 3a: Discover the current Chrome WebSocket URL.
-	// The hardcoded browser ID in the config goes stale every time Chrome
-	// restarts (the WS upgrade would then 404). Probing /json/version
-	// returns the current session's URL, which is what Puppeteer,
-	// Playwright, and chromedp all use as their canonical discovery path.
-	// Both the FallbackRenderer (Step 3) and the core scraper (Step 3c)
-	// must be initialized with the same discovered URL, so this happens
-	// before either.
-	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
-		discovered, discErr := utils.DiscoverBrowserWSURL(context.Background(), cfg.Renderer.Chrome.WSURL)
-		if discErr != nil {
-			log.Printf("warning: browser WS URL discovery failed (%v) — falling back to configured value %q", discErr, cfg.Renderer.Chrome.WSURL)
-		} else {
-			log.Printf("discovered chrome WS URL: %s", discovered)
-			cfg.Renderer.Chrome.WSURL = discovered
-		}
-	}
-
-	// Step 3b: Initialize the page renderer.
-	// FallbackRenderer orchestrates multiple fetch strategies:
-	// - HTTP fetcher (always available, fastest)
-	// - Browser-based fetchers (Chrome, LightPanda) for JS-heavy pages
-	// It uses a fallback pattern: HTTP first, then escalates to browser rendering
-	// when needed (SPA detection, anti-bot challenges, auth blocks).
-	rend, rendererErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendererErr != nil {
-		log.Fatalf("failed to initialize renderer: %s", rendererErr.Message)
-	}
-
-	state.Renderer = rend
-
-	// Step 3c: Build a shared *renderer.HTTPFetcher so both endpoints use the
-	// same HTTP code path (no duplication). The FallbackRenderer keeps its own
-	// internal instance because its API is fixed.
-	var coreStealthProfile *utils.HeaderProfile
-	if cfg.Crawler.Stealth.Enabled && cfg.Crawler.Stealth.InjectHeaders {
-		profile := utils.GetHeaderProfile(utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy))
-		coreStealthProfile = &profile
-	}
-	coreHTTPFetcher := renderer.NewHTTPFetcher(cfg.Crawler.UserAgent, coreStealthProfile)
-
-	// Step 3d: Initialize the core scraper (chromedp-based) with the shared HTTP fetcher.
-	coreCfg := core.DefaultConfig()
-	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
-		coreCfg.Browser.WSURL = strings.TrimSpace(cfg.Renderer.Chrome.WSURL)
-	}
-	if cfg.Renderer.PoolSize > 0 {
-		coreCfg.Browser.PoolSize = cfg.Renderer.PoolSize
-	}
-	// Pass stealth.enabled through to the core scraper. When disabled, the
-	// renderer skips Page.addScriptToEvaluateOnNewDocument entirely — saves
-	// ~30-50ms per request on the common case (stealth off by default).
-	coreCfg.Browser.StealthEnabled = cfg.Crawler.Stealth.Enabled
-	coreScraper, coreErr := core.NewScraper(coreCfg, coreHTTPFetcher, cfg.Extraction.LLM)
-	if coreErr != nil {
-		log.Fatalf("failed to initialize core scraper: %s", coreErr.Message)
-	}
-	state.CoreScraper = coreScraper
+	state.CoreScraper = scraper
 
 	// Step 4: Ensure cleanup on shutdown.
 	defer state.Close()
 
 	// Step 5: Log running browser instances for debugging.
-	browsers := rend.BrowsersInfo()
+	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
 		for _, b := range browsers {
 			log.Printf("browser started: %s (%s)", b.Name, b.WSURL)
@@ -114,14 +63,6 @@ func main() {
 	}
 
 	// Step 6: Set up Gin router with routes and middleware.
-	// Routes:
-	//   GET  /health           - Health check with renderer/browser status
-	//   POST /v1/scrape        - Scrape a single URL
-	//   POST /v1/crawl         - Start an async BFS crawl job
-	//   GET  /v1/crawl/:id     - Get crawl job status/results
-	//   DELETE /v1/crawl/:id   - Cancel a crawl job
-	//   POST /v1/map           - Discover URLs without scraping content
-	// Middleware: CORS, optional rate limiting
 	router := routes.NewRouter(state, cfg.Server.RateLimitRPS)
 	engine := router.Setup()
 
@@ -133,7 +74,6 @@ func main() {
 		Handler: engine,
 	}
 
-	// Start server in a goroutine
 	go func() {
 		log.Printf("quickcrawl starting on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
