@@ -103,9 +103,12 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	}
 	crawlReq.Defaults()
 
-	cfg, err := loadConfig()
+	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
+	}
+	if teardown != nil {
+		defer teardown()
 	}
 
 	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)

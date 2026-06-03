@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
 func TestFindAvailableLocalPort(t *testing.T) {
@@ -56,8 +58,6 @@ func TestWaitForCDPEndpointURL_MissingField(t *testing.T) {
 }
 
 func TestWaitForCDPEndpointURL_EndpointDown(t *testing.T) {
-	// Bind a port, immediately close it, then point waitForCDPEndpointURL
-	// at the now-dead port. The poll loop should time out cleanly.
 	port, err := findAvailableLocalPort()
 	if err != nil {
 		t.Fatalf("failed to allocate port: %v", err)
@@ -91,14 +91,14 @@ func TestLightpandaDownloadURL(t *testing.T) {
 }
 
 func TestLookPath_FindsCommand(t *testing.T) {
-	if path, ok := lookPath("sh"); !ok || path == "" {
-		t.Errorf("expected sh to be on PATH (path=%q ok=%v)", path, ok)
+	if got := lookPath("sh"); got == "" {
+		t.Errorf("expected sh to be on PATH, got empty")
 	}
 }
 
 func TestLookPath_MissingCommand(t *testing.T) {
-	if path, ok := lookPath("definitely-not-a-real-binary-xyz"); ok || path != "" {
-		t.Errorf("expected ok=false for missing binary (path=%q ok=%v)", path, ok)
+	if got := lookPath("definitely-not-a-real-binary-xyz"); got != "" {
+		t.Errorf("expected empty for missing binary, got %q", got)
 	}
 }
 
@@ -133,12 +133,15 @@ func TestLightPandaLauncher_NilSafe(t *testing.T) {
 }
 
 func TestFindOrDownloadLightPandaBinary_ExistingOnPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PATH manipulation is awkward on Windows")
+	}
 	tmp := t.TempDir()
-	t.Setenv("PATH", tmp)
 	binPath := filepath.Join(tmp, "lightpanda")
 	if err := os.WriteFile(binPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("failed to write fake binary: %v", err)
 	}
+	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	got, err := findOrDownloadLightPandaBinary()
 	if err != nil {
@@ -156,8 +159,6 @@ func TestFindOrDownloadLightPandaBinary_NoPathNoHome(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("PATH", tmp)
 
-	// Point HOME at a path that cannot exist to force the managed-path
-	// branch to fail before the download is attempted.
 	impossible := filepath.Join(tmp, "does", "not", "exist")
 	t.Setenv("HOME", impossible)
 	if runtime.GOOS == "windows" {
@@ -166,6 +167,29 @@ func TestFindOrDownloadLightPandaBinary_NoPathNoHome(t *testing.T) {
 
 	if _, err := findOrDownloadLightPandaBinary(); err == nil {
 		t.Error("expected error when neither PATH nor home yields a binary, got nil")
+	}
+}
+
+func TestEnsureRenderer_AlreadyConfigured(t *testing.T) {
+	cfg := &types.AppConfig{}
+	cfg.Defaults()
+	cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: "ws://127.0.0.1:9222/devtools/browser/abc"}
+
+	teardown, err := EnsureRenderer(cfg)
+	if err != nil {
+		t.Fatalf("EnsureRenderer with configured WS URL: %v", err)
+	}
+	if teardown != nil {
+		t.Error("expected nil teardown when WS URL already configured")
+	}
+	if cfg.Renderer.Chrome.WSURL != "ws://127.0.0.1:9222/devtools/browser/abc" {
+		t.Errorf("EnsureRenderer should not mutate configured WS URL, got %q", cfg.Renderer.Chrome.WSURL)
+	}
+}
+
+func TestEnsureRenderer_NilConfig(t *testing.T) {
+	if _, err := EnsureRenderer(nil); err == nil {
+		t.Error("expected error for nil config, got nil")
 	}
 }
 

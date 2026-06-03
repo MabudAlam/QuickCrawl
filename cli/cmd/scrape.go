@@ -105,9 +105,12 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		cssSelector = &scrapeFlags.cssSelector
 	}
 
-	cfg, err := loadConfig()
+	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
+	}
+	if teardown != nil {
+		defer teardown()
 	}
 
 	if cfg.Crawler.RespectRobotsTxt {
