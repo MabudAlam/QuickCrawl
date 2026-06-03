@@ -72,13 +72,16 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 	cfg.Defaults()
 
 	coreCfg := DefaultConfig()
-	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
+	switch {
+	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "":
 		configuredWS := strings.TrimSpace(cfg.Renderer.Chrome.WSURL)
 		if discovered := discoverChromeWSURL(configuredWS); discovered != "" {
 			coreCfg.Browser.WSURL = discovered
 		} else {
 			coreCfg.Browser.WSURL = configuredWS
 		}
+	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) == "":
+		coreCfg.Browser.WSURL = ""
 	}
 	if cfg.Renderer.PoolSize > 0 {
 		coreCfg.Browser.PoolSize = cfg.Renderer.PoolSize

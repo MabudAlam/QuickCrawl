@@ -120,9 +120,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 // the shared *core.Scraper (chromedp + HTTP). Results are processed
 // concurrently with a configurable number of workers.
 func scrapeSearchResults(results []search.TextResult) error {
-	cfg, err := loadConfig()
+	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
+	}
+	if teardown != nil {
+		defer teardown()
 	}
 
 	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
