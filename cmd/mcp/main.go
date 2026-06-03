@@ -11,7 +11,6 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/browser"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	quickcrawl "github.com/MabudAlam/quickcrawl/internal/mcp"
-	"github.com/MabudAlam/quickcrawl/internal/types"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -39,28 +38,17 @@ func main() {
 	// do this — it requires an explicit WS URL — but the MCP path is
 	// expected to be self-contained, so we provide a default browser
 	// here. The launched process is killed on shutdown.
-	var lightpanda *browser.LightPandaLauncher
-	chromeConfigured := cfg.Renderer.Chrome != nil && cfg.Renderer.Chrome.WSURL != ""
-	if !chromeConfigured {
-		log.Printf("no Chrome WS URL configured; auto-starting LightPanda...")
-		lp, lpErr := browser.StartLightPanda()
-		if lpErr != nil {
-			log.Fatalf("failed to auto-start LightPanda: %s\nhint: set [renderer.chrome] ws_url in quickcrawl.toml to point at a running Chrome", lpErr.Error())
-		}
-		lightpanda = lp
-		if cfg.Renderer.Chrome == nil {
-			cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: lp.WSURL()}
-		} else {
-			cfg.Renderer.Chrome.WSURL = lp.WSURL()
-		}
-		log.Printf("LightPanda started: ws=%s", lp.WSURL())
+	teardown, ensureErr := browser.EnsureRenderer(cfg)
+	if ensureErr != nil {
+		log.Fatalf("%s", ensureErr.Error())
 	}
-	defer func() {
-		if lightpanda != nil {
-			lightpanda.Stop()
+	if teardown != nil {
+		log.Printf("LightPanda started: ws=%s", cfg.Renderer.Chrome.WSURL)
+		defer func() {
+			teardown()
 			log.Println("LightPanda stopped")
-		}
-	}()
+		}()
+	}
 
 	// Build the shared *core.Scraper. This is the single render path
 	// used by every MCP tool — the same code path as the HTTP API.
