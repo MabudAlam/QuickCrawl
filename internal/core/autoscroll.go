@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
@@ -380,11 +380,10 @@ func AutoScrollAction(opts AutoScrollOptions) chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		result, err := RunAutoScroll(ctx, opts)
 		if err != nil {
-			log.Printf("autoscroll: %v", err)
+			utils.Log.Info("autoscroll error", "error", err)
 			return nil
 		}
-		log.Printf("autoscroll: reason=%s steps=%d height=%d",
-			result.Reason, result.Steps, result.Height)
+		utils.Log.Info("autoscroll result", "reason", result.Reason, "steps", result.Steps, "height", result.Height)
 		return nil
 	})
 }

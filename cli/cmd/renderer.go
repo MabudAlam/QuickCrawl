@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/MabudAlam/quickcrawl/internal/browser"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // loadConfigWithRenderer loads the application config and, when no
@@ -32,7 +32,7 @@ func loadConfigWithRenderer() (cfg *types.AppConfig, teardown func(), err error)
 		return nil, nil, ensureErr
 	}
 	if teardown != nil {
-		log.Printf("LightPanda auto-started: ws=%s", cfg.Renderer.Chrome.WSURL)
+		utils.Log.Info("LightPanda auto-started", "ws", cfg.Renderer.Chrome.WSURL)
 	}
 	return cfg, teardown, nil
 }

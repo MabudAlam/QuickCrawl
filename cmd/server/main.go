@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,23 +13,17 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
 	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 func main() {
+	utils.InitLogger()
+
 	// Step 1: Load configuration from TOML file + environment variables.
 	cfg, err := api.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %s", err.Error())
-	}
-
-	// Log deprecation notice for legacy renderer fields. The new scraper
-	// uses chromedp only; Mode and Lightpanda are accepted for
-	// backward-compat but ignored at runtime.
-	if cfg.Renderer.Mode != "" && string(cfg.Renderer.Mode) != "auto" {
-		log.Printf("warning: renderer.mode=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Mode)
-	}
-	if cfg.Renderer.Lightpanda != nil && cfg.Renderer.Lightpanda.WSURL != "" {
-		log.Printf("warning: renderer.lightpanda=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Lightpanda.WSURL)
+		utils.Log.Error(fmt.Sprintf("failed to load config: %s", err.Error()))
+		os.Exit(1)
 	}
 
 	// Step 2: Build the shared *core.Scraper.
@@ -39,7 +32,8 @@ func main() {
 	// single render path used by /v1/scrape, /v1/crawl, /v1/map, and /v1/search.
 	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if scrapeErr != nil {
-		log.Fatalf("failed to initialize core scraper: %s", scrapeErr.Message)
+		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
+		os.Exit(1)
 	}
 
 	// Step 3: Initialize application state.
@@ -47,7 +41,8 @@ func main() {
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
 		_ = scraper.Close()
-		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
+		utils.Log.Error(fmt.Sprintf("failed to initialize server state: %s", stateErr.Message))
+		os.Exit(1)
 	}
 	state.CoreScraper = scraper
 
@@ -58,7 +53,7 @@ func main() {
 	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
 		for _, b := range browsers {
-			log.Printf("browser started: %s (%s)", b.Name, b.WSURL)
+			utils.Log.Info("browser started", "name", b.Name, "ws_url", b.WSURL)
 		}
 	}
 
@@ -75,9 +70,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("quickcrawl starting on %s", addr)
+		utils.Log.Info(fmt.Sprintf("quickcrawl starting on %s", addr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %s", err.Error())
+			utils.Log.Error(fmt.Sprintf("server error: %s", err.Error()))
+			os.Exit(1)
 		}
 	}()
 
@@ -86,15 +82,16 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down server...")
+	utils.Log.Info("shutting down server...")
 
 	// Give outstanding requests 30 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("server forced to shutdown: %s", err.Error())
+		utils.Log.Error(fmt.Sprintf("server forced to shutdown: %s", err.Error()))
+		os.Exit(1)
 	}
 
-	log.Println("server exited gracefully")
+	utils.Log.Info("server exited gracefully")
 }

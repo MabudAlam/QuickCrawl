@@ -130,6 +130,10 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		CSSSelector: opts.CSSSelector,
 	})
 
+	// The pre processing removes most of the extras from the html content
+
+	contentHTML = ExtractMainContent(contentHTML)
+
 	// ── Step 3: Post-process HTML ─────────────────────────────────────────────
 	// Sanitizer + DOM cleanup + wrapper flattening + formatted document output.
 	contentHTML = postprocessHTML(contentHTML)

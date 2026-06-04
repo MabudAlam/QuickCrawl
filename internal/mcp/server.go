@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -65,8 +65,7 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 	// Log deprecation warning if the caller pinned a renderer/browser.
 	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
 		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
-		log.Printf("[mcp.scrape] warning: 'renderer'/'browser' fields are deprecated and ignored; the new scraper uses chromedp only (renderer=%q browser=%q)",
-			strVal(args.Renderer), strVal(args.Browser))
+		utils.Log.Warn("deprecated renderer/browser fields ignored for scrape", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
 	}
 
 	scraper := s.state.CoreScraper
@@ -137,8 +136,7 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 
 	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
 		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
-		log.Printf("[mcp.crawl] warning: 'renderer'/'browser' fields are deprecated and ignored; the new scraper uses chromedp only (renderer=%q browser=%q)",
-			strVal(args.Renderer), strVal(args.Browser))
+		utils.Log.Warn("deprecated renderer/browser fields ignored for crawl", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
 	}
 
 	maxDepth := uint32(s.config.Crawler.DefaultMaxDepth)
@@ -385,7 +383,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("search MCP: panic recovered while scraping %s: %v", result.Href, rec)
+					utils.Log.Warn("search MCP panic recovered while scraping", "url", result.Href, "error", rec)
 					mu.Lock()
 					resultMap[index] = types.SearchResult{
 						Title:       result.Title,
@@ -400,7 +398,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 			defer func() { <-semaphore }()
 
 			if _, urlErr := types.ValidateURL(result.Href); urlErr != nil {
-				log.Printf("search MCP: skipping invalid URL %s: %v", result.Href, urlErr)
+				utils.Log.Warn("search MCP skipping invalid URL", "url", result.Href, "error", urlErr)
 				mu.Lock()
 				resultMap[index] = types.SearchResult{
 					Title:       result.Title,
@@ -426,7 +424,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 
 			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
 			if scrapeErr != nil {
-				log.Printf("search MCP: failed to scrape %s: %v", result.Href, scrapeErr)
+				utils.Log.Warn("search MCP failed to scrape", "url", result.Href, "error", scrapeErr)
 			} else if data != nil {
 				if data.Markdown != nil {
 					s := *data.Markdown
@@ -553,7 +551,7 @@ func AddTools(server *mcp.Server, s *Server) {
 		InputSchema: searchInputSchema(),
 	}, s.HandleSearch)
 
-	log.Printf("MCP tools registered: quickcrawl_scrape, quickcrawl_crawl, quickcrawl_check_crawl_status, quickcrawl_map, quickcrawl_search")
+	utils.Log.Info("MCP tools registered", "tools", "quickcrawl_scrape, quickcrawl_crawl, quickcrawl_check_crawl_status, quickcrawl_map, quickcrawl_search")
 }
 
 func strVal(p *string) string {

@@ -314,17 +314,6 @@ type CapturedNetworkResponse struct {
 	Body          *string `json:"body,omitempty"`
 }
 
-// RendererMode specifies which rendering backend to use.
-type RendererMode string
-
-// Supported renderer modes.
-const (
-	ModeAuto       RendererMode = "auto"       // Auto-detect (try HTTP, then JS if needed)
-	ModeNone       RendererMode = "none"       // HTTP only, no JavaScript
-	ModeLightpanda RendererMode = "lightpanda" // LightPanda browser
-	ModeChrome     RendererMode = "chrome"     // Chrome browser
-)
-
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
 type CdpEndpoint struct {
 	WSURL string `toml:"ws_url" json:"wsUrl"` // WebSocket URL
@@ -344,27 +333,13 @@ type BrowserInfo struct {
 
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
-	// Deprecated: Mode is accepted for backward compatibility but ignored.
-	// The new scraper uses chromedp only — there is a single render path.
-	Mode          RendererMode `toml:"mode" json:"mode"`                             // Rendering mode
-	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`         // Page load timeout
-	PoolSize      int          `toml:"pool_size" json:"poolSize"`                    // Browser pool size
-	// Deprecated: RenderJSDefault is accepted for backward compatibility but
-	// ignored. The new scraper defaults to chromedp when the caller does not
-	// set RenderJS explicitly on the request.
-	RenderJSDefault *bool        `toml:"render_js_default" json:"renderJsDefault"`   // Default JS rendering
-	BrowserBinary   string       `toml:"browser_binary" json:"browserBinary"`        // Chrome binary path
-	// Deprecated: Lightpanda is accepted for backward compatibility but
-	// ignored. The new scraper uses chromedp only.
-	Lightpanda *CdpEndpoint `toml:"lightpanda" json:"lightpanda"` // LightPanda config
-	Chrome     *CdpEndpoint `toml:"chrome" json:"chrome"`         // Chrome config
+	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
+	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
+	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
 }
 
 // Defaults sets default values for unset fields.
 func (c *RendererConfig) Defaults() {
-	if c.Mode == "" {
-		c.Mode = ModeAuto
-	}
 	if c.PageTimeoutMs == 0 {
 		c.PageTimeoutMs = 30000
 	}
@@ -375,11 +350,10 @@ func (c *RendererConfig) Defaults() {
 
 // StealthConfig configures stealth/bot-detection evasion.
 type StealthConfig struct {
-	Enabled       bool     `toml:"enabled" json:"enabled"`              // Enable stealth mode
-	UserAgents    []string `toml:"user_agents" json:"userAgents"`       // Custom user agents
-	JitterFactor  float64  `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
-	InjectHeaders bool     `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
-	Strategy      string   `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
+	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
+	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
+	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string  `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
@@ -428,7 +402,6 @@ func (c *CrawlerConfig) Defaults() {
 
 // LLMConfig configures LLM-based extraction.
 type LLMConfig struct {
-	Provider         string  `toml:"provider" json:"provider"`                  // LLM provider (openai)
 	APIKey           string  `toml:"api_key" json:"apiKey"`                     // API key
 	Model            string  `toml:"model" json:"model"`                        // Model name
 	BaseURL          *string `toml:"base_url" json:"baseUrl"`                   // Custom API base URL
@@ -439,9 +412,6 @@ type LLMConfig struct {
 
 // Defaults sets default values for unset fields.
 func (l *LLMConfig) Defaults() {
-	if l.Provider == "" {
-		l.Provider = "openai"
-	}
 	if l.Model == "" {
 		l.Model = "gpt-4o-mini"
 	}
@@ -458,16 +428,11 @@ func (l *LLMConfig) Defaults() {
 
 // ExtractionConfig configures the extraction subsystem.
 type ExtractionConfig struct {
-	DefaultFormat string `toml:"default_format" json:"defaultFormat"` // Default output format
-
 	LLM *LLMConfig `toml:"llm" json:"llm"` // LLM settings
 }
 
 // Defaults sets default values for unset fields.
 func (e *ExtractionConfig) Defaults() {
-	if e.DefaultFormat == "" {
-		e.DefaultFormat = "markdown"
-	}
 }
 
 // ServerConfig configures the HTTP server.
@@ -508,15 +473,6 @@ func (c *AppConfig) Defaults() {
 	c.Renderer.Defaults()
 	c.Crawler.Defaults()
 	c.Extraction.Defaults()
-}
-
-// ResolveRenderJS determines the effective JS rendering setting
-// given request override and default value.
-func ResolveRenderJS(request *bool, defaultVal *bool) *bool {
-	if request != nil {
-		return request
-	}
-	return defaultVal
 }
 
 // HTTPClientConfig holds HTTP client settings.
