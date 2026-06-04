@@ -3,14 +3,13 @@ package core
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/chromedp/chromedp"
 )
 
@@ -44,6 +43,7 @@ type FetchResult struct {
 	RenderedWith string  // "http", "browser", or "pdf"
 	TimeTakenMs  uint64  // Time taken in milliseconds
 	Warning      *string // Non-fatal warning (e.g. anti-bot detected)
+	BlockedURLs  []string // URLs blocked by the blocklist (browser path only)
 }
 
 // hostPool limits concurrent browser fetches per-host and globally.
@@ -282,11 +282,11 @@ func toTypesFetchResult(r *FetchResult) *types.FetchResult {
 		return nil
 	}
 	out := &types.FetchResult{
-		URL:          r.URL,
-		StatusCode:   r.StatusCode,
-		HTML:         r.HTML,
-		RawBytes:     r.RawBytes,
-		TimeTaken:    r.TimeTakenMs,
+		URL:        r.URL,
+		StatusCode: r.StatusCode,
+		HTML:       r.HTML,
+		RawBytes:   r.RawBytes,
+		TimeTaken:  r.TimeTakenMs,
 	}
 	finalURL := r.FinalURL
 	if finalURL == "" {
@@ -397,6 +397,9 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	var bodyHTML string
 	var spaResult SPAReadinessResult
 
+	// tracker records blocked request URLs for per-request logging.
+	tracker := &blockedTracker{}
+
 	// blockDetected is set by the early anti-bot check (a quick
 	// OuterHTML of <body> right after Navigate) when the page
 	// looks like a Cloudflare / generic anti-bot challenge. When
@@ -490,6 +493,13 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// mid-navigation), the tracker returns 200 by default.
 	actions := []chromedp.Action{
 		enableNetworkTracking(networkBundle),
+		// Browser request blocklist. Drops analytics, ads, and
+		// trackers at the Fetch CDP domain. Uses the hardcoded
+		// globalBlockedPatterns list (32 patterns) defined in
+		// internal/core/blocklist.go — the same list the engine
+		// ships with. See internal/core/fetch_block.go for the
+		// full design.
+		fetchBlockAction(tracker),
 		// Stealth injection is conditional on the server config. When
 		// stealth.enabled=false (the default), the action is a no-op and
 		// the Page.addScriptToEvaluateOnNewDocument CDP call is skipped,
@@ -682,10 +692,11 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// path's browser_fetcher.go log so the two are easy to compare
 	// side by side. Useful for attributing residual gaps to a
 	// specific stage (anti-bot check, banner dismiss, SPA poll,
-	// extraction). Quiet unless QUICKCRAWL_CORE_DEBUG=1.
-	if os.Getenv("QUICKCRAWL_CORE_DEBUG") == "1" {
-		log.Printf("[core] browser timing for %s (total=%dms): %v", rawURL, stageTimes["chromedpRun"], stageTimes)
-	}
+	// extraction). Only shown at debug level (LOG_LEVEL=debug).
+	utils.Log.Debug("browser timing",
+		"url", rawURL,
+		"total_ms", stageTimes["chromedpRun"],
+	)
 
 	// Step 5c: Handle errors from the chromedp run.
 	if err != nil {
@@ -712,6 +723,7 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 		HTML:         headHTML + bodyHTML,
 		RenderedWith: "browser",
 		TimeTakenMs:  uint64(elapsed.Milliseconds()),
+		BlockedURLs:  tracker.get(),
 	}
 
 	// Step 6: Detect generic anti-bot challenge pages (Cloudflare, CAPTCHA, etc.).
@@ -748,11 +760,13 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// when debug is on. Useful to understand which path fired
 	// (network-idle, text-threshold, selector match) on static
 	// pages — a key signal when comparing /scrape-core to /scrape.
-	if os.Getenv("QUICKCRAWL_CORE_DEBUG") == "1" {
-		log.Printf("[core] SPA exit: state=%s selector=%q text=%d polls=%d duration=%s",
-			spaResult.State, spaResult.MatchedSelector, spaResult.BodyTextLength,
-			spaResult.PollCount, spaResult.Duration.Round(10*time.Millisecond))
-	}
+	utils.Log.Debug("SPA exit",
+		"state", spaResult.State,
+		"selector", spaResult.MatchedSelector,
+		"text_len", spaResult.BodyTextLength,
+		"polls", spaResult.PollCount,
+		"duration", spaResult.Duration.Round(10*time.Millisecond),
+	)
 
 	return result, nil
 }

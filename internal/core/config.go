@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -126,12 +125,12 @@ func discoverChromeWSURL(configuredWSURL string) string {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/json/version", nil)
 	if err != nil {
-		log.Printf("[core] chrome discovery: failed to build request for %s: %v", base, err)
+		utils.Log.Info("chrome discovery: failed to build request", "base", base, "error", err)
 		return ""
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("[core] chrome discovery: failed to reach %s/json/version: %v (using configured WS URL)", base, err)
+		utils.Log.Info("chrome discovery: failed to reach /json/version", "base", base, "error", err)
 		return ""
 	}
 	defer func() {
@@ -140,21 +139,21 @@ func discoverChromeWSURL(configuredWSURL string) string {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[core] chrome discovery: %s/json/version returned HTTP %d (using configured WS URL)", base, resp.StatusCode)
+		utils.Log.Info("chrome discovery: /json/version returned non-200", "base", base, "status", resp.StatusCode)
 		return ""
 	}
 
 	var payload chromeVersionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		log.Printf("[core] chrome discovery: failed to decode response: %v (using configured WS URL)", err)
+		utils.Log.Info("chrome discovery: failed to decode response", "base", base, "error", err)
 		return ""
 	}
 	if payload.WebSocketDebuggerURL == "" {
-		log.Printf("[core] chrome discovery: response missing webSocketDebuggerUrl (using configured WS URL)")
+		utils.Log.Info("chrome discovery: response missing webSocketDebuggerUrl", "base", base)
 		return ""
 	}
 	if payload.WebSocketDebuggerURL != configuredWSURL {
-		log.Printf("[core] chrome discovery: configured WS URL was stale; using live URL %s", payload.WebSocketDebuggerURL)
+		utils.Log.Info("chrome discovery: configured WS URL was stale; using live URL", "url", payload.WebSocketDebuggerURL)
 	}
 	return payload.WebSocketDebuggerURL
 }

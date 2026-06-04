@@ -1,14 +1,18 @@
+//Scrape Joins the API /scrape
+//It validates and applies the waitMs and renderJs and
+//then calls the renderer
+
 package core
 
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 type Scraper struct {
@@ -116,7 +120,8 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("[core] scrape completed: url=%s duration=%v status=%d", req.URL, elapsed, result.StatusCode)
+	blockedStr := strings.Join(result.BlockedURLs, ", ")
+	utils.Log.Info("scrape completed", "url", req.URL, "duration", elapsed, "status", result.StatusCode, "blocked", blockedStr)
 
 	return data, nil
 }
@@ -204,7 +209,7 @@ func (s *Scraper) Renderer() *Renderer {
 // so the Health handler can render it unchanged.
 func (s *Scraper) CheckHealth() map[string]bool {
 	return map[string]bool{
-		"http":  true,
+		"http":   true,
 		"chrome": s.renderer != nil && s.renderer.allocCtx != nil,
 	}
 }
