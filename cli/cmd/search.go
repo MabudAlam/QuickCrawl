@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -95,7 +95,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	// Log deprecation notice if the user pinned a renderer backend.
 	if searchFlags.renderer != "" && searchFlags.renderer != "auto" {
-		log.Printf("[cli.search] warning: --renderer is deprecated and ignored; the new scraper uses chromedp only (value=%q)", searchFlags.renderer)
+		utils.Log.Warn("--renderer is deprecated and ignored; the new scraper uses chromedp only", "value", searchFlags.renderer)
 	}
 
 	engine := search.New()
@@ -156,7 +156,7 @@ func scrapeSearchResults(results []search.TextResult) error {
 			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("search: panic recovered while scraping %s: %v", result.Href, rec)
+					utils.Log.Info(fmt.Sprintf("search: panic recovered while scraping %s: %v", result.Href, rec))
 					mu.Lock()
 					resultMap[index] = types.SearchResult{
 						Title:       result.Title,
@@ -177,7 +177,7 @@ func scrapeSearchResults(results []search.TextResult) error {
 			}
 
 			if _, urlErr := url.Parse(result.Href); urlErr != nil {
-				log.Printf("search: skipping invalid URL %s: %v", result.Href, urlErr)
+				utils.Log.Info(fmt.Sprintf("search: skipping invalid URL %s: %v", result.Href, urlErr))
 				mu.Lock()
 				resultMap[index] = searchResult
 				mu.Unlock()
@@ -196,7 +196,7 @@ func scrapeSearchResults(results []search.TextResult) error {
 			cancel()
 
 			if scrapeErr != nil {
-				log.Printf("search: failed to scrape %s: %v", result.Href, scrapeErr)
+				utils.Log.Info(fmt.Sprintf("search: failed to scrape %s: %v", result.Href, scrapeErr))
 			} else if data != nil {
 				if data.Markdown != nil {
 					s := *data.Markdown

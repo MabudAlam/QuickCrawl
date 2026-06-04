@@ -83,12 +83,13 @@ Quickcrawl MCP server provides AI agents with web scraping capabilities:
 
 | Tool | Description |
 |------|-------------|
-| `quickcrawl_scrape` | Scrape a single URL |
-| `quickcrawl_crawl` | Start async website crawl |
-| `quickcrawl_check_crawl_status` | Check crawl job status |
-| `quickcrawl_cancel_crawl` | Cancel running crawl |
-| `quickcrawl_map` | Discover URLs on a site |
-| `quickcrawl_search` | Search DuckDuckGo |
+| `scrape` | Scrape a single URL |
+| `crawl` | Start async website crawl |
+| `check_crawl_status` | Check crawl job status |
+| `cancel_crawl` | Cancel running crawl |
+| `map` | Discover URLs on a site |
+| `site_map` | Discover URLs without scraping content (sitemap-aware) |
+| `search` | Search DuckDuckGo |
 
 ### OpenCode Integration
 
@@ -109,9 +110,9 @@ Add Quickcrawl to your OpenCode configuration:
 ### Configuration
 
 Renderer selection in MCP:
-- Omit `renderer` or set `renderer: "auto"` to use the configured fallback chain
-- Set `renderer: "lightpanda"` or `"chrome"` to hard-pin a single renderer
-- Pinned renderers imply `renderJs: true` unless `renderJs: false` is set explicitly
+- Set `renderJs: true` to use the configured Chrome browser (chromedp) for the request
+- Set `renderJs: false` (default) to use the plain HTTP fetcher
+- When `[renderer.chrome].ws_url` is unset in `quickcrawl.toml`, MCP auto-launches a local LightPanda and uses its CDP endpoint. The launched process is killed on MCP shutdown.
 
 Example MCP tool arguments:
 
@@ -119,8 +120,7 @@ Example MCP tool arguments:
 {
   "url": "https://www.notion.so/",
   "formats": ["markdown"],
-  "renderJs": true,
-  "renderer": "chrome"
+  "renderJs": true
 }
 ```
 
@@ -254,17 +254,22 @@ graph TD
     LLM --> JSONSchema["📋 JSON Schema Output"]
 ```
 
-### Renderer Fallback Chain
+### Renderer Selection
 
 ```
 Request
      ↓
-HTTP Fetcher (plain HTML, fastest)
-     ↓ (if SPA detected or JS requested)
-LightPanda (headless browser, fast)
-     ↓ (if LightPanda unavailable)
-Chrome DevTools (full browser, most compatible)
+*core.Scraper  (single render path; chromedp + shared HTTPFetcher)
+     ↓
+     ├── renderJs=false → renderer.HTTPFetcher  (plain HTTP GET, no JS)
+     │
+     └── renderJs=true  → chromedp RemoteAllocator → persistent Chrome
+                          (JS rendered, anti-bot stealth, SPA readiness poll)
 ```
+
+Both `cli` and `mcp` entry points auto-launch a local LightPanda when no
+Chrome WS URL is configured (HTTP server does not — it requires a user-supplied
+WS URL and falls back to HTTP-only when none is configured).
 
 ### Scrape API End-to-End Flow
 
@@ -274,104 +279,104 @@ When a client calls `POST /v1/scrape`, Quickcrawl executes the following pipelin
 HTTP POST /v1/scrape
     │
     ▼
-gin_handlers.Scrape()                  [internal/api/handlers/gin_handlers.go:68]
-    │  • Parse request JSON
-    │  • Validate URL
-    │  • Check robots.txt
-    ▼
-crawler.ScrapeURL()                     [internal/crawler/scrape.go:37]
+handlers.Scrape()                       [internal/api/handlers/handler.go:64]
+    │  • Parse + JSON-decode into core.ScrapeRequest
+    │  • Validate URL (http/https required, non-empty)
+    │  • Default formats to ["markdown"] if empty
+    │  • Optional robots.txt check (config: crawler.respect_robots_txt)
     │
-    ├─── (renderJs=false) ───────────────────────────────┐
+    ▼
+core.Scraper.Scrape()                  [internal/core/scraper.go:69]
+    │  • resolveRenderJS()   — request override, defaults to false
+    │  • resolveWaitMs()     — request override, defaults to 0
+    │  • resolveFormats()    — string→types.OutputFormat conversion
+    │
+    ▼
+core.Renderer.FetchOrchestrator()      [internal/core/renderer.go:213]
+    │
+    ├── (renderJs=false) ── HTTP path ──────────────────┐
     │                                                    │
-    ▼                                                    ▼
-renderer.FallbackRenderer.Fetch()     [internal/renderer/renderer.go:185]
+    │                                     renderer.HTTPFetcher.Fetch()
+    │                                     [internal/renderer/http.go]
+    │                                     • HTTP GET with stealth headers
+    │                                     • Returns FetchResult{HTML, StatusCode}
     │
-    ├──────── (HTTP mode) ────────────────────────────►│
-    │                                                    │
-    │                                     HTTPFetcher.Fetch()
-    │                                     [internal/renderer/http.go:76]
-    │                                     • HTTP GET with headers
-    │                                     • Retry on transient errors
-    │                                     • Returns FetchResult{HTML}
-    │
-    └──────── (JS rendering mode) ─────────────────────┐
-                                                     │
-                                                     ▼
-BrowserFetcher.Fetch()               [internal/renderer/browser_fetcher.go:108]
-    │
-    ├── Dial CDP WebSocket               [internal/renderer/cdp_connection.go:131]
-    │   └── resolveBrowserWSURL() → WebSocket handshake
-    │
-    ├── Create browser tab
-    │   └── Target.createTarget → Target.attachToTarget → get sessionID
-    │
-    ├── Enable CDP domains
-    │   └── Page.enable, Runtime.enable, Network.enable
-    │
-    ├── Inject stealth scripts
-    │   └── Page.addScriptToEvaluateOnNewDocument (masks webdriver flag)
-    │
-    ├── Apply headers
-    │   └── Network.setUserAgentOverride, Network.setExtraHTTPHeaders
-    │
-    ├── Start background pumps (goroutines)
-    │   ├─ runNetworkIdlePump     → tracks in-flight requests via
-    │   │                          Network.requestWillBeSent / loadingFinished
-    │   └─ runNetworkCapturePump  → captures XHR/Fetch JSON responses
-    │                                 via Network.responseReceived
-    │
-    ├── Navigate to URL
-    │   └── Page.navigate → WaitForPageReady (Page.loadEventFired)
-    │
-    ├── Dismiss CMP / cookie banners
-    │   └── Runtime.evaluate(cookieBannerDismissScript)
-    │
-    ├── Wait for SPA readiness
-    │   └── waitForSpaContent() — polls for selector + 800+ body chars
-    │                              also blocks on networkTracker.IsIdle()
-    │
-    ├── HTML snapshot
-    │   └── readRenderedHTMLWithShadowDOM()
-    │       └── Runtime.evaluate(shadowDOMFlattenScript)
-    │
-    ├── Stability check (if loading placeholder detected)
-    │   └── waitForPageContentToStabilizeWithShadowDOM()
-    │
-    ├── Auto-scroll (if lazy markers: loading="lazy", data-src, etc.)
-    │   └── Runtime.evaluate(autoScrollScript) → re-snapshot
-    │
-    ├── Auto-click "load more" / "show more" buttons
-    │   └── Runtime.evaluate(autoClickRevealScript) → re-snapshot
-    │
-    ├── Anti-bot challenge retry (up to 3 × 3s)
-    │   └── detectAntiBotChallengePage() → retry loop
-    │
-    └── Cleanup
-        └── Target.closeTarget
-
-    Returns: FetchResult{HTML, StatusCode, CapturedResponses, RenderedWith}
+    └── (renderJs=true)  ── CDP path ───────────────────┐
+                                                      ▼
+core.Renderer.fetchWithCDPBrowser()   [internal/core/renderer.go:334]
+    │  • Acquire per-host concurrency slot
+    │  • Create isolated browser context (chromedp.NewContext)
+    │  • Apply page_timeout_ms to chromedp.Run
+    │  • Action sequence:
+    │      - enableNetworkTracking(networkBundle)
+    │      - stealthInjectionAction()           (when crawler.stealth.enabled)
+    │      - navigateIgnoringHTTPStatus()
+    │      - dismissCookieBannersFastAction()   (when waitMs == 0)
+    │      - WaitForSPAReady()                  (polls for content readiness,
+    │                                            network-idle, or selector hit)
+    │      - autoScrollAction()                 (when waitMs == 0 + lazy markers)
+    │      - OuterHTML of <head> + <body>
+    │  • Anti-bot challenge detection (status 4xx/5xx)
+    │  • Returns FetchResult{HTML, FinalURL, StatusCode, ContentType}
     │
     ▼
-extractor.Extract()                    [internal/extractor/extract.go:110]
+core.Extractor.Extract()               [internal/core/extractor.go]
+    │  • ExtractMetadata — title, description, OG tags, canonical, language
+    │  • preprocessHTML  — strip head, cleanNoise, applyNoisePatterns
+    │                       (and IncludeTags / ExcludeTags / CSSSelector if set)
+    │  • postprocessHTML — sanitize, dedupe, normalize whitespace
+    │  • HTMLToMarkdown  — primary conversion (fullClean → structural → plaintext)
+    │  • HTMLToPlaintext
+    │  • ExtractLinks, ExtractImageURLs
     │
-    ├── ExtractMetadata               — title, description, OG tags, canonical
-    ├── preprocessHTML()              — strip noise, apply CSS selectors
-    ├── postprocessHTML()             — sanitize, cleanup, dedupe
-    ├── HTMLToMarkdown()              — primary markdown conversion
-    │                                    (falls back: fullClean → structural → plaintext)
-    ├── HTMLToPlaintext()
-    ├── ExtractLinks()
-    ├── ExtractImageURLs()
-    │
-    ▼ Returns: ScrapeData{Markdown, HTML, PlainText, Links, Images, Metadata}
+    ▼ Returns: core.ScrapeData{Markdown, HTML, PlainText, Links, ImageLinks, Metadata}
     │
     ▼
-(Optional) LLM Structured Extraction
-    ├── buildLLMInput() → callOpenAIAPI(v1/chat/completions)
-    └── validateDataAgainstSchema()
+(Optional) LLM Structured Extraction   [internal/core/llm.go]
+    │  • Triggered when formats contains "json" and [extraction.llm] is configured
+    │  • buildLLMInput → callOpenAI(chat/completions) → validateDataAgainstSchema
+    │  • Populates data.JSON
+    │
+    ▼
+handlers.Scrape()
+    │  • If statusCode >= 400 and body < 200 chars → surface as failure
+    │  • Else return success with data + warning
     │
     ▼
 c.JSON(http.StatusOK, APIResponse{ScrapeData})
+```
+
+### Crawl API End-to-End Flow
+
+```
+HTTP POST /v1/crawl
+    │
+    ▼
+handlers.StartCrawl()                  [internal/api/handlers/handler.go:166]
+    │  • Parse + JSON-decode into types.CrawlRequest
+    │  • Validate URL, maxDepth (0-10), maxPages (1-1000)
+    │  • Default maxDepth/maxPages from config
+    │  • Reject formats=["json"] with 400 (use /v1/scrape for LLM extraction)
+    │  • Generate job ID, store in AppState.CrawlJobs
+    │
+    ▼
+crawler.RunCrawl()                     [internal/crawler/crawl.go]
+    │  • BFS from seed URL, respecting same-origin
+    │  • robots.txt check per page (if enabled)
+    │  • Per-host rate limiter (crawler.requests_per_second)
+    │  • Per-host + global concurrency slots
+    │  • For each page:
+    │      - core.Scraper.Scrape() (same pipeline as above)
+    │      - Stealth jitter added to inter-request sleep
+    │      - Update CrawlState via stateCh
+    │
+    ▼ Returns: types.CrawlState{Total, Completed, Data[], Status}
+    │
+    ▼
+c.JSON(http.StatusOK, CrawlStartResponse{ID})
+
+GET /v1/crawl/:id  →  handlers.GetCrawlStatus()  →  returns CrawlState
+DELETE /v1/crawl/:id → handlers.CancelCrawl()     →  204 No Content
 ```
 
 ---
@@ -382,40 +387,112 @@ c.JSON(http.StatusOK, APIResponse{ScrapeData})
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/scrape` | Scrape a single URL with multiple output formats |
+| `POST` | `/v1/scrape` | Scrape a single URL with one or more output formats |
 
-**Request:**
+Scrape a single URL. This is the canonical endpoint for fetching and
+extracting content from one page — supports HTTP, browser (JS) rendering,
+content filters, and LLM-based structured extraction.
+
+**Request body** (`core.ScrapeRequest`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Absolute `http://` or `https://` URL to scrape |
+| `formats` | string[] | no | Output formats. One or more of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json`. Defaults to `["markdown"]` |
+| `renderJs` | bool | no | When `true`, fetch the page through a headless Chrome (chromedp). When `false` (default), use plain HTTP via the shared `*renderer.HTTPFetcher` |
+| `waitFor` | int | no | Milliseconds to wait after navigation for late content / XHRs. `0` = use the SPA-readiness poll (default) |
+| `headers` | object | no | Custom HTTP headers sent on the fetch |
+| `includeTags` | string[] | no | CSS selectors to keep (e.g. `["article", "h1"]`) — applied during `preprocessHTML` |
+| `excludeTags` | string[] | no | CSS selectors to drop (e.g. `["nav", "footer", ".ad"]`) |
+| `cssSelector` | string | no | Extract content matching this CSS selector only |
+| `jsonSchema` | object | no | JSON Schema used by `formats:["json"]` to constrain LLM extraction |
+| `extract` | object | no | LLM extraction overrides: `{ schema, prompt, responseFormat }` |
+| `llmExtractionPrompt` | string | no | Per-request LLM system prompt override |
+| `llmResponseFormat` | string | no | Per-request LLM `response_format` name override |
+| `browser` | string | no | **Deprecated.** Accepted for backward-compat; ignored. |
+
+**Minimal request:**
 
 ```json
 {
-  "url": "https://www.mabud.dev/",
-  "formats": ["markdown"],
-  "renderJs": false,
-  "topK": 5
+  "url": "https://example.com"
 }
 ```
 
-**Response:**
+**Full request with filters and JS rendering:**
+
+```json
+{
+  "url": "https://example.com/article",
+  "formats": ["markdown", "html", "links"],
+  "renderJs": true,
+  "waitFor": 2000,
+  "headers": { "Cookie": "session=abc" },
+  "includeTags": ["article", "h1", "h2", "p"],
+  "excludeTags": ["nav", "footer", ".advertisement"]
+}
+```
+
+**Response** (`200 OK` on success):
 
 ```json
 {
   "success": true,
   "data": {
-    "markdown": "# Hey, I'm Mabud.\n\nI build AI native systems...",
+    "markdown": "# Example Domain\n\nThis domain is for use in documentation examples...",
+    "html": "<h1>Example Domain</h1><p>This domain is for use in...</p>",
+    "plainText": "Example Domain This domain is for use in documentation examples...",
+    "links": ["https://www.iana.org/domains/example"],
+    "imageLinks": [],
     "metadata": {
-      "title": "Mabud Alam",
-      "description": "Software Engineer",
-      "ogpTitle": "Mabud Alam",
-      "ogpDescription": "Software Engineer",
-      "sourceURL": "https://www.mabud.dev/",
+      "title": "Example Domain",
+      "description": null,
+      "ogpTitle": null,
+      "ogpDescription": null,
+      "ogpImage": null,
+      "canonicalUrl": null,
+      "sourceURL": "https://example.com",
       "language": "en",
       "statusCode": 200,
       "renderedMode": "http",
-      "timeTaken": 866
+      "timeTaken": 281
     }
+  },
+  "warning": null
+}
+```
+
+`renderedMode` is `"http"` when fetched via the HTTP fetcher, or `"browser"`
+when fetched via chromedp. See `Metadata.renderedMode`.
+
+**LLM-extraction response** (when `formats` includes `"json"`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "...",
+    "json": {
+      "title": "Example Domain",
+      "purpose": "documentation example"
+    },
+    "metadata": { "...": "..." }
   }
 }
 ```
+
+`data.json` is populated only when `[extraction.llm]` is configured in the
+server TOML. See the [LLM Extraction](#-llm-extraction) section below.
+
+**Error responses:**
+
+| Status | Code | Cause |
+|--------|------|-------|
+| `400` | `invalid_request` | Missing `url`, non-http(s) scheme, malformed JSON, or `headers`/`includeTags`/etc. of the wrong type |
+| `400` | `forbidden` | `crawler.respect_robots_txt=true` and the page is disallowed |
+| `500` | `internal_error` | Scraper not initialized |
+| `200` with `success:false` | `http` | Target returned HTTP 4xx/5xx with a small body (surfaced as a soft failure rather than an HTTP error so callers can still inspect the metadata) |
+| `200` with `success:false` | `renderer_error` | Browser path requested but no Chrome WS URL is configured (set `[renderer.chrome].ws_url`) |
 
 ### 🔄 Crawling — `/v1/crawl`
 
@@ -425,25 +502,97 @@ c.JSON(http.StatusOK, APIResponse{ScrapeData})
 | `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
 | `DELETE` | `/v1/crawl/:id` | Cancel a running crawl job |
 
-**Start Crawl Request:**
+Start a BFS crawl from a seed URL. The job runs asynchronously — `POST` returns
+a job ID immediately, and you poll `GET /v1/crawl/:id` for progress and results.
+
+**Request body** (`types.CrawlRequest`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Starting URL |
+| `maxDepth` | int | no | Maximum link depth to follow. `0-10`. Defaults to `crawler.default_max_depth` (TOML) |
+| `maxPages` | int | no | Maximum pages to scrape. `1-1000`. Defaults to `crawler.default_max_pages` (TOML) |
+| `formats` | string[] | no | Output formats per page. Any subset of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`. **Note:** `"json"` is rejected with 400 — use `/v1/scrape` for LLM extraction |
+| `renderJs` | bool | no | Force JS rendering on every page (chromedp path) |
+| `waitFor` | int | no | Milliseconds to wait after each navigation |
+| `browser` | string | no | **Deprecated.** Accepted for backward-compat; ignored. |
+
+**Start crawl request:**
 
 ```json
 {
-  "url": "https://www.mabud.dev/",
+  "url": "https://example.com",
   "maxDepth": 2,
-  "maxPages": 100,
-  "formats": ["markdown"],
+  "maxPages": 50,
+  "formats": ["markdown", "links"],
   "renderJs": false
 }
 ```
 
-**Check Status Request:** `GET /v1/crawl/:id`
+**Start response** (`200 OK`):
 
-No body required.
+```json
+{
+  "success": true,
+  "id": "crawl-1748899200000000000"
+}
+```
 
-**Cancel Request:** `DELETE /v1/crawl/:id`
+**Check status** — `GET /v1/crawl/:id`. No body required.
 
-No body required.
+**Status response while running:**
+
+```json
+{
+  "id": "crawl-1748899200000000000",
+  "success": true,
+  "status": "scraping",
+  "total": 47,
+  "completed": 12,
+  "data": []
+}
+```
+
+**Status response when complete:**
+
+```json
+{
+  "id": "crawl-1748899200000000000",
+  "success": true,
+  "status": "completed",
+  "total": 47,
+  "completed": 47,
+  "data": [
+    {
+      "markdown": "# Example Domain\n\n...",
+      "html": null,
+      "plainText": null,
+      "links": ["https://www.iana.org/domains/example"],
+      "imageLinks": [],
+      "metadata": {
+        "sourceURL": "https://example.com",
+        "statusCode": 200,
+        "renderedMode": "http",
+        "timeTaken": 281
+      }
+    }
+  ]
+}
+```
+
+`status` is one of `pending`, `scraping`, `completed`, `failed`.
+When the crawl fails, `error` contains a human-readable message and
+`success` is `false`.
+
+**Cancel** — `DELETE /v1/crawl/:id`. No body. Returns `204 No Content` on
+success, `404 Not Found` if the job ID is unknown.
+
+**Error responses for `POST /v1/crawl`:**
+
+| Status | Code | Cause |
+|--------|------|-------|
+| `400` | `invalid_request` | Missing `url`, non-http(s) scheme, malformed JSON, or `formats` contains `"json"` |
+| `500` | `internal_error` | Scraper not initialized |
 
 ### 🗺️ Mapping — `/v1/map`
 
@@ -503,48 +652,76 @@ By default `/v1/search` returns only search-result metadata (title, URL, snippet
 
 ## 🧠 LLM Extraction
 
-Quickcrawl supports JSON Schema-based extraction for structured data:
+Quickcrawl supports JSON-Schema-based structured extraction for `/v1/scrape`.
+Add `"json"` to the `formats` array and supply a `jsonSchema` (or `extract.schema`)
+describing the shape you want. The page's markdown is sent to the LLM along
+with the schema, and the response is returned in `data.json`.
+
+**Request:**
 
 ```json
 {
-  "url": "https://news.example.com",
+  "url": "https://news.example.com/article",
   "formats": ["markdown", "json"],
-  "extract": {
-    "schema": {
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "author": { "type": "string" },
-        "publishDate": { "type": "string" }
-      },
-      "required": ["title", "author"]
+  "jsonSchema": {
+    "type": "object",
+    "properties": {
+      "title":     { "type": "string" },
+      "author":    { "type": "string" },
+      "published": { "type": "string" }
     },
+    "required": ["title", "author"]
+  },
+  "extract": {
     "prompt": "Extract article title, author, and publish date",
     "responseFormat": "article"
-  },
-  "chunkStrategy": { "type": "sentence" },
-  "query": "article title and author",
-  "filterMode": "bm25",
-  "topK": 5
+  }
 }
 ```
 
-### Chunking Strategies
+**Response** (200 OK):
 
-| Strategy | Description |
-|----------|-------------|
-| `sentence` | Split by sentence boundaries |
-| `paragraph` | Split by paragraph boundaries |
-| `regex` | Split by custom regex pattern |
-| `topic` | Split by topic changes |
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "# Headline\n\nBy Jane Doe. Published 2024-01-15...",
+    "json": {
+      "title": "Headline",
+      "author": "Jane Doe",
+      "published": "2024-01-15"
+    },
+    "metadata": { "...": "..." }
+  }
+}
+```
 
-### Filter Modes
+**Field reference:**
 
-| Mode | Description |
-|------|-------------|
-| `bm25` | BM25 algorithm for relevance scoring |
-| `rrf` | Reciprocal Rank Fusion |
-| `hybrid` | Combine bm25 and rrf |
+| Field | Type | Description |
+|-------|------|-------------|
+| `jsonSchema` | object | Top-level shortcut for `extract.schema` — JSON Schema for the data you want extracted |
+| `extract.schema` | object | Same as `jsonSchema` (nested form) |
+| `extract.prompt` | string | Per-request system prompt override (otherwise `[extraction.llm].extraction_prompt` from the server TOML is used) |
+| `extract.responseFormat` | string | OpenAI `response_format.name` for the structured output. Defaults to `"extracted_data"` |
+| `llmExtractionPrompt` | string | Top-level shortcut for `extract.prompt` |
+| `llmResponseFormat` | string | Top-level shortcut for `extract.responseFormat` |
+
+**Server-side configuration** (`quickcrawl.toml`):
+
+```toml
+[extraction.llm]
+api_key   = ""                # or set EXTRACTION__LLM__API_KEY in the env
+model     = "gpt-4o-mini"
+base_url  = ""                # override for non-OpenAI endpoints
+max_tokens = 8192
+extraction_prompt = "You are a data extraction assistant..."
+response_format   = "extracted_data"
+```
+
+The LLM is only invoked when `formats` includes `"json"`. If `formats:["json"]`
+is requested but `[extraction.llm]` is not configured, the scrape returns
+`{"success": false, "errorCode": "extraction_error", "error": "json extraction requested but no LLM configured. Set [extraction.llm] in server config."}`.
 
 ---
 
@@ -559,13 +736,8 @@ port = 3000
 rate_limit_rps = 10
 
 [renderer]
-mode = "auto"           # auto, none, chrome, lightpanda
 page_timeout_ms = 30000
 pool_size = 4
-render_js_default = false
-
-[renderer.lightpanda]
-ws_url = ""
 
 [renderer.chrome]
 ws_url = ""
@@ -578,19 +750,18 @@ default_max_depth = 2
 default_max_pages = 100
 
 [extraction.llm]
-provider = "openai"
 model = "gpt-4o-mini"
 api_key = ""
 base_url = ""
-max_tokens = 4000
-temperature = 0.7
+max_tokens = 8192
+extraction_prompt = "You are a data extraction assistant..."
+response_format   = "extracted_data"
 ```
 
 Or via environment variables:
 
 ```bash
 SERVER__PORT=3000
-RENDERER__MODE=auto
 RENDERER__CHROME__WS_URL=ws://127.0.0.1:9222/devtools/browser/...
 CRAWLER__MAX_CONCURRENCY=40
 EXTRACTION__LLM__API_KEY=your-key
@@ -611,7 +782,7 @@ quickcrawl/
 ├── internal/
 │   ├── api/                 # HTTP handlers, routes, middleware
 │   ├── crawler/             # BFS crawler, robots.txt, sitemap
-│   ├── extractor/           # HTML cleaning, markdown, chunking
+│   ├── extractor/           # HTML cleaning, markdown conversion, link extraction
 │   ├── renderer/            # HTTP, browser fetching via CDP
 │   ├── search/              # DuckDuckGo integration
 │   ├── mcp/                 # MCP tool implementation

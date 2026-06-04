@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -144,7 +143,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 		if attempt > 0 {
 			// Before retrying, apply backoff delay to avoid hammering a struggling server
 			backoff := httpRetryBackoff
-			log.Printf("[http] retrying (attempt %d): url=%s backoff=%v", attempt, rawURL, backoff)
+			utils.Log.Info("http retrying", "attempt", attempt, "url", rawURL, "backoff", backoff)
 			time.Sleep(backoff)
 		}
 
@@ -154,7 +153,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 			return nil, reqErr // Invalid URL error - no point retrying
 		}
 
-		log.Printf("[http] starting fetch: url=%s attempt=%d", rawURL, attempt)
+		utils.Log.Info("http starting fetch", "url", rawURL, "attempt", attempt)
 
 		// Execute the HTTP request using the pre-configured client
 		resp, err := f.client.Do(req)
@@ -162,7 +161,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 			lastErr = err
 			// For transient errors, retry if we haven't exhausted retries
 			if attempt < httpMaxRetries && isRetriableError(err) {
-				log.Printf("[http] transient error (attempt %d): url=%s error=%v", attempt, rawURL, err)
+				utils.Log.Info("http transient error", "attempt", attempt, "url", rawURL, "error", err)
 				continue // Jump to next iteration (after backoff)
 			}
 			// For DNS/connection errors (host unreachable), return specific error type
@@ -180,7 +179,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 		// Retry on 502-504 gateway errors with one retry
 		if attempt < httpMaxRetries && isRetriableStatus(statusCode) {
 			lastErr = fmt.Errorf("HTTP %d", statusCode)
-			log.Printf("[http] retrying on status %d (attempt %d): url=%s", statusCode, attempt, rawURL)
+			utils.Log.Info("http retrying on status", "status", statusCode, "attempt", attempt, "url", rawURL)
 			continue // Retry the request
 		}
 
@@ -241,7 +240,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 		}
 
 		elapsed := time.Since(start)
-		log.Printf("[http] fetch completed: url=%s status=%d duration=%v size=%d attempt=%d", rawURL, statusCode, elapsed, len(body), attempt)
+		utils.Log.Info("http fetch completed", "url", rawURL, "status", statusCode, "duration", elapsed, "size", len(body), "attempt", attempt)
 
 		// Return successful result with all fetched data and metadata
 		return &types.FetchResult{

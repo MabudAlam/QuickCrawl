@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +11,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/browser"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	quickcrawl "github.com/MabudAlam/quickcrawl/internal/mcp"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -20,17 +21,12 @@ const (
 )
 
 func main() {
+	utils.InitLogger()
+
 	cfg, err := api.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %s", err.Error())
-	}
-
-	// Log deprecation notice for the legacy renderer.mode field. The new
-	// scraper uses chromedp only; mode is accepted for backward-compat
-	// but ignored at runtime. renderer.lightpanda is no longer ignored:
-	// if no Chrome WS URL is configured, MCP auto-launches LightPanda.
-	if cfg.Renderer.Mode != "" && string(cfg.Renderer.Mode) != "auto" {
-		log.Printf("warning: renderer.mode=%q is deprecated and ignored; the new scraper uses chromedp only", cfg.Renderer.Mode)
+		utils.Log.Error(fmt.Sprintf("failed to load config: %s", err.Error()))
+		os.Exit(1)
 	}
 
 	// If the user has not configured a Chrome WS URL, fall back to
@@ -40,13 +36,14 @@ func main() {
 	// here. The launched process is killed on shutdown.
 	teardown, ensureErr := browser.EnsureRenderer(cfg)
 	if ensureErr != nil {
-		log.Fatalf("%s", ensureErr.Error())
+		utils.Log.Error(fmt.Sprintf("%s", ensureErr.Error()))
+		os.Exit(1)
 	}
 	if teardown != nil {
-		log.Printf("LightPanda started: ws=%s", cfg.Renderer.Chrome.WSURL)
+		utils.Log.Info("LightPanda started", "ws", cfg.Renderer.Chrome.WSURL)
 		defer func() {
 			teardown()
-			log.Println("LightPanda stopped")
+			utils.Log.Info("LightPanda stopped")
 		}()
 	}
 
@@ -54,13 +51,15 @@ func main() {
 	// used by every MCP tool — the same code path as the HTTP API.
 	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if scrapeErr != nil {
-		log.Fatalf("failed to initialize core scraper: %s", scrapeErr.Message)
+		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
+		os.Exit(1)
 	}
 
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
 		_ = scraper.Close()
-		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
+		utils.Log.Error(fmt.Sprintf("failed to initialize server state: %s", stateErr.Message))
+		os.Exit(1)
 	}
 	state.CoreScraper = scraper
 	defer state.Close()
@@ -68,7 +67,7 @@ func main() {
 	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
 		for _, b := range browsers {
-			log.Printf("browser started: %s (%s)", b.Name, b.WSURL)
+			utils.Log.Info("browser started", "name", b.Name, "ws_url", b.WSURL)
 		}
 	}
 
@@ -88,15 +87,15 @@ func main() {
 
 	go func() {
 		<-quit
-		log.Println("shutting down MCP server...")
+		utils.Log.Info("shutting down MCP server...")
 		cancel()
 	}()
 
-	log.Println("MCP server starting...")
+	utils.Log.Info("MCP server starting...")
 	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		log.Printf("MCP server error: %v", err)
+		utils.Log.Info(fmt.Sprintf("MCP server error: %v", err))
 	}
 
-	log.Println("MCP server exited gracefully")
+	utils.Log.Info("MCP server exited gracefully")
 	os.Exit(0)
 }

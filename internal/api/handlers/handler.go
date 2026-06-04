@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -87,6 +87,8 @@ func (h *Handler) Scrape(c *gin.Context) {
 		req.Formats = []string{"markdown"}
 	}
 
+	//if the config says be polite with robots.txt then follow it
+	//if it says not allowed then fail fast
 	if h.State.Config.Crawler.RespectRobotsTxt {
 		if err := crawler.CheckRobotsTxt(req.URL, h.State.Config.Crawler.UserAgent); err != nil {
 			c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
@@ -198,7 +200,7 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 	}
 
 	if req.Browser != nil && *req.Browser != "" {
-		log.Printf("[crawl] warning: 'browser' field is deprecated and ignored; the new scraper uses chromedp only (value=%q)", *req.Browser)
+		utils.Log.Warn("deprecated 'browser' field ignored for crawl", "value", *req.Browser)
 	}
 
 	for _, f := range req.Formats {
@@ -403,7 +405,7 @@ func (h *Handler) Search(c *gin.Context) {
 	engine := search.New()
 	results, searchErr := engine.Search(req.Query, req.Region, safesearch, req.Timelimit)
 	if searchErr != nil {
-		log.Printf("search: DuckDuckGo search failed: %v", searchErr)
+		utils.Log.Error("search DuckDuckGo search failed", "error", searchErr)
 		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}](searchErr.Error()))
 		return
 	}
@@ -445,7 +447,7 @@ func (h *Handler) Search(c *gin.Context) {
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("search: panic recovered while scraping %s: %v", result.Href, r)
+					utils.Log.Warn("search panic recovered while scraping", "url", result.Href, "error", r)
 					mu.Lock()
 					resultMap[index] = types.SearchResult{
 						Title:       result.Title,
@@ -460,7 +462,7 @@ func (h *Handler) Search(c *gin.Context) {
 			defer func() { <-semaphore }()
 
 			if _, urlErr := types.ValidateURL(result.Href); urlErr != nil {
-				log.Printf("search: skipping invalid URL %s: %v", result.Href, urlErr)
+				utils.Log.Warn("search skipping invalid URL", "url", result.Href, "error", urlErr)
 				mu.Lock()
 				resultMap[index] = types.SearchResult{
 					Title:       result.Title,
@@ -488,7 +490,7 @@ func (h *Handler) Search(c *gin.Context) {
 			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
 			cancel()
 			if scrapeErr != nil {
-				log.Printf("search: failed to scrape %s: %v (type=%T)", result.Href, scrapeErr, scrapeErr)
+				utils.Log.Warn("search failed to scrape", "url", result.Href, "error", scrapeErr, "type", fmt.Sprintf("%T", scrapeErr))
 			} else if data != nil {
 				if data.Markdown != nil {
 					s := *data.Markdown
