@@ -320,7 +320,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 			Language:      meta.Language,
 			StatusCode:    uint16(opts.StatusCode),
 			RenderedMode:  opts.RenderedMode,
-			TimeTaken:     opts.TimeTaken,
 		},
 	}
 }
@@ -408,7 +407,6 @@ func extractPDF(opts ExtractOptions) *types.ScrapeData {
 			SourceURL:    opts.SourceURL,
 			StatusCode:   uint16(opts.StatusCode),
 			RenderedMode: opts.RenderedMode,
-			TimeTaken:    opts.TimeTaken,
 		},
 	}
 }

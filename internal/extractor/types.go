@@ -25,8 +25,6 @@ type ExtractOptions struct {
 	// RenderedMode indicates how the content was rendered (e.g., "http", "pdf")
 	RenderedMode *string
 
-	// TimeTaken is the time taken to fetch the content in milliseconds
-	TimeTaken uint64
 
 	// Formats specifies which output formats to generate
 	Formats []types.OutputFormat
