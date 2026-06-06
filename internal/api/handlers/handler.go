@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
@@ -111,6 +112,28 @@ func (h *Handler) Scrape(c *gin.Context) {
 		ctx = context.Background()
 	}
 
+	ttl := req.TTL
+	if ttl != nil && *ttl == 0 {
+		// TTL=0 means bypass cache, do fresh fetch
+	} else if h.State.Cache != nil && h.State.Cache.Enabled() {
+		normalizedFormats := cache.NormalizeFormats(req.Formats)
+		effectiveTTL := h.State.Config.Cache.TTLDefaultSecs
+		if ttl != nil && *ttl > 0 {
+			effectiveTTL = *ttl
+		}
+		if cachedData, found, _ := h.State.Cache.Get(ctx, req.URL, normalizedFormats, req.RenderJS, effectiveTTL); found {
+			var data core.ScrapeData
+			if err := json.Unmarshal(cachedData, &data); err == nil {
+				c.JSON(http.StatusOK, types.APIResponse[core.ScrapeData]{
+					Success: true,
+					Data:&data,
+					Warning: stringPtr("cache hit"),
+				})
+				return
+			}
+		}
+	}
+
 	data, scrapeErr := scraper.Scrape(ctx, &req)
 	if scrapeErr != nil {
 		status, code := mapScrapeError(scrapeErr)
@@ -156,6 +179,15 @@ func (h *Handler) Scrape(c *gin.Context) {
 		}
 	}
 
+
+	if resp.Success && h.State.Cache != nil && h.State.Cache.Enabled() {
+		if ttl == nil || *ttl > 0 {
+			normalizedFormats := cache.NormalizeFormats(req.Formats)
+			if dataBytes, err := json.Marshal(data); err == nil {
+				_ = h.State.Cache.Set(ctx, req.URL, normalizedFormats, req.RenderJS, dataBytes)
+			}
+		}
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -473,11 +505,10 @@ func (h *Handler) Search(c *gin.Context) {
 				return
 			}
 
-			renderJS := req.RenderJS
 			scrapeReq := &core.ScrapeRequest{
 				URL:      result.Href,
 				Formats:  scrapeFormatsToStrings(req.Formats),
-				RenderJS: &renderJS,
+				RenderJS: req.RenderJS,
 			}
 
 			searchResult := types.SearchResult{
