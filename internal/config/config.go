@@ -145,6 +145,11 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envString("EXTRACTION__LLM__RESPONSE_FORMAT"); v != "" {
 		cfg.Extraction.LLM.ResponseFormat = v
 	}
+
+	// Cache - REDIS_URL takes precedence, parsed for host/password/db
+	if v := envString("REDIS_URL"); v != "" {
+		_ = cfg.Cache.ParseRedisURL(v)
+	}
 }
 
 // envString reads an environment variable and trims whitespace.
