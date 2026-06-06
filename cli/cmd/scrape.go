@@ -28,20 +28,18 @@ supported.
 Example:
   quickcrawl scrape https://example.com
   quickcrawl scrape https://example.com --formats html --formats markdown
-  quickcrawl scrape https://example.com --render-js --wait-for 3000`,
+  quickcrawl scrape https://example.com --render browser --wait-for 3000`,
 	RunE: runScrape,
 }
 
 var scrapeFlags = struct {
 	formats     string
-	renderJS    bool
+	renderMode  string
 	waitFor     int64
 	includeTags string
 	excludeTags string
 	cssSelector string
 	jsonSchema  string
-	// renderer is deprecated and ignored; kept for backward-compat with old CLI flags.
-	renderer string
 }{}
 
 func init() {
@@ -49,8 +47,8 @@ func init() {
 
 	scrapeCmd.Flags().StringVarP(&scrapeFlags.formats, "formats", "f", "markdown",
 		"Output formats (comma-separated): markdown,html,links,json")
-	scrapeCmd.Flags().BoolVar(&scrapeFlags.renderJS, "render-js", false,
-		"Force JavaScript rendering")
+	scrapeCmd.Flags().StringVar(&scrapeFlags.renderMode, "render", "auto",
+		"Renderer mode: auto (default), http, browser")
 	scrapeCmd.Flags().Int64Var(&scrapeFlags.waitFor, "wait-for", 0,
 		"Milliseconds to wait after page load for late content")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.includeTags, "include-tags", "",
@@ -61,8 +59,6 @@ func init() {
 		"Extract content from specific CSS selector")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.jsonSchema, "json-schema", "",
 		"JSON Schema for structured data extraction")
-	scrapeCmd.Flags().StringVar(&scrapeFlags.renderer, "renderer", "auto",
-		"Deprecated: ignored. The scraper uses chromedp only.")
 }
 
 func runScrape(cmd *cobra.Command, args []string) error {
@@ -83,8 +79,17 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	formats := parseFormats(scrapeFlags.formats)
 
 	var renderJS *bool
-	if scrapeFlags.renderJS {
-		renderJS = &scrapeFlags.renderJS
+	switch scrapeFlags.renderMode {
+	case "auto":
+		renderJS = nil
+	case "http":
+		renderJSValue := false
+		renderJS = &renderJSValue
+	case "browser":
+		renderJSValue := true
+		renderJS = &renderJSValue
+	default:
+		return fmt.Errorf("invalid render mode: %s (must be auto, http, or browser)", scrapeFlags.renderMode)
 	}
 
 	var waitFor *int64
