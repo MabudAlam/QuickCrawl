@@ -41,7 +41,6 @@ type FetchResult struct {
 	ContentType  string  // Content-Type header value (lowercased, no charset)
 	RawBytes     []byte  // Raw bytes (for PDFs)
 	RenderedWith string  // "http", "browser", or "pdf"
-	TimeTakenMs  uint64  // Time taken in milliseconds
 	Warning      *string // Non-fatal warning (e.g. anti-bot detected)
 	BlockedURLs  []string // URLs blocked by the blocklist (browser path only)
 }
@@ -109,7 +108,10 @@ func NewRenderer(cfg Config, httpFetcher *renderer.HTTPFetcher) (*Renderer, *Qui
 	if cfg.Browser.WSURL != "" {
 		// NewRemoteAllocator connects to an already-running Chrome instance.
 		// All chromedp contexts created from this allocator reuse the same Chrome.
-		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), cfg.Browser.WSURL)
+		// Use NoModifyURL to prevent chromedp from trying to auto-discover the
+		// WebSocket URL via /json/version, which fails when the URL has no
+		// explicit port (e.g., wss://host.domain.com/devtools/browser/...).
+		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), cfg.Browser.WSURL, chromedp.NoModifyURL)
 	}
 
 	r := &Renderer{
@@ -208,12 +210,30 @@ func (renderer *Renderer) Close() error {
 // FetchOrchestrator decides whether to use HTTP fetching or browser rendering.
 // It is the main entry point for fetching a URL.
 //
+//   - renderJS=nil  (auto) → HTTP first, then check and escalate to browser if needed
+//   - renderJS=true → uses fetchWithCDPBrowser (full browser, JavaScript rendered)
 //   - renderJS=false → uses shared *renderer.HTTPFetcher (no JavaScript)
-//   - renderJS=true  → uses fetchWithCDPBrowser (full browser, JavaScript rendered)
-func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, headers map[string]string, renderJS bool, waitMs int64) (*FetchResult, *QuickCrawlError) {
-	if !renderJS {
-		// Delegate to the shared HTTP fetcher used by /v1/scrape.
-		// waitForMs is passed for interface compatibility (HTTP fetches ignore it).
+//
+// In auto mode, the escalation decision is based on:
+//   - HTTP failure + browser available → escalate
+//   - PDF response → return HTTP result
+//   - SPA shell detected (framework markers, builder platforms, dense scripts)
+//   - Cloudflare/anti-bot challenge page detected
+//   - Soft-block status code (401, 403, 404, 405, 406, 410, 412, 429, 451, 500, 503)
+//   - Thin HTML response (body text < 200 chars)
+func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, headers map[string]string, renderJS *bool, waitMs int64) (*FetchResult, *QuickCrawlError) {
+	// Determine effective renderJS value
+	forceBrowser := false
+	forceHTTP := false
+	if renderJS != nil {
+		if *renderJS {
+			forceBrowser = true
+		} else {
+			forceHTTP = true
+		}
+	}
+
+	if forceHTTP {
 		waitForMs := waitMs
 		typesResult, typesErr := renderer.http.Fetch(rawURL, headers, &waitForMs)
 		if typesErr != nil {
@@ -221,7 +241,74 @@ func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, 
 		}
 		return toCoreFetchResult(typesResult, rawURL), nil
 	}
-	return renderer.fetchWithCDPBrowser(ctx, rawURL, headers, waitMs)
+
+	if forceBrowser {
+		return renderer.fetchWithCDPBrowser(ctx, rawURL, headers, waitMs)
+	}
+
+	// AUTO MODE: HTTP first, then check and escalate if needed
+	waitForMs := waitMs
+	typesResult, typesErr := renderer.http.Fetch(rawURL, headers, &waitForMs)
+	if typesErr != nil {
+		// HTTP failed but browser is available → try browser
+		if renderer.allocCtx != nil {
+			return renderer.fetchWithCDPBrowser(ctx, rawURL, headers, waitMs)
+		}
+		return nil, convertTypesError(typesErr)
+	}
+
+	result := toCoreFetchResult(typesResult, rawURL)
+
+	// PDF early return — don't try to browser-render PDFs
+	if isPDFContentType(result.ContentType) {
+		return result, nil
+	}
+
+	// Check for escalation triggers
+	needsEscalation := false
+	escalationReason := ""
+
+	// 1. SPA shell detected
+	if needsJSRendering(result.HTML) {
+		needsEscalation = true
+		escalationReason = "SPA shell detected"
+	}
+
+	// 2. Soft-block status code
+	if !needsEscalation && isSoftBlockStatus(result.StatusCode) {
+		needsEscalation = true
+		escalationReason = fmt.Sprintf("soft-block status HTTP %d", result.StatusCode)
+	}
+
+	// 3. Thin content (body text < 200 chars on 2xx)
+	if !needsEscalation && result.StatusCode >= 200 && result.StatusCode < 300 {
+		if looksLikeThinHTML(result.HTML) {
+			needsEscalation = true
+			escalationReason = "thin HTML content"
+		}
+	}
+
+	// 4. Anti-bot challenge pages (Cloudflare, generic bot wall, vendor blocks)
+	if !needsEscalation && result.StatusCode >= 200 && result.StatusCode < 300 {
+		if looksLikeCloudflareChallenge(result.HTML) {
+			needsEscalation = true
+			escalationReason = "Cloudflare challenge detected"
+		} else if looksLikeGenericBotWall(result.HTML) {
+			needsEscalation = true
+			escalationReason = "generic anti-bot wall detected"
+		} else if vendor := looksLikeVendorBlock(result.HTML); vendor != "" {
+			needsEscalation = true
+			escalationReason = "anti-bot vendor block: " + vendor
+		}
+	}
+
+	if needsEscalation && renderer.allocCtx != nil {
+		w := "auto-escalated to browser: " + escalationReason
+		result.Warning = &w
+		return renderer.fetchWithCDPBrowser(ctx, rawURL, headers, waitMs)
+	}
+
+	return result, nil
 }
 
 // toCoreFetchResult adapts a *types.FetchResult (from internal/renderer) into
@@ -239,7 +326,6 @@ func toCoreFetchResult(r *types.FetchResult, rawURL string) *FetchResult {
 		StatusCode:  r.StatusCode,
 		HTML:        r.HTML,
 		RawBytes:    r.RawBytes,
-		TimeTakenMs: r.TimeTaken,
 	}
 	if r.FinalURL != nil {
 		out.FinalURL = *r.FinalURL
@@ -286,7 +372,6 @@ func toTypesFetchResult(r *FetchResult) *types.FetchResult {
 		StatusCode: r.StatusCode,
 		HTML:       r.HTML,
 		RawBytes:   r.RawBytes,
-		TimeTaken:  r.TimeTakenMs,
 	}
 	finalURL := r.FinalURL
 	if finalURL == "" {
@@ -337,7 +422,6 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 		return nil, ErrBrowserNotAvailable.New("no browser WS URL configured")
 	}
 
-	start := time.Now()
 
 	// Step 2: Acquire a concurrency slot for this host.
 	// This prevents overwhelming any single origin with parallel browser fetches.
@@ -713,7 +797,6 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 		finalURL = rawURL
 	}
 
-	elapsed := time.Since(start)
 
 	// Step 6: Build the result and check for anti-bot pages.
 	result := &FetchResult{
@@ -722,7 +805,6 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 		StatusCode:   statusCode,
 		HTML:         headHTML + bodyHTML,
 		RenderedWith: "browser",
-		TimeTakenMs:  uint64(elapsed.Milliseconds()),
 		BlockedURLs:  tracker.get(),
 	}
 
