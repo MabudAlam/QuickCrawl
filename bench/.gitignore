@@ -1,0 +1,12 @@
+# uv-managed virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Benchmark artifacts
+dataset_cache/
+results-*.json
+failed-*.json
