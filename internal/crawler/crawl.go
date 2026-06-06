@@ -123,7 +123,7 @@ func RunCrawl(opts CrawlOptions) {
 					headers = profile.ToMap()
 				}
 
-				renderJS := opts.Req.RenderJS != nil && *opts.Req.RenderJS
+				renderJS := opts.Req.RenderJS
 				waitMs := int64(0)
 				if opts.Req.WaitFor != nil {
 					waitMs = *opts.Req.WaitFor
@@ -143,7 +143,6 @@ func RunCrawl(opts CrawlOptions) {
 					SourceURL:      fetchResult.URL,
 					StatusCode:     int(fetchResult.StatusCode),
 					RenderedMode:   fetchResult.RenderedWith,
-					TimeTaken:      fetchResult.TimeTaken,
 					Formats:        opts.Req.Formats,
 					IncludeTags:    []string{},
 					ExcludeTags:    []string{},
@@ -371,7 +370,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 				}
 
 				fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, false, 0, nil)
+				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0, nil)
 				cancel()
 				if fetchErr != nil || fetchResult == nil {
 					resultsCh <- nil
