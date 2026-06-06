@@ -55,3 +55,6 @@ __pycache__/
 internal.md
 
 preview/
+
+*.json
+*.csv

@@ -35,7 +35,7 @@ test_scrape() {
 
     response=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/scrape" \
         -H 'Content-Type: application/json' \
-        -d "{\"url\":\"$url\",\"formats\":[\"markdown\"],\"onlyMainContent\":true}" \
+        -d "{\"url\":\"$url\",\"formats\":[\"markdown\"]}" \
         --max-time $TIMEOUT)
 
     http_code=$(echo "$response" | tail -n1)
@@ -90,7 +90,7 @@ test_crawl() {
     # Start crawl
     start_response=$(curl -s -X POST "$BASE_URL/v1/crawl" \
         -H 'Content-Type: application/json' \
-        -d "{\"url\":\"$url\",\"maxDepth\":0,\"maxPages\":$max_pages,\"formats\":[\"markdown\"],\"onlyMainContent\":true,\"renderJs\":false}" \
+        -d "{\"url\":\"$url\",\"maxDepth\":0,\"maxPages\":$max_pages,\"formats\":[\"markdown\"],\"renderJs\":false}" \
         --max-time $TIMEOUT)
 
     if ! echo "$start_response" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then

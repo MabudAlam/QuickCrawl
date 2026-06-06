@@ -5,14 +5,9 @@ request_timeout_secs = 60
 rate_limit_rps = 10
 
 [renderer]
-mode = "auto"
 page_timeout_ms = 30000
 pool_size = 4
-render_js_default = false
-browser_binary = ""
-
-[renderer.lightpanda]
-ws_url = ""
+render_mode="auto"
 
 [renderer.chrome]
 ws_url = ""
@@ -29,19 +24,20 @@ job_ttl_secs = 3600
 [crawler.stealth]
 enabled = true
 strategy = "modern_browser"
-user_agents = []
 jitter_factor = 0.2
 inject_headers = true
 
-[extraction]
-default_format = "markdown"
-only_main_content = true
-
 [extraction.llm]
-provider = "openai"
+# api_key is loaded from the EXTRACTION__LLM__API_KEY env var (set in .env or your shell).
+# Do NOT commit the key to source control.
 api_key = ""
 model = "gpt-4o-mini"
 base_url = ""
 max_tokens = 8192
 extraction_prompt = "You are a data extraction assistant. Extract structured data from the user's content according to the provided JSON schema. Return ONLY the JSON object that matches the schema."
 response_format = "extracted_data"
+
+[cache]
+enabled = true
+redis_url = ""
+ttl_default_secs = 3600

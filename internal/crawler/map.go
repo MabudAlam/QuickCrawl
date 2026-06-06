@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
@@ -14,7 +14,7 @@ type MapOptions struct {
 	MaxDepth          uint32
 	UseSitemap        bool
 	RespectRobots     bool
-	Renderer          *renderer.FallbackRenderer
+	Scraper           *core.Scraper
 	MaxConcurrency    int
 	RequestsPerSecond float64
 	UserAgent         string
@@ -23,6 +23,11 @@ type MapOptions struct {
 
 // Map discovers URLs starting from a base URL using BFS traversal.
 // It respects robots.txt and rate limits, and optionally uses sitemaps.
+//
+// The Scraper field is the shared *core.Scraper. URL discovery is
+// HTTP-only (no JavaScript rendering) — sitemap crawling and link
+// extraction do not benefit from a browser, so we use the same
+// *renderer.HTTPFetcher the scraper delegates to internally.
 func Map(opts MapOptions) (*types.MapData, *types.QuickCrawlError) {
 	maxDepth := uint32(2)
 	if opts.MaxDepth > 0 {
@@ -44,7 +49,7 @@ func Map(opts MapOptions) (*types.MapData, *types.QuickCrawlError) {
 		opts.BaseURL,
 		maxDepth,
 		opts.UseSitemap,
-		opts.Renderer,
+		opts.Scraper,
 		opts.RespectRobots,
 		opts.MaxConcurrency,
 		opts.RequestsPerSecond,

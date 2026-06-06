@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/common"
@@ -78,11 +80,13 @@ type ScrapeRequest struct {
 	JSONSchema          *json.RawMessage  `json:"jsonSchema,omitempty"`          // Schema for JSON output
 	Headers             map[string]string `json:"headers,omitempty"`             // Custom HTTP headers
 	CSSSelector         *string           `json:"cssSelector,omitempty"`         // Extract specific element
-	OnlyMain            bool              `json:"onlyMain,omitempty"`            // Extract only main content area
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
-	Browser             *string           `json:"browser,omitempty"`             // Browser to use (lightpanda, chrome)
+	TTL                 *int64            `json:"ttl,omitempty"`                 // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
+	// Deprecated: Browser is accepted for backward compatibility but ignored.
+	// The new scraper uses chromedp only — there is a single render path.
+	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
 }
 
 // Defaults sets default values for optional fields.
@@ -107,7 +111,6 @@ type PageMetadata struct {
 	Language      *string `json:"language,omitempty"`       // Page language
 	StatusCode    uint16  `json:"statusCode"`               // HTTP status code
 	RenderedMode  *string `json:"renderedMode,omitempty"`   // How it was rendered (http/js)
-	TimeTaken     uint64  `json:"timeTaken"`                // Time taken to fetch
 }
 
 // ScrapeData contains the result of a scrape operation.
@@ -168,10 +171,11 @@ type CrawlRequest struct {
 	MaxPages *uint32        `json:"maxPages,omitempty"` // Maximum pages to crawl
 	Formats  []OutputFormat `json:"formats"`            // Desired output formats
 
-	RenderJS *bool           `json:"renderJs,omitempty"` // Force JS rendering
-	WaitFor  *int64          `json:"waitFor,omitempty"`  // Wait time in ms
-	Browser  *string         `json:"browser,omitempty"`  // Browser to use (lightpanda, chrome)
-	Extract  *ExtractOptions `json:"extract,omitempty"`  // LLM extraction options
+	RenderJS *bool    `json:"renderJs,omitempty"` // Force JS rendering
+	WaitFor  *int64   `json:"waitFor,omitempty"`  // Wait time in ms
+	// Deprecated: Browser is accepted for backward compatibility but ignored.
+	// The new scraper uses chromedp only.
+	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
 }
 
 // Defaults sets default values for optional fields.
@@ -183,14 +187,13 @@ func (r *CrawlRequest) Defaults() {
 
 // CrawlState represents the current state of a crawl job.
 type CrawlState struct {
-	ID        string          `json:"id,omitempty"`     // Unique job ID
-	Success   bool            `json:"success"`          // Whether job succeeded
-	Status    CrawlStatus     `json:"status"`           // Current status
-	Total     uint32          `json:"total"`            // Total URLs discovered
-	Completed uint32          `json:"completed"`        // Pages successfully scraped
-	Data      []ScrapeData    `json:"data"`             // Scraped page data
-	Answer    json.RawMessage `json:"answer,omitempty"` // Aggregated LLM answer (single answer from all pages)
-	Error     *string         `json:"error,omitempty"`  // Error message if failed
+	ID        string       `json:"id,omitempty"`    // Unique job ID
+	Success   bool         `json:"success"`         // Whether job succeeded
+	Status    CrawlStatus  `json:"status"`          // Current status
+	Total     uint32       `json:"total"`           // Total URLs discovered
+	Completed uint32       `json:"completed"`       // Pages successfully scraped
+	Data      []ScrapeData `json:"data"`            // Scraped page data
+	Error     *string      `json:"error,omitempty"` // Error message if failed
 }
 
 // CrawlStartResponse is returned when a crawl job is started.
@@ -241,8 +244,9 @@ type SearchRequest struct {
 	Region     string         `json:"region"`               // Region code (e.g., "us-en")
 	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "moderate", "strict", "off"
 	Timelimit  string         `json:"timelimit,omitempty"`  // Time limit filter (e.g., "d" for day)
-	RenderJS   bool           `json:"renderJs"`             // Enable JavaScript rendering
+	RenderJS   *bool          `json:"renderJs,omitempty"`   // Enable JavaScript rendering (nil = auto, true = force JS, false = HTTP only)
 	Formats    []OutputFormat `json:"formats"`              // Desired output formats
+	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false)
 }
 
 // Defaults sets default values for optional fields.
@@ -296,7 +300,6 @@ type FetchResult struct {
 	ContentType       *string // Content-Type header value
 	RawBytes          []byte  // Raw bytes (for PDFs)
 	RenderedWith      *string // How it was rendered (http/browser)
-	TimeTaken         uint64  // Time taken in milliseconds
 	Warning           *string // Non-fatal warning
 	CapturedResponses []CapturedNetworkResponse
 }
@@ -312,20 +315,17 @@ type CapturedNetworkResponse struct {
 	Body          *string `json:"body,omitempty"`
 }
 
-// RendererMode specifies which rendering backend to use.
-type RendererMode string
-
-// Supported renderer modes.
-const (
-	ModeAuto       RendererMode = "auto"       // Auto-detect (try HTTP, then JS if needed)
-	ModeNone       RendererMode = "none"       // HTTP only, no JavaScript
-	ModeLightpanda RendererMode = "lightpanda" // LightPanda browser
-	ModeChrome     RendererMode = "chrome"     // Chrome browser
-)
-
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
 type CdpEndpoint struct {
 	WSURL string `toml:"ws_url" json:"wsUrl"` // WebSocket URL
+}
+
+// BrowserInfo contains information about a running browser instance.
+// The Name and WSURL are surfaced via the /health endpoint and the
+// MCP tool output.
+type BrowserInfo struct {
+	Name  string `json:"name"`  // Browser name (e.g., "chrome")
+	WSURL string `json:"wsUrl"` // Chrome DevTools Protocol WebSocket URL
 }
 
 // =============================================================================
@@ -334,20 +334,13 @@ type CdpEndpoint struct {
 
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
-	Mode            RendererMode `toml:"mode" json:"mode"`                         // Rendering mode
-	PageTimeoutMs   int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`     // Page load timeout
-	PoolSize        int          `toml:"pool_size" json:"poolSize"`                // Browser pool size
-	RenderJSDefault *bool        `toml:"render_js_default" json:"renderJsDefault"` // Default JS rendering
-	BrowserBinary   string       `toml:"browser_binary" json:"browserBinary"`      // Chrome binary path
-	Lightpanda      *CdpEndpoint `toml:"lightpanda" json:"lightpanda"`             // LightPanda config
-	Chrome          *CdpEndpoint `toml:"chrome" json:"chrome"`                     // Chrome config
+	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
+	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
+	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
 }
 
 // Defaults sets default values for unset fields.
 func (c *RendererConfig) Defaults() {
-	if c.Mode == "" {
-		c.Mode = ModeAuto
-	}
 	if c.PageTimeoutMs == 0 {
 		c.PageTimeoutMs = 30000
 	}
@@ -358,11 +351,10 @@ func (c *RendererConfig) Defaults() {
 
 // StealthConfig configures stealth/bot-detection evasion.
 type StealthConfig struct {
-	Enabled       bool     `toml:"enabled" json:"enabled"`              // Enable stealth mode
-	UserAgents    []string `toml:"user_agents" json:"userAgents"`       // Custom user agents
-	JitterFactor  float64  `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
-	InjectHeaders bool     `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
-	Strategy      string   `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
+	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
+	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
+	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string  `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
@@ -411,7 +403,6 @@ func (c *CrawlerConfig) Defaults() {
 
 // LLMConfig configures LLM-based extraction.
 type LLMConfig struct {
-	Provider         string  `toml:"provider" json:"provider"`                  // LLM provider (openai)
 	APIKey           string  `toml:"api_key" json:"apiKey"`                     // API key
 	Model            string  `toml:"model" json:"model"`                        // Model name
 	BaseURL          *string `toml:"base_url" json:"baseUrl"`                   // Custom API base URL
@@ -422,9 +413,6 @@ type LLMConfig struct {
 
 // Defaults sets default values for unset fields.
 func (l *LLMConfig) Defaults() {
-	if l.Provider == "" {
-		l.Provider = "openai"
-	}
 	if l.Model == "" {
 		l.Model = "gpt-4o-mini"
 	}
@@ -441,15 +429,60 @@ func (l *LLMConfig) Defaults() {
 
 // ExtractionConfig configures the extraction subsystem.
 type ExtractionConfig struct {
-	DefaultFormat string `toml:"default_format" json:"defaultFormat"` // Default output format
-
 	LLM *LLMConfig `toml:"llm" json:"llm"` // LLM settings
 }
 
 // Defaults sets default values for unset fields.
 func (e *ExtractionConfig) Defaults() {
-	if e.DefaultFormat == "" {
-		e.DefaultFormat = "markdown"
+}
+
+// CacheConfig configures the Redis cache.
+type CacheConfig struct {
+	Enabled      bool   `toml:"enabled" json:"enabled"`             // Enable/disable caching
+	RedisURL     string `toml:"redis_url" json:"redisUrl"`           // Redis connection URL
+	Password    string `toml:"password" json:"password"`             // Redis password
+	DB           int    `toml:"db" json:"db"`                       // Redis database number
+	TTLDefaultSecs int64 `toml:"ttl_default_secs" json:"ttlDefaultSecs"` // Default TTL in seconds (0 = no cache)
+}
+
+// ParseRedisURL populates RedisURL, Password, and DB from a standard redis:// URI.
+// This allows hosting platforms to provide a single REDIS_URL environment variable.
+func (c *CacheConfig) ParseRedisURL(uri string) error {
+	if uri == "" {
+		return nil
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("invalid redis url: %w", err)
+	}
+	if u.Scheme != "redis" && u.Scheme != "rediss" {
+		return fmt.Errorf("invalid redis scheme: %s", u.Scheme)
+	}
+	c.RedisURL = u.Host
+	if u.User != nil {
+		c.Password, _ = u.User.Password()
+		if u.User.Username() != "" && u.User.Username() != "default" {
+		}
+	}
+	if u.Path != "" && u.Path != "/" {
+		db, err := strconv.Atoi(strings.TrimPrefix(u.Path, "/"))
+		if err == nil {
+			c.DB = db
+		}
+	}
+	return nil
+}
+
+// Defaults sets default values for unset fields.
+func (c *CacheConfig) Defaults() {
+	if c.TTLDefaultSecs == 0 {
+		c.TTLDefaultSecs = 3600
+	}
+	if c.Enabled && c.RedisURL != "" && !strings.HasPrefix(c.RedisURL, "redis://") && !strings.HasPrefix(c.RedisURL, "rediss://") {
+		return
+	}
+	if c.Enabled && c.RedisURL != "" && (strings.HasPrefix(c.RedisURL, "redis://") || strings.HasPrefix(c.RedisURL, "rediss://")) {
+		_ = c.ParseRedisURL(c.RedisURL)
 	}
 }
 
@@ -483,6 +516,7 @@ type AppConfig struct {
 	Renderer   RendererConfig   `toml:"renderer" json:"renderer"`     // Renderer settings
 	Crawler    CrawlerConfig    `toml:"crawler" json:"crawler"`       // Crawler settings
 	Extraction ExtractionConfig `toml:"extraction" json:"extraction"` // Extraction settings
+	Cache      CacheConfig      `toml:"cache" json:"cache"`           // Cache settings
 }
 
 // Defaults sets default values for all subsystems.
@@ -491,15 +525,7 @@ func (c *AppConfig) Defaults() {
 	c.Renderer.Defaults()
 	c.Crawler.Defaults()
 	c.Extraction.Defaults()
-}
-
-// ResolveRenderJS determines the effective JS rendering setting
-// given request override and default value.
-func ResolveRenderJS(request *bool, defaultVal *bool) *bool {
-	if request != nil {
-		return request
-	}
-	return defaultVal
+	c.Cache.Defaults()
 }
 
 // HTTPClientConfig holds HTTP client settings.

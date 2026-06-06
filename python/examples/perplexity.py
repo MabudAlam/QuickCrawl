@@ -115,7 +115,7 @@ def create_scrape_tool():
         client = QuickCrawlClient(api_url=api_url)
 
         try:
-            result = client.scrape(url, formats=formats, only_main_content=True, render_js=True)
+            result = client.scrape(url, formats=formats, render_js=True)
         except Exception as e:
             return {
                 "url": url,
