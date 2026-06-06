@@ -1,7 +1,7 @@
 export interface ScrapeRequest {
   url: string;
   formats?: Format[];
-  renderJs?: boolean;
+  renderJs?: boolean | null;
   waitFor?: number;
   headers?: Record<string, string>;
   cssSelector?: string;
@@ -13,6 +13,7 @@ export interface ScrapeRequest {
     responseFormat?: string;
   };
   maxMarkdownChars?: number;
+  ttl?: number;
 }
 
 export interface CrawlRequest {
@@ -20,7 +21,7 @@ export interface CrawlRequest {
   maxDepth?: number;
   maxPages?: number;
   formats?: Format[];
-  renderJs?: boolean;
+  renderJs?: boolean | null;
   waitFor?: number;
   includeTags?: string[];
   excludeTags?: string[];
@@ -39,7 +40,7 @@ export interface SearchRequest {
   region?: string;
   safesearch?: string;
   timelimit?: string;
-  renderJs?: boolean;
+  renderJs?: boolean | null;
   formats?: Format[];
   scrape?: boolean;
 }
@@ -68,6 +69,7 @@ export interface ScrapeData {
   rawHtml?: string;
   plainText?: string;
   links?: string[];
+  imageLinks?: string[];
   metadata?: {
     title?: string;
     description?: string;
@@ -104,6 +106,7 @@ export interface APIResponse<T> {
   data?: T;
   warning?: string;
   error?: string;
+  timeTakenMs?: number;
 }
 
 export interface HealthResponse {
@@ -131,7 +134,7 @@ export interface PlaygroundState {
 
 export interface ScrapeOptions {
   formats: Format[];
-  renderJs: boolean;
+  renderJs: boolean | null; // null = auto, true = always browser, false = always http
   waitFor: number;
   headers: string;
   cssSelector: string;
@@ -141,13 +144,14 @@ export interface ScrapeOptions {
   extractionPrompt: string;
   extractionResponseFormat: string;
   maxMarkdownChars: number | undefined;
+  ttl: number | undefined;
 }
 
 export interface CrawlOptions {
   maxDepth: number;
   maxPages: number;
   formats: Format[];
-  renderJs: boolean;
+  renderJs: boolean | null;
   waitFor: number;
   includeTags: string;
   excludeTags: string;
