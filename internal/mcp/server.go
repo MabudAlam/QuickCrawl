@@ -48,7 +48,7 @@ type SearchArgs struct {
 	Region     string   `json:"region,omitempty"`
 	Safesearch string   `json:"safesearch,omitempty"`
 	Timelimit  string   `json:"timelimit,omitempty"`
-	RenderJS   bool     `json:"renderJs,omitempty"`
+	RenderJS   *bool    `json:"renderJs,omitempty"`
 	Formats    []string `json:"formats,omitempty"`
 	Scrape     bool     `json:"scrape,omitempty"`
 }
@@ -81,10 +81,6 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		IncludeTags:  args.IncludeTags,
 		ExcludeTags:  args.ExcludeTags,
 		CSSSelector:  args.CSSSelector,
-	}
-	if coreReq.RenderJS == nil {
-		defaultRender := true
-		coreReq.RenderJS = &defaultRender
 	}
 	if coreReq.RenderJS != nil && *coreReq.RenderJS && coreReq.WaitFor == nil {
 		defaultWait := int64(2000)
@@ -409,11 +405,10 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 				return
 			}
 
-			renderJS := args.RenderJS
 			scrapeReq := &core.ScrapeRequest{
 				URL:      result.Href,
 				Formats:  formats,
-				RenderJS: &renderJS,
+				RenderJS: args.RenderJS,
 			}
 
 			searchResult := types.SearchResult{
@@ -659,7 +654,7 @@ func searchInputSchema() map[string]any {
 			},
 			"renderJs": map[string]any{
 				"type":        "boolean",
-				"description": "Enable JavaScript rendering",
+				"description": "Enable JavaScript rendering (true = force JS, false = HTTP only, omit = auto-detect/default)",
 			},
 			"scrape": map[string]any{
 				"type":        "boolean",
