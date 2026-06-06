@@ -57,6 +57,8 @@ class QuickCrawlClient:
         formats: list[str] | None = None,
         include_tags: list[str] | None = None,
         exclude_tags: list[str] | None = None,
+        render_mode: str = "auto",
+        ttl: int | None = None,
         **kwargs: Any,
     ) -> dict:
         """Scrape a single URL and return its content.
@@ -66,6 +68,8 @@ class QuickCrawlClient:
             formats: Output formats (markdown, html, links, json). Default: ["markdown"].
             include_tags: CSS selectors to include.
             exclude_tags: CSS selectors to exclude.
+            render_mode: Renderer mode - "auto" (default), "http", or "browser".
+            ttl: Cache TTL in seconds (0=bypass cache, >0=accept cached if younger).
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
@@ -79,6 +83,10 @@ class QuickCrawlClient:
             args.extend(["--include-tags", ",".join(include_tags)])
         if exclude_tags:
             args.extend(["--exclude-tags", ",".join(exclude_tags)])
+        if render_mode != "auto":
+            args.extend(["--render", render_mode])
+        if ttl is not None:
+            args.extend(["--ttl", str(ttl)])
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
@@ -90,7 +98,14 @@ class QuickCrawlClient:
                 args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            return self._http_post("/v1/scrape", {"url": url, "formats": formats})
+            body = {"url": url, "formats": formats}
+            if render_mode == "http":
+                body["renderJs"] = False
+            elif render_mode == "browser":
+                body["renderJs"] = True
+            if ttl is not None:
+                body["ttl"] = ttl
+            return self._http_post("/v1/scrape", body)
         return self._cli_call(args)
 
     def crawl(
@@ -100,6 +115,7 @@ class QuickCrawlClient:
         max_pages: int = 10,
         poll_interval: float = 2.0,
         timeout: float = 300.0,
+        render_mode: str = "auto",
         **kwargs: Any,
     ) -> list[dict]:
         """Crawl a website and return all page results.
@@ -112,12 +128,16 @@ class QuickCrawlClient:
             max_pages: Maximum number of pages to scrape. Default: 10.
             poll_interval: Seconds between status checks. Default: 2.0.
             timeout: Maximum seconds to wait. Default: 300.0.
+            render_mode: Renderer mode - "auto" (default), "http", or "browser".
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
             List of dicts, each containing scraped page data.
         """
         args = ["crawl", url, "--max-depth", str(max_depth), "--max-pages", str(max_pages)]
+
+        if render_mode != "auto":
+            args.extend(["--render", render_mode])
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
@@ -168,7 +188,7 @@ class QuickCrawlClient:
         region: str = "us-en",
         safesearch: str = "moderate",
         scrape: bool = False,
-        render_js: bool = False,
+        render_mode: str = "auto",
         **kwargs: Any,
     ) -> list[dict]:
         """Search the web and optionally scrape results.
@@ -179,7 +199,7 @@ class QuickCrawlClient:
             region: Region code for search results (e.g., "us-en", "gb-en").
             safesearch: SafeSearch mode: "moderate", "strict", "off".
             scrape: Whether to scrape content from each result URL.
-            render_js: Force JavaScript rendering when scraping.
+            render_mode: Renderer mode for scraping - "auto" (default), "http", or "browser".
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
@@ -195,8 +215,8 @@ class QuickCrawlClient:
             args.extend(["--safesearch", safesearch])
         if scrape:
             args.append("--scrape")
-        if render_js:
-            args.append("--render-js")
+        if render_mode != "auto":
+            args.extend(["--render", render_mode])
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
