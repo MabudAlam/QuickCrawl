@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -18,6 +19,7 @@ import (
 type AppState struct {
 	Config      *types.AppConfig    // Application configuration
 	CoreScraper *core.Scraper       // Single source of truth for all scraping (HTTP + chromedp)
+	Cache       *cache.RedisCache   // Redis cache for scrape results
 	CrawlJobs   map[string]CrawlJob // Active crawl jobs (protected by mu)
 	mu          sync.RWMutex        // Mutex for thread-safe CrawlJobs access
 	ctx         context.Context     // Context for controlling background goroutines
@@ -47,6 +49,14 @@ func NewAppState(cfg *types.AppConfig) (*AppState, *types.QuickCrawlError) {
 		CrawlJobs: make(map[string]CrawlJob),
 		ctx:       ctx,
 		cancel:    cancel,
+	}
+
+	if cfg.Cache.Enabled {
+		redisCache, err := cache.NewRedisCache(cfg.Cache)
+		if err != nil {
+			return nil,&types.QuickCrawlError{Code: types.CodeInternalErr, Message: err.Error()}
+		}
+		state.Cache = redisCache
 	}
 
 	go state.removeExpiredJobs()
