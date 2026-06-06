@@ -15,6 +15,19 @@ var nonHTTPSchemes = []string{
 	"javascript:", "mailto:", "data:", "tel:", "blob:", "#",
 }
 
+func unescapeHTMLEntities(s string) string {
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&quot;", `"`)
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&apos;", "'")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&#x27;", "'")
+	s = strings.ReplaceAll(s, "&#x2F;", "/")
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	return s
+}
+
 func isExcludedScheme(href string) bool {
 	for _, s := range nonHTTPSchemes {
 		if strings.HasPrefix(href, s) {
@@ -101,7 +114,7 @@ func ExtractLinks(html, baseURL string) []string {
 		if len(m) < 2 {
 			continue
 		}
-		href := strings.TrimSpace(m[1])
+		href := unescapeHTMLEntities(strings.TrimSpace(m[1]))
 		if href != "" {
 			hrefs = append(hrefs, href)
 		}
@@ -145,7 +158,7 @@ func ExtractImageURLs(html, baseURL string) []string {
 		if len(m) < 2 {
 			continue
 		}
-		src := strings.TrimSpace(m[1])
+		src := unescapeHTMLEntities(strings.TrimSpace(m[1]))
 		if src == "" || strings.HasPrefix(src, "data:") || strings.HasPrefix(src, "blob:") {
 			continue
 		}
