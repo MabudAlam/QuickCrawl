@@ -26,18 +26,16 @@ returned when the crawl completes or maxPages is reached.
 Example:
   quickcrawl crawl https://example.com
   quickcrawl crawl https://example.com --max-depth 3 --max-pages 50
-  quickcrawl crawl https://example.com --formats html --render-js`,
+  quickcrawl crawl https://example.com --formats html --render browser`,
 	RunE: runCrawl,
 }
 
 var crawlFlags = struct {
-	formats  string
-	renderJS bool
-	waitFor  int64
-	maxDepth int
-	maxPages int
-	// renderer is deprecated and ignored.
-	renderer string
+	formats    string
+	renderMode string
+	waitFor    int64
+	maxDepth   int
+	maxPages   int
 }{}
 
 func init() {
@@ -45,16 +43,14 @@ func init() {
 
 	crawlCmd.Flags().StringVarP(&crawlFlags.formats, "formats", "f", "markdown",
 		"Output formats (comma-separated): markdown,html,links")
-	crawlCmd.Flags().BoolVar(&crawlFlags.renderJS, "render-js", false,
-		"Force JavaScript rendering on all pages")
+	crawlCmd.Flags().StringVar(&crawlFlags.renderMode, "render", "auto",
+		"Renderer mode: auto (default), http, browser")
 	crawlCmd.Flags().Int64Var(&crawlFlags.waitFor, "wait-for", 0,
 		"Milliseconds to wait after page load")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxDepth, "max-depth", 2,
 		"Maximum link depth to follow (0-10)")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxPages, "max-pages", 10,
 		"Maximum number of pages to scrape")
-	crawlCmd.Flags().StringVar(&crawlFlags.renderer, "renderer", "auto",
-		"Deprecated: ignored. The scraper uses chromedp only.")
 }
 
 func runCrawl(cmd *cobra.Command, args []string) error {
@@ -84,8 +80,17 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	}
 
 	var renderJS *bool
-	if crawlFlags.renderJS {
-		renderJS = &crawlFlags.renderJS
+	switch crawlFlags.renderMode {
+	case "auto":
+		renderJS = nil
+	case "http":
+		renderJSValue := false
+		renderJS = &renderJSValue
+	case "browser":
+		renderJSValue := true
+		renderJS = &renderJSValue
+	default:
+		return fmt.Errorf("invalid render mode: %s (must be auto, http, or browser)", crawlFlags.renderMode)
 	}
 
 	var waitFor *int64
