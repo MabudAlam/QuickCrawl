@@ -14,7 +14,6 @@ func TestExtractExampleComHTML(t *testing.T) {
 		SourceURL:    "https://example.com",
 		StatusCode:   200,
 		RenderedMode: nil,
-		TimeTaken:    0,
 		Formats:      []quickcrawlcore.OutputFormat{quickcrawlcore.FormatMarkdown},
 	})
 
