@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/common"
@@ -81,6 +83,7 @@ type ScrapeRequest struct {
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
+	TTL                 *int64            `json:"ttl,omitempty"`                 // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
 	// Deprecated: Browser is accepted for backward compatibility but ignored.
 	// The new scraper uses chromedp only — there is a single render path.
 	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
@@ -108,7 +111,6 @@ type PageMetadata struct {
 	Language      *string `json:"language,omitempty"`       // Page language
 	StatusCode    uint16  `json:"statusCode"`               // HTTP status code
 	RenderedMode  *string `json:"renderedMode,omitempty"`   // How it was rendered (http/js)
-	TimeTaken     uint64  `json:"timeTaken"`                // Time taken to fetch
 }
 
 // ScrapeData contains the result of a scrape operation.
@@ -242,7 +244,7 @@ type SearchRequest struct {
 	Region     string         `json:"region"`               // Region code (e.g., "us-en")
 	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "moderate", "strict", "off"
 	Timelimit  string         `json:"timelimit,omitempty"`  // Time limit filter (e.g., "d" for day)
-	RenderJS   bool           `json:"renderJs"`             // Enable JavaScript rendering
+	RenderJS   *bool          `json:"renderJs,omitempty"`   // Enable JavaScript rendering (nil = auto, true = force JS, false = HTTP only)
 	Formats    []OutputFormat `json:"formats"`              // Desired output formats
 	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false)
 }
@@ -298,7 +300,6 @@ type FetchResult struct {
 	ContentType       *string // Content-Type header value
 	RawBytes          []byte  // Raw bytes (for PDFs)
 	RenderedWith      *string // How it was rendered (http/browser)
-	TimeTaken         uint64  // Time taken in milliseconds
 	Warning           *string // Non-fatal warning
 	CapturedResponses []CapturedNetworkResponse
 }
@@ -435,6 +436,56 @@ type ExtractionConfig struct {
 func (e *ExtractionConfig) Defaults() {
 }
 
+// CacheConfig configures the Redis cache.
+type CacheConfig struct {
+	Enabled      bool   `toml:"enabled" json:"enabled"`             // Enable/disable caching
+	RedisURL     string `toml:"redis_url" json:"redisUrl"`           // Redis connection URL
+	Password    string `toml:"password" json:"password"`             // Redis password
+	DB           int    `toml:"db" json:"db"`                       // Redis database number
+	TTLDefaultSecs int64 `toml:"ttl_default_secs" json:"ttlDefaultSecs"` // Default TTL in seconds (0 = no cache)
+}
+
+// ParseRedisURL populates RedisURL, Password, and DB from a standard redis:// URI.
+// This allows hosting platforms to provide a single REDIS_URL environment variable.
+func (c *CacheConfig) ParseRedisURL(uri string) error {
+	if uri == "" {
+		return nil
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("invalid redis url: %w", err)
+	}
+	if u.Scheme != "redis" && u.Scheme != "rediss" {
+		return fmt.Errorf("invalid redis scheme: %s", u.Scheme)
+	}
+	c.RedisURL = u.Host
+	if u.User != nil {
+		c.Password, _ = u.User.Password()
+		if u.User.Username() != "" && u.User.Username() != "default" {
+		}
+	}
+	if u.Path != "" && u.Path != "/" {
+		db, err := strconv.Atoi(strings.TrimPrefix(u.Path, "/"))
+		if err == nil {
+			c.DB = db
+		}
+	}
+	return nil
+}
+
+// Defaults sets default values for unset fields.
+func (c *CacheConfig) Defaults() {
+	if c.TTLDefaultSecs == 0 {
+		c.TTLDefaultSecs = 3600
+	}
+	if c.Enabled && c.RedisURL != "" && !strings.HasPrefix(c.RedisURL, "redis://") && !strings.HasPrefix(c.RedisURL, "rediss://") {
+		return
+	}
+	if c.Enabled && c.RedisURL != "" && (strings.HasPrefix(c.RedisURL, "redis://") || strings.HasPrefix(c.RedisURL, "rediss://")) {
+		_ = c.ParseRedisURL(c.RedisURL)
+	}
+}
+
 // ServerConfig configures the HTTP server.
 type ServerConfig struct {
 	Host               string `toml:"host" json:"host"`                               // Listen address
@@ -465,6 +516,7 @@ type AppConfig struct {
 	Renderer   RendererConfig   `toml:"renderer" json:"renderer"`     // Renderer settings
 	Crawler    CrawlerConfig    `toml:"crawler" json:"crawler"`       // Crawler settings
 	Extraction ExtractionConfig `toml:"extraction" json:"extraction"` // Extraction settings
+	Cache      CacheConfig      `toml:"cache" json:"cache"`           // Cache settings
 }
 
 // Defaults sets default values for all subsystems.
@@ -473,6 +525,7 @@ func (c *AppConfig) Defaults() {
 	c.Renderer.Defaults()
 	c.Crawler.Defaults()
 	c.Extraction.Defaults()
+	c.Cache.Defaults()
 }
 
 // HTTPClientConfig holds HTTP client settings.
