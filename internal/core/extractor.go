@@ -20,7 +20,6 @@ type ExtractOptions struct {
 	SourceURL    string
 	StatusCode   int
 	RenderedMode *string
-	TimeTaken    uint64
 	Formats      []types.OutputFormat
 	IncludeTags  []string
 	ExcludeTags  []string
@@ -50,7 +49,6 @@ type PageMetadata struct {
 	Language      *string `json:"language,omitempty"`
 	StatusCode    uint16  `json:"statusCode"`
 	RenderedMode  *string `json:"renderedMode,omitempty"`
-	TimeTaken     uint64  `json:"timeTaken"`
 }
 
 func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
@@ -60,7 +58,6 @@ func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
 		SourceURL:    opts.SourceURL,
 		StatusCode:   opts.StatusCode,
 		RenderedMode: opts.RenderedMode,
-		TimeTaken:    opts.TimeTaken,
 		Formats:      opts.Formats,
 		IncludeTags:  opts.IncludeTags,
 		ExcludeTags:  opts.ExcludeTags,
@@ -97,7 +94,6 @@ func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
 			Language:      data.Metadata.Language,
 			StatusCode:    data.Metadata.StatusCode,
 			RenderedMode:  data.Metadata.RenderedMode,
-			TimeTaken:     data.Metadata.TimeTaken,
 		},
 	}
 }
