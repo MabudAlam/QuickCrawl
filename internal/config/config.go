@@ -18,13 +18,21 @@ import (
 // 2. TOML config file (if CONFIG env is set, or default quickcrawl.toml)
 // 3. Environment variables (always override)
 func LoadAppConfig() (*types.AppConfig, error) {
-	cfg := &types.AppConfig{}
-	cfg.Defaults()
-
 	configFile := strings.TrimSpace(os.Getenv("CONFIG"))
 	if configFile == "" {
 		configFile = "quickcrawl.toml"
 	}
+	return LoadAppConfigFromPath(configFile)
+}
+
+// LoadAppConfigFromPath loads the application configuration from the
+// given TOML file path and then applies env-var overrides. Missing
+// files are tolerated (an empty config is returned with defaults
+// applied). This is the test-friendly entry point; production code
+// should call LoadAppConfig.
+func LoadAppConfigFromPath(configFile string) (*types.AppConfig, error) {
+	cfg := &types.AppConfig{}
+	cfg.Defaults()
 
 	if err := decodeConfigFile(cfg, configFile, false); err != nil {
 		return nil, err
@@ -70,23 +78,11 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	}
 
 	// Renderer configuration
-	if v := envString("RENDERER__MODE"); v != "" {
-		cfg.Renderer.Mode = types.RendererMode(strings.ToLower(v))
-	}
 	if v := envInt64("RENDERER__PAGE_TIMEOUT_MS"); v != nil {
 		cfg.Renderer.PageTimeoutMs = *v
 	}
 	if v := envInt("RENDERER__POOL_SIZE"); v != nil {
 		cfg.Renderer.PoolSize = *v
-	}
-	if v := envBool("RENDERER__RENDER_JS_DEFAULT"); v != nil {
-		cfg.Renderer.RenderJSDefault = v
-	}
-	if v := envBool("RENDERER__FORCE_JS"); v != nil {
-		cfg.Renderer.RenderJSDefault = v
-	}
-	if v := envString("RENDERER__LIGHTPANDA__WS_URL"); v != "" {
-		cfg.Renderer.Lightpanda = &types.CdpEndpoint{WSURL: v}
 	}
 	if v := envString("RENDERER__CHROME__WS_URL"); v != "" {
 		cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: v}
@@ -101,9 +97,6 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	}
 	if v := envBool("CRAWLER__RESPECT_ROBOTS_TXT"); v != nil {
 		cfg.Crawler.RespectRobotsTxt = *v
-	}
-	if v := envString("CRAWLER__USER_AGENT"); v != "" {
-		cfg.Crawler.UserAgent = v
 	}
 	if v := envString("CRAWLER__USER_AGENT"); v != "" {
 		cfg.Crawler.UserAgent = v
@@ -129,22 +122,13 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envString("CRAWLER__STEALTH__STRATEGY"); v != "" {
 		cfg.Crawler.Stealth.Strategy = v
 	}
-	if v := envCSV("CRAWLER__STEALTH__USER_AGENTS"); v != nil {
-		cfg.Crawler.Stealth.UserAgents = v
-	}
 
 	// Extraction configuration
-	if v := envString("EXTRACTION__DEFAULT_FORMAT"); v != "" {
-		cfg.Extraction.DefaultFormat = v
-	}
 	if cfg.Extraction.LLM == nil {
 		cfg.Extraction.LLM = &types.LLMConfig{}
 	}
 	if v := envString("EXTRACTION__LLM__API_KEY"); v != "" {
 		cfg.Extraction.LLM.APIKey = v
-	}
-	if v := envString("EXTRACTION__LLM__PROVIDER"); v != "" {
-		cfg.Extraction.LLM.Provider = v
 	}
 	if v := envString("EXTRACTION__LLM__MODEL"); v != "" {
 		cfg.Extraction.LLM.Model = v
@@ -160,6 +144,11 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	}
 	if v := envString("EXTRACTION__LLM__RESPONSE_FORMAT"); v != "" {
 		cfg.Extraction.LLM.ResponseFormat = v
+	}
+
+	// Cache - REDIS_URL takes precedence, parsed for host/password/db
+	if v := envString("REDIS_URL"); v != "" {
+		_ = cfg.Cache.ParseRedisURL(v)
 	}
 }
 
@@ -259,22 +248,6 @@ func envFloat64(key string) *float64 {
 		return nil
 	}
 	return &parsed
-}
-
-// envCSV parses a comma-separated list environment variable.
-func envCSV(key string) []string {
-	v := envString(key)
-	if v == "" {
-		return nil
-	}
-	parts := strings.Split(v, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if trimmed := strings.TrimSpace(part); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }
 
 // ptr returns a pointer to a value.

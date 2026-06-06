@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Loader2,
   Play,
@@ -11,6 +11,9 @@ import {
   ExternalLink,
   Copy,
   LayoutDashboard,
+  ChevronDown,
+  SunIcon,
+  MoonIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +24,15 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { NeumorphCombobox } from "@/components/ui/neumorph-combobox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import ReactMarkdown from "react-markdown"
+import { useTheme } from "next-themes"
 
 interface ScrapeResult {
   success: boolean
@@ -29,6 +40,7 @@ interface ScrapeResult {
     markdown?: string
     html?: string
     plainText?: string
+    links?: string[]
     imageLinks?: string[]
     rawHtml?: string
     metadata?: {
@@ -40,6 +52,8 @@ interface ScrapeResult {
   }
   error?: string
   timeTaken?: number
+  markdownTimeTaken?: number
+  htmlTimeTaken?: number
 }
 
 interface BattleResult {
@@ -75,21 +89,28 @@ async function fetchWithTimeout(
 async function scrapeWithQuickCrawl(
   url: string,
   sharedStartTime: number,
-  renderJs: boolean = false,
+  renderJs: boolean | null = false,
+  ttl: number | undefined = undefined,
   formatList: string[] = ["markdown"]
 ): Promise<ScrapeResult> {
   const baseUrl = getBaseUrl()
 
   try {
+    const requestBody: Record<string, unknown> = {
+      url,
+      formats: formatList,
+    }
+    if (renderJs !== null) {
+      requestBody.renderJs = renderJs
+    }
+    if (ttl !== undefined) {
+      requestBody.ttl = ttl
+    }
+
     const response = await fetchWithTimeout(`${baseUrl}/v1/scrape`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        formats: formatList,
-        renderJs,
-        onlyMain: true,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     const timeTaken = Date.now() - sharedStartTime
@@ -109,6 +130,7 @@ async function scrapeWithQuickCrawl(
         markdown: data.data?.markdown,
         html: data.data?.html,
         plainText: data.data?.plainText,
+        links: data.data?.links,
         imageLinks: data.data?.imageLinks,
         rawHtml: data.data?.rawHtml,
         metadata: {
@@ -145,77 +167,76 @@ async function scrapeWithTinyFish(
   }
 
   try {
-    const stringResults: Record<string, string> = {}
+    let markdown: string | undefined
+    let html: string | undefined
+    let links: string[] | undefined
     let imageLinks: string[] | undefined
+    let markdownTimeTaken: number | undefined
+    let htmlTimeTaken: number | undefined
 
-    if (formatList.includes("markdown") && formatList.includes("imageLinks")) {
-      const combinedResponse = await fetch("https://api.fetch.tinyfish.ai", {
-        method: "POST",
-        headers: {
-          "X-API-Key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          urls: [url],
-          format: "markdown",
-          image_links: true,
-        }),
-      })
+    const includeLinks = formatList.includes("links")
+    const includeImageLinks = formatList.includes("imageLinks")
+    const includeMarkdown = formatList.includes("markdown")
+    const includePlainText = formatList.includes("plainText")
+    const includeHtml = formatList.includes("html")
 
-      const combinedData = await combinedResponse.json()
-      const combinedResult = combinedData.results?.[0]
-      if (combinedResult && !combinedResult.error) {
-        stringResults.markdown = combinedResult.text
-        imageLinks = combinedResult.image_links
-      }
-    } else if (formatList.includes("markdown")) {
+    const fetchOptions = {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+    }
+
+    if (includeMarkdown || includePlainText) {
+      const format = includeMarkdown ? "markdown" : "html"
+      const mdStartTime = Date.now()
       const mdResponse = await fetch("https://api.fetch.tinyfish.ai", {
-        method: "POST",
-        headers: {
-          "X-API-Key": apiKey,
-          "Content-Type": "application/json",
-        },
+        ...fetchOptions,
         body: JSON.stringify({
           urls: [url],
-          format: "markdown",
+          format,
+          links: includeLinks,
+          image_links: includeImageLinks,
         }),
       })
+      markdownTimeTaken = Date.now() - mdStartTime
 
       const mdData = await mdResponse.json()
       const mdResult = mdData.results?.[0]
       if (mdResult && !mdResult.error) {
-        stringResults.markdown = mdResult.text
+        if (includeMarkdown) markdown = mdResult.text
+        if (includePlainText) html = mdResult.text
+        if (includeLinks && mdResult.links) links = mdResult.links
+        if (includeImageLinks && mdResult.image_links) imageLinks = mdResult.image_links
       }
     }
 
-    if (formatList.includes("html")) {
+    if (includeHtml) {
+      const htmlStartTime = Date.now()
       const htmlResponse = await fetch("https://api.fetch.tinyfish.ai", {
-        method: "POST",
-        headers: {
-          "X-API-Key": apiKey,
-          "Content-Type": "application/json",
-        },
+        ...fetchOptions,
         body: JSON.stringify({
           urls: [url],
           format: "html",
-          image_links: formatList.includes("imageLinks"),
+          links: includeLinks,
+          image_links: includeImageLinks,
         }),
       })
+      htmlTimeTaken = Date.now() - htmlStartTime
 
       const htmlData = await htmlResponse.json()
       const htmlResult = htmlData.results?.[0]
       if (htmlResult && !htmlResult.error) {
-        stringResults.html = htmlResult.text
-        if (formatList.includes("imageLinks") && !imageLinks) {
-          imageLinks = htmlResult.image_links
-        }
+        html = htmlResult.text
+        if (includeLinks && htmlResult.links) links = htmlResult.links
+        if (includeImageLinks && htmlResult.image_links) imageLinks = htmlResult.image_links
       }
     }
 
     const timeTaken = Date.now() - sharedStartTime
 
-    const firstResult = Object.values(stringResults)[0]
-    if (!firstResult && !imageLinks) {
+    if (!markdown && !html && !links && !imageLinks) {
       return {
         success: false,
         error: "No content returned from TinyFish",
@@ -226,9 +247,10 @@ async function scrapeWithTinyFish(
     return {
       success: true,
       data: {
-        markdown: stringResults.markdown || stringResults.html,
-        html: stringResults.html || stringResults.markdown,
-        plainText: stringResults.markdown || stringResults.html,
+        markdown,
+        plainText: markdown || html,
+        html,
+        links,
         imageLinks,
         metadata: {
           title: undefined,
@@ -237,6 +259,8 @@ async function scrapeWithTinyFish(
         },
       },
       timeTaken,
+      markdownTimeTaken,
+      htmlTimeTaken,
     }
   } catch (error) {
     const timeTaken = Date.now() - sharedStartTime
@@ -253,15 +277,21 @@ function ResultCard({
   result,
   badgeColor,
   showHtml,
+  showPlainText,
+  showLinks,
   showImageLinks,
   showRawHtml,
+  theme,
 }: {
   title: string
   result: ScrapeResult
   badgeColor: string
   showHtml?: boolean
+  showPlainText?: boolean
+  showLinks?: boolean
   showImageLinks?: boolean
   showRawHtml?: boolean
+  theme?: "light" | "dark"
 }) {
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -280,7 +310,19 @@ function ResultCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{title}</CardTitle>
           <div className="flex items-center gap-2">
-            {result.timeTaken && (
+            {result.markdownTimeTaken !== undefined && (
+              <Badge variant="neutral" className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                MD: {result.markdownTimeTaken}ms
+              </Badge>
+            )}
+            {result.htmlTimeTaken !== undefined && (
+              <Badge variant="neutral" className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                HTML: {result.htmlTimeTaken}ms
+              </Badge>
+            )}
+            {result.timeTaken && result.markdownTimeTaken === undefined && result.htmlTimeTaken === undefined && (
               <Badge variant="neutral" className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {result.timeTaken}ms
@@ -307,22 +349,66 @@ function ResultCard({
           </div>
         ) : (
           <Tabs defaultValue={showHtml ? "html" : showImageLinks ? "imageLinks" : "markdown"}>
-<TabsList className="mb-3">
-              {showImageLinks && <TabsTrigger value="imageLinks">Image Links</TabsTrigger>}
+<TabsList className="mb-3 flex flex-wrap">
+              {showImageLinks && <TabsTrigger value="imageGrid">Images</TabsTrigger>}
+              {showImageLinks && <TabsTrigger value="imageLinks">URLs</TabsTrigger>}
               {showHtml && <TabsTrigger value="html">HTML</TabsTrigger>}
-              {showHtml && <TabsTrigger value="html-preview">HTML Preview</TabsTrigger>}
+              {showHtml && <TabsTrigger value="html-preview">Preview</TabsTrigger>}
               <TabsTrigger value="markdown">Markdown</TabsTrigger>
-              <TabsTrigger value="preview">Preview</TabsTrigger>
+              {showPlainText && <TabsTrigger value="plainText">Plain Text</TabsTrigger>}
+              {showLinks && <TabsTrigger value="links">Links</TabsTrigger>}
               {showRawHtml && <TabsTrigger value="rawHtml">Raw HTML</TabsTrigger>}
             </TabsList>
             {showImageLinks && (
+              <TabsContent value="imageGrid">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
+                  {result.data?.imageLinks && result.data.imageLinks.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {result.data.imageLinks.map((link, i) => (
+                        <div key={i} className="group relative aspect-square bg-background rounded-lg overflow-hidden border border-border">
+                          <img
+                            src={link}
+                            alt={`Image ${i + 1}`}
+                            className="w-full h-full object-cover object-center"
+                            loading="lazy"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement
+                              img.style.display = 'none'
+                              const errorDiv = img.nextElementSibling as HTMLElement | null
+                              if (errorDiv) errorDiv.classList.remove('hidden')
+                            }}
+                          />
+                          <div className="hidden absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground text-xs p-2 text-center">
+                            Failed to load
+                          </div>
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <a
+                              href={link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 bg-background rounded-full hover:bg-background/80"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-5 h-5" />
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No image links found</p>
+                  )}
+                </div>
+              </TabsContent>
+            )}
+            {showImageLinks && (
               <TabsContent value="imageLinks">
-                <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
                   {result.data?.imageLinks && result.data.imageLinks.length > 0 ? (
                     <ul className="space-y-2">
                       {result.data.imageLinks.map((link, i) => (
                         <li key={i} className="text-xs break-all">
-                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-main hover:text-main/80">
                             {link}
                           </a>
                         </li>
@@ -335,39 +421,57 @@ function ResultCard({
               </TabsContent>
             )}
             {showHtml && (
-              <>
-                <TabsContent value="html">
-                  <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
-                    <div className="flex justify-end mb-1">
-                      <Button
-                        variant="noShadow"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => copyToClipboard(result.data?.html || "", "html")}
-                      >
-                        <Copy className="h-3 w-3 mr-1" />
-                        {copied === "html" ? "Copied!" : "Copy"}
-                      </Button>
-                    </div>
-                    <pre className="font-mono text-xs break-words whitespace-pre-wrap">
-                      {result.data?.html || "No HTML content"}
-                    </pre>
+              <TabsContent value="html">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
+                  <div className="flex justify-end mb-1">
+                    <Button
+                      variant="noShadow"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => copyToClipboard(result.data?.html || "", "html")}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      {copied === "html" ? "Copied!" : "Copy"}
+                    </Button>
                   </div>
-                </TabsContent>
-                <TabsContent value="html-preview">
-                  <div className="rounded-md border overflow-hidden" style={{ height: "500px" }}>
-                    <iframe
-                      srcDoc={result.data?.html || ""}
-                      className="w-full h-full"
-                      sandbox="allow-scripts allow-same-origin"
-                      title="HTML Preview"
-                    />
-                  </div>
-                </TabsContent>
-              </>
+                  <pre className="font-mono text-xs break-words whitespace-pre-wrap text-foreground">
+                    {result.data?.html || "No HTML content"}
+                  </pre>
+                </div>
+              </TabsContent>
+            )}
+            {showHtml && (
+              <TabsContent value="html-preview">
+                <div className="rounded-md border overflow-hidden bg-background" style={{ height: "500px" }}>
+                  <iframe
+                    srcDoc={`<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root { color-scheme: light dark; }
+    body.dark { background-color: #1a1a1a; color: #f5f5f5; }
+    body.dark a { color: #8b9fd9; }
+    body.dark pre, body.dark code { background-color: #2a2a2a; color: #f5f5f5; }
+    body.light { background-color: #ffffff; color: #000000; }
+    body.light a { color: #0066cc; }
+    body.light pre, body.light code { background-color: #f5f5f5; color: #000000; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 12px; margin: 0; line-height: 1.5; }
+    img { max-width: 100%; height: auto; }
+    pre { overflow-x: auto; padding: 8px; border-radius: 4px; }
+    code { padding: 2px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body class="${theme || 'light'}">${result.data?.html || "<p>No HTML content</p>"}</body>
+</html>`}
+                    className="w-full h-full bg-background"
+                    sandbox="allow-scripts allow-same-origin"
+                    title="HTML Preview"
+                  />
+                </div>
+              </TabsContent>
             )}
             <TabsContent value="markdown">
-              <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+              <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
                 <div className="flex justify-end mb-1">
                   <Button
                     variant="noShadow"
@@ -379,21 +483,53 @@ function ResultCard({
                     {copied === "markdown" ? "Copied!" : "Copy"}
                   </Button>
                 </div>
-                <pre className="font-mono text-xs break-words whitespace-pre-wrap">
+                <pre className="font-mono text-xs break-words whitespace-pre-wrap text-foreground">
                   {result.data?.markdown || "No content"}
                 </pre>
               </div>
             </TabsContent>
-<TabsContent value="preview">
-              <div className="prose prose-sm max-h-[500px] max-w-none overflow-auto rounded-md border p-4">
-                <ReactMarkdown>
-                  {result.data?.markdown || "No content"}
-                </ReactMarkdown>
-              </div>
-            </TabsContent>
+            {showPlainText && (
+              <TabsContent value="plainText">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
+                  <div className="flex justify-end mb-1">
+                    <Button
+                      variant="noShadow"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => copyToClipboard(result.data?.plainText || "", "plainText")}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      {copied === "plainText" ? "Copied!" : "Copy"}
+                    </Button>
+                  </div>
+                  <pre className="font-mono text-xs break-words whitespace-pre-wrap text-foreground">
+                    {result.data?.plainText || "No content"}
+                  </pre>
+                </div>
+              </TabsContent>
+            )}
+            {showLinks && (
+              <TabsContent value="links">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
+                  {result.data?.links && result.data.links.length > 0 ? (
+                    <ul className="space-y-2">
+                      {result.data.links.map((link, i) => (
+                        <li key={i} className="text-xs break-all">
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-main hover:text-main/80">
+                            {link}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No links found</p>
+                  )}
+                </div>
+              </TabsContent>
+            )}
             {showRawHtml && (
               <TabsContent value="rawHtml">
-                <div className="bg-muted max-h-[500px] overflow-auto rounded-md p-3">
+                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
                   <div className="flex justify-end mb-1">
                     <Button
                       variant="noShadow"
@@ -405,7 +541,7 @@ function ResultCard({
                       {copied === "rawHtml" ? "Copied!" : "Copy"}
                     </Button>
                   </div>
-                  <pre className="font-mono text-xs break-words whitespace-pre-wrap">
+                  <pre className="font-mono text-xs break-words whitespace-pre-wrap text-foreground">
                     {result.data?.rawHtml || "No content"}
                   </pre>
                 </div>
@@ -423,13 +559,22 @@ export default function BattlePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<BattleResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [renderJs, setRenderJs] = useState(false)
-  const [formats, setFormats] = useState<{ markdown: boolean; html: boolean; imageLinks: boolean; rawHtml: boolean }>({
+  const [renderJs, setRenderJs] = useState<boolean | null>(null)
+  const [ttl, setTtl] = useState<number | undefined>(undefined)
+  const [formats, setFormats] = useState<{ markdown: boolean; html: boolean; plainText: boolean; links: boolean; imageLinks: boolean; rawHtml: boolean }>({
     markdown: true,
     html: true,
+    plainText: false,
+    links: false,
     imageLinks: false,
     rawHtml: false,
   })
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleCompare = async () => {
     if (!url.trim()) {
@@ -470,6 +615,7 @@ export default function BattlePage() {
         normalizedUrl,
         startTime,
         renderJs,
+        ttl,
         formatList
       )
       const tinyfishPromise = scrapeWithTinyFish(normalizedUrl, startTime, formatList)
@@ -539,6 +685,18 @@ export default function BattlePage() {
                   Playground
                 </Button>
               </a>
+              {mounted && (
+                <Button
+                  variant="noShadow"
+                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                >
+                  {resolvedTheme === "dark" ? (
+                    <SunIcon className="h-4 w-4" />
+                  ) : (
+                    <MoonIcon className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
             </div>
           </div>
           <p className="text-muted-foreground">
@@ -593,15 +751,37 @@ export default function BattlePage() {
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    id="render-js"
-                    checked={renderJs}
-                    onCheckedChange={setRenderJs}
-                    disabled={isLoading}
+                  <Label className="text-sm">Renderer</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="default" size="sm" className="h-8 w-[140px] justify-start">
+                        {renderJs === null ? "Auto" : renderJs ? "Browser" : "HTTP"}
+                        <ChevronDown className="ml-auto h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuRadioGroup
+                        value={renderJs === null ? "auto" : renderJs ? "browser" : "http"}
+                        onValueChange={(v) => setRenderJs(v === "auto" ? null : v === "browser")}
+                      >
+                        <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="browser">Browser</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Cache TTL</Label>
+                  <Input
+                    type="number"
+                    placeholder="3600"
+                    value={ttl ?? ""}
+                    onChange={(e) => setTtl(e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="h-8 w-[100px]"
+                    min={0}
                   />
-                  <Label htmlFor="render-js" className="cursor-pointer text-sm">
-                    JS
-                  </Label>
+                  <span className="text-xs text-gray-500">seconds</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch
@@ -627,6 +807,32 @@ export default function BattlePage() {
                   />
                   <Label htmlFor="format-html" className="cursor-pointer text-sm">
                     HTML
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-plainText"
+                    checked={formats.plainText}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, plainText: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-plainText" className="cursor-pointer text-sm">
+                    Plain Text
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="format-links"
+                    checked={formats.links}
+                    onCheckedChange={(checked) =>
+                      setFormats((f) => ({ ...f, links: checked }))
+                    }
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="format-links" className="cursor-pointer text-sm">
+                    Links
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
@@ -698,15 +904,22 @@ export default function BattlePage() {
                 result={results.quickcrawl}
                 badgeColor="text-green-500"
                 showHtml={formats.html}
+                showPlainText={formats.plainText}
+                showLinks={formats.links}
                 showImageLinks={formats.imageLinks}
                 showRawHtml={formats.rawHtml}
+                theme={mounted ? (resolvedTheme === "dark" ? "dark" : "light") : "light"}
               />
               <ResultCard
                 title="TinyFish"
                 result={results.tinyfish}
                 badgeColor="text-blue-500"
                 showHtml={formats.html}
+                showPlainText={formats.plainText}
+                showLinks={formats.links}
                 showImageLinks={formats.imageLinks}
+                showRawHtml={formats.rawHtml}
+                theme={mounted ? (resolvedTheme === "dark" ? "dark" : "light") : "light"}
               />
             </div>
           </div>

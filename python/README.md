@@ -141,7 +141,6 @@ Scrape a single URL.
 **Parameters:**
 - `url` (str) — URL to scrape
 - `formats` (list) — Output formats: `["markdown", "html", "links", "json"]`
-- `only_main_content` (bool) — Remove nav/footer (default: True)
 - `render_js` (bool) — Force JavaScript rendering
 - `**kwargs` — Additional options
 

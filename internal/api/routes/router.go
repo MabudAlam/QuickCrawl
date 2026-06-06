@@ -3,10 +3,10 @@ package routes
 import (
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/handlers"
 	"github.com/MabudAlam/quickcrawl/internal/api/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 // Router holds the Gin engine and application state for setting up HTTP routes.
@@ -66,7 +66,8 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 	// v1 API group
 	v1 := engine.Group("/v1")
 	{
-		// POST /v1/scrape - Scrape a single URL and return content in various formats
+		// POST /v1/scrape - Scrape a single URL using the chromedp-based
+		// *core.Scraper. This is the single canonical scrape path.
 		v1.POST("/scrape", h.Scrape)
 
 		// POST /v1/crawl - Start an async BFS crawl of a website

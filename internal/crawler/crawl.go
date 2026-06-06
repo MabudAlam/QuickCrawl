@@ -2,13 +2,12 @@ package crawler
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/common"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
@@ -21,8 +20,12 @@ import (
 // It first validates the URL, then optionally fetches robots.txt.
 // The crawler uses a queue-based BFS approach, processing URLs level by level.
 // Results are collected until maxPages is reached, then returned in the final state.
+//
+// The Scraper field on opts is the shared *core.Scraper used for every page
+// fetch. It provides both the HTTP and chromedp-based browser paths so
+// crawl pages use the exact same code as the /v1/scrape endpoint.
 func RunCrawl(opts CrawlOptions) {
-	if opts.Req == nil || opts.Renderer == nil {
+	if opts.Req == nil || opts.Scraper == nil {
 		emitCrawlFailure(opts.ID, opts.StateCh, "crawl options are incomplete")
 		return
 	}
@@ -115,32 +118,36 @@ func RunCrawl(opts CrawlOptions) {
 				}
 
 				var headers map[string]string
-			if opts.StealthStrategy != "" {
-				profile := utils.GetHeaderProfile(opts.StealthStrategy)
-				headers = profile.ToMap()
-			}
+				if opts.StealthStrategy != "" {
+					profile := utils.GetHeaderProfile(opts.StealthStrategy)
+					headers = profile.ToMap()
+				}
 
-			fetchResult, fetchErr := opts.Renderer.Fetch(item.url, headers, opts.Req.RenderJS, opts.Req.WaitFor, opts.Req.Browser)
+				renderJS := opts.Req.RenderJS
+				waitMs := int64(0)
+				if opts.Req.WaitFor != nil {
+					waitMs = *opts.Req.WaitFor
+				}
+
+				fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, renderJS, waitMs, opts.Req.Browser)
+				cancel()
 				if fetchErr != nil {
-					resultsCh <- crawlPageResult{item: item, err: fetchErr}
+					resultsCh <- crawlPageResult{item: item, err: convertCoreCrawlError(fetchErr)}
 					return
 				}
 
-			data := extractor.Extract(extractor.ExtractOptions{
-				RawHTML:        fetchResult.HTML,
-				RawBytes:       fetchResult.RawBytes,
-				SourceURL:      fetchResult.URL,
-				StatusCode:     int(fetchResult.StatusCode),
-				RenderedMode:   fetchResult.RenderedWith,
-				TimeTaken:      fetchResult.TimeTaken,
-				Formats:        opts.Req.Formats,
-				IncludeTags:    []string{},
-				ExcludeTags:    []string{},
-				CSSSelector:    nil,
-			})
-
-				// NOTE: LLM extraction is skipped per-page during crawl.
-				// After crawl completes, we aggregate all markdown and call LLM once.
+				data := extractor.Extract(extractor.ExtractOptions{
+					RawHTML:        fetchResult.HTML,
+					RawBytes:       fetchResult.RawBytes,
+					SourceURL:      fetchResult.URL,
+					StatusCode:     int(fetchResult.StatusCode),
+					RenderedMode:   fetchResult.RenderedWith,
+					Formats:        opts.Req.Formats,
+					IncludeTags:    []string{},
+					ExcludeTags:    []string{},
+					CSSSelector:    nil,
+				})
 
 				var links []string
 				if item.depth < maxDepth && fetchResult.HTML != "" {
@@ -212,11 +219,6 @@ func RunCrawl(opts CrawlOptions) {
 		queue = append(queue, nextQueue...)
 	}
 
-	var answer json.RawMessage
-	if includesJSONFormat(opts.Req.Formats) && opts.Req.Extract != nil && opts.LLMConfig != nil {
-		answer = extractAggregatedJSON(results, opts.Req.Extract, opts.LLMConfig)
-	}
-
 	reportProgress(types.CrawlState{
 		ID:        opts.ID,
 		Success:   true,
@@ -224,7 +226,6 @@ func RunCrawl(opts CrawlOptions) {
 		Total:     uint32(len(visited)),
 		Completed: uint32(len(results)),
 		Data:      results,
-		Answer:    answer,
 		Error:     nil,
 	})
 }
@@ -246,6 +247,20 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 	}
 }
 
+// convertCoreCrawlError maps a *core.QuickCrawlError into the
+// *types.QuickCrawlError used by the rest of the crawl pipeline. The two
+// types are structurally identical but live in different packages so
+// the rest of the pipeline keeps a single error type.
+func convertCoreCrawlError(e *core.QuickCrawlError) *types.QuickCrawlError {
+	if e == nil {
+		return nil
+	}
+	return &types.QuickCrawlError{
+		Message: e.Message,
+		Code:    types.ErrorCode(string(e.Code)),
+	}
+}
+
 // DiscoverUrls performs URL discovery starting from a base URL using BFS traversal.
 // It discovers URLs up to maxDepth levels deep, optionally using sitemaps as seeds.
 // Returns a sorted list of unique URLs discovered (excluding the seed URL).
@@ -253,9 +268,7 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 // The discovery respects robots.txt rules and uses rate limiting per domain.
 // It does NOT scrape content - only collects URLs for later crawling.
 // If ctx is provided and has a deadline, the operation will respect that timeout.
-func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer interface {
-	Fetch(rawURL string, headers map[string]string, renderJS *bool, waitForMs *int64, browser *string) (*types.FetchResult, *types.QuickCrawlError)
-}, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *types.QuickCrawlError) {
+func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *types.QuickCrawlError) {
 	parsed, err := common.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
 		return nil, types.ErrInvalidRequest.New("Only http/https URLs are allowed")
@@ -343,20 +356,22 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, renderer int
 					time.Sleep(sleepDur)
 				}
 
-if ctx.Err() != nil {
-				return
-			}
-
-			// Check robots.txt before fetching
-			if respectRobots && robots != nil {
-				parsedLink, parseErr := common.ValidateURL(item.url)
-				if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
-					resultsCh <- nil
+				if ctx.Err() != nil {
 					return
 				}
-			}
 
-			fetchResult, fetchErr := renderer.Fetch(item.url, map[string]string{}, newBool(false), nil, nil)
+				// Check robots.txt before fetching
+				if respectRobots && robots != nil {
+					parsedLink, parseErr := common.ValidateURL(item.url)
+					if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
+						resultsCh <- nil
+						return
+					}
+				}
+
+				fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0, nil)
+				cancel()
 				if fetchErr != nil || fetchResult == nil {
 					resultsCh <- nil
 					return
@@ -423,52 +438,4 @@ func collectSitemapSeedURLs(origin, userAgent string) []string {
 		urls = append(urls, robots.Sitemaps...)
 	}
 	return urls
-}
-
-// buildCrawlLLMInput builds the content to send to LLM for a crawl page.
-// Returns the full markdown.
-func buildCrawlLLMInput(markdown string) string {
-	return markdown
-}
-
-// extractAggregatedJSON aggregates markdown from all crawled pages and calls
-// LLM once to produce a single structured JSON answer.
-func extractAggregatedJSON(results []types.ScrapeData, extract *types.ExtractOptions, llm *types.LLMConfig) json.RawMessage {
-	if len(results) == 0 {
-		return nil
-	}
-
-	var sb strings.Builder
-	for i, res := range results {
-		if res.Markdown != nil && *res.Markdown != "" {
-			if i > 0 {
-				sb.WriteString("\n\n---\n\n")
-			}
-			sb.WriteString(*res.Markdown)
-		}
-	}
-	combinedMarkdown := sb.String()
-	if combinedMarkdown == "" {
-		return nil
-	}
-
-	effectiveLLM := llm
-	if extract.Prompt != "" {
-		effectiveLLM.ExtractionPrompt = extract.Prompt
-	}
-	if extract.ResponseFormat != "" {
-		effectiveLLM.ResponseFormat = extract.ResponseFormat
-	}
-
-	jsonResult, err := extractStructured(combinedMarkdown, extract.Schema, effectiveLLM)
-	if err != nil || jsonResult == "" {
-		return nil
-	}
-	return json.RawMessage(jsonResult)
-}
-
-// buildCrawlLLMInputWithSources builds the content to send to LLM for a crawl page.
-// Returns the LLM input string.
-func buildCrawlLLMInputWithSources(markdown string) string {
-	return markdown
 }

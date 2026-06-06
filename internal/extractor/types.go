@@ -25,8 +25,6 @@ type ExtractOptions struct {
 	// RenderedMode indicates how the content was rendered (e.g., "http", "pdf")
 	RenderedMode *string
 
-	// TimeTaken is the time taken to fetch the content in milliseconds
-	TimeTaken uint64
 
 	// Formats specifies which output formats to generate
 	Formats []types.OutputFormat
@@ -39,9 +37,6 @@ type ExtractOptions struct {
 
 	// CSSSelector extracts content from elements matching this selector
 	CSSSelector *string
-
-	// OnlyMain extracts only the main content area, ignoring sidebars, footers, nav, etc.
-	OnlyMain bool
 }
 
 // ExtractedMetadata contains page metadata extracted from HTML.

@@ -6,9 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -27,41 +26,33 @@ returned when the crawl completes or maxPages is reached.
 Example:
   quickcrawl crawl https://example.com
   quickcrawl crawl https://example.com --max-depth 3 --max-pages 50
-  quickcrawl crawl https://example.com --formats html --render-js`,
+  quickcrawl crawl https://example.com --formats html --render browser`,
 	RunE: runCrawl,
 }
 
-// crawlFlags holds the configuration for the crawl command.
 var crawlFlags = struct {
-	formats  string
-	renderJS bool
-	waitFor        int64
-	maxDepth       int
-	maxPages       int
-	query          string
-	topK           int
-	renderer       string
+	formats    string
+	renderMode string
+	waitFor    int64
+	maxDepth   int
+	maxPages   int
 }{}
 
 func init() {
 	rootCmd.AddCommand(crawlCmd)
 
 	crawlCmd.Flags().StringVarP(&crawlFlags.formats, "formats", "f", "markdown",
-		"Output formats (comma-separated): markdown,html,links,json")
-	crawlCmd.Flags().BoolVar(&crawlFlags.renderJS, "render-js", false,
-		"Force JavaScript rendering on all pages")
+		"Output formats (comma-separated): markdown,html,links")
+	crawlCmd.Flags().StringVar(&crawlFlags.renderMode, "render", "auto",
+		"Renderer mode: auto (default), http, browser")
 	crawlCmd.Flags().Int64Var(&crawlFlags.waitFor, "wait-for", 0,
 		"Milliseconds to wait after page load")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxDepth, "max-depth", 2,
 		"Maximum link depth to follow (0-10)")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxPages, "max-pages", 10,
 		"Maximum number of pages to scrape")
-	crawlCmd.Flags().StringVar(&crawlFlags.renderer, "renderer", "auto",
-		"Renderer: auto, lightpanda, chrome")
 }
 
-// runCrawl executes the crawl command.
-// It starts an async crawl job, polls for completion, and outputs results.
 func runCrawl(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("a URL argument is required")
@@ -69,7 +60,6 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 
 	targetURL := args[0]
 
-	// Validate URL.
 	parsedURL, urlErr := url.Parse(targetURL)
 	if urlErr != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return fmt.Errorf("invalid URL: %s", targetURL)
@@ -78,10 +68,8 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid URL scheme: %s (only http/https)", parsedURL.Scheme)
 	}
 
-	// Parse formats.
 	formats := parseFormats(crawlFlags.formats)
 
-	// Build request options.
 	maxDepth := uint32(crawlFlags.maxDepth)
 	if maxDepth > 10 {
 		maxDepth = 10
@@ -92,8 +80,17 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	}
 
 	var renderJS *bool
-	if crawlFlags.renderJS {
-		renderJS = &crawlFlags.renderJS
+	switch crawlFlags.renderMode {
+	case "auto":
+		renderJS = nil
+	case "http":
+		renderJSValue := false
+		renderJS = &renderJSValue
+	case "browser":
+		renderJSValue := true
+		renderJS = &renderJSValue
+	default:
+		return fmt.Errorf("invalid render mode: %s (must be auto, http, or browser)", crawlFlags.renderMode)
 	}
 
 	var waitFor *int64
@@ -101,73 +98,48 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		waitFor = &crawlFlags.waitFor
 	}
 
-	var browser *string
-	if crawlFlags.renderer != "" && crawlFlags.renderer != "auto" {
-		browser = &crawlFlags.renderer
-	}
-
 	crawlReq := &types.CrawlRequest{
-		URL:          targetURL,
-		MaxDepth:  &maxDepth,
-		MaxPages:  &maxPages,
-		Formats:   formats,
-		RenderJS:  renderJS,
-		WaitFor:   waitFor,
-		Browser:   browser,
+		URL:      targetURL,
+		MaxDepth: &maxDepth,
+		MaxPages: &maxPages,
+		Formats:  formats,
+		RenderJS: renderJS,
+		WaitFor:  waitFor,
 	}
 	crawlReq.Defaults()
 
-	// Load configuration.
-	cfg, err := loadConfig()
+	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
+	}
+	if teardown != nil {
+		defer teardown()
 	}
 
-	// Create renderer.
-	rend, rendErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendErr != nil {
-		return fmt.Errorf("failed to initialize renderer: %w", rendErr)
+	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if qErr != nil {
+		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}
-	defer rend.Close()
+	defer scraper.Close()
 
-	// Create app state to manage crawl jobs.
-	state, stateErr := api.NewAppState(cfg)
-	if stateErr != nil {
-		return fmt.Errorf("failed to create app state: %w", stateErr)
-	}
-	state.Renderer = rend
-	defer state.Close()
-
-	// Register the crawl job and get an ID for tracking.
-	jobID := state.StartCrawlJob(crawlReq)
-
-	// Channel to receive progress updates.
+	jobID := fmt.Sprintf("cli-%d", time.Now().UnixNano())
 	stateCh := make(chan types.CrawlState, 100)
 
-	// Start the crawl in a goroutine so we can track progress.
 	go func() {
 		opts := crawler.CrawlOptions{
 			ID:                jobID,
 			Req:               crawlReq,
-			Renderer:          rend,
+			Scraper:           scraper,
 			MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 			RespectRobots:     cfg.Crawler.RespectRobotsTxt,
 			RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 			UserAgent:         cfg.Crawler.UserAgent,
 			StateCh:           stateCh,
-			LLMConfig:         cfg.Extraction.LLM,
 			JitterFactor:      cfg.Crawler.Stealth.JitterFactor,
 		}
 		crawler.RunCrawl(opts)
 	}()
 
-	// Poll for completion with timeout.
-	// The request_timeout_secs from config serves as our overall timeout.
 	timeout := time.Duration(cfg.Server.RequestTimeoutSecs) * time.Second
 	start := time.Now()
 
@@ -179,7 +151,6 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		select {
 		case state := <-stateCh:
 			if state.Status == types.CrawlStatusCompleted {
-				// Crawl finished - output results.
 				if state.Error != nil {
 					return fmt.Errorf("crawl failed: %s", *state.Error)
 				}
@@ -193,47 +164,20 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 				}
 				return fmt.Errorf("crawl failed: %s", errMsg)
 			}
-			// In progress - could print progress indicator with verbose flag.
 			if verbose {
 				errPrint("crawl progress: %d/%d pages\n", state.Completed, state.Total)
 			}
-
 		case <-time.After(2 * time.Second):
-			// Timeout waiting for state update - check current status directly.
-			current := state.GetCrawlJob(jobID)
-			if current != nil {
-				if current.Status == types.CrawlStatusCompleted {
-					outputCrawlResults(*current)
-					return nil
-				}
-				if current.Status == types.CrawlStatusFailed {
-					errMsg := "unknown error"
-					if current.Error != nil {
-						errMsg = *current.Error
-					}
-					return fmt.Errorf("crawl failed: %s", errMsg)
-				}
-			}
+			// No state update within the poll window. Loop and try again.
 		}
 	}
 }
 
 // outputCrawlResults formats and outputs the final crawl results.
-// Each scraped page is output on its own line as JSON for easy processing.
 func outputCrawlResults(state types.CrawlState) {
-	// For each page result, output a JSON object with the scraped data.
 	for _, data := range state.Data {
-		result := formatScrapeData(&data)
+		result := formatTypesScrapeData(&data)
 		output("%s\n", result)
-	}
-
-	// If there's an aggregated LLM answer, output it as well.
-	if state.Answer != nil {
-		var answer any
-		if err := decodeJSON(state.Answer, &answer); err == nil {
-			output("\n--- Aggregated Answer ---\n")
-			output("%s\n", formatJSON(answer))
-		}
 	}
 
 	if verbose {
@@ -242,16 +186,32 @@ func outputCrawlResults(state types.CrawlState) {
 	}
 }
 
-// decodeJSON parses JSON bytes into a generic value.
-// It's a helper to avoid repeating json.Unmarshal calls.
-func decodeJSON(data []byte, out interface{}) error {
-	return json.Unmarshal(data, out)
-}
+// formatTypesScrapeData formats a *types.ScrapeData (the per-page
+// crawl pipeline result) as JSON.
+func formatTypesScrapeData(data *types.ScrapeData) string {
+	if data == nil {
+		return `{"error": "no data returned"}`
+	}
 
-// formatJSON formats a generic value as indented JSON.
-// Used for displaying structured data like LLM answers.
-func formatJSON(v interface{}) string {
-	encoded, err := json.MarshalIndent(v, "", "  ")
+	result := make(map[string]interface{})
+	if data.Markdown != nil && *data.Markdown != "" {
+		result["markdown"] = *data.Markdown
+	}
+	if data.HTML != nil && *data.HTML != "" {
+		result["html"] = *data.HTML
+	}
+	if data.PlainText != nil && *data.PlainText != "" {
+		result["plainText"] = *data.PlainText
+	}
+	if data.Links != nil && len(data.Links) > 0 {
+		result["links"] = data.Links
+	}
+	result["metadata"] = data.Metadata
+	if data.Warning != nil && *data.Warning != "" {
+		result["warning"] = *data.Warning
+	}
+
+	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return fmt.Sprintf(`{"error": "failed to format: %v"}`, err)
 	}

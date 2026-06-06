@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -31,15 +30,17 @@ func NewServer(state *api.AppState, cfg *types.AppConfig) *Server {
 }
 
 type ScrapeArgs struct {
-	URL          string               `json:"url"`
-	Formats      []string             `json:"formats,omitempty"`
-	RenderJS     *bool                `json:"renderJs,omitempty"`
-	WaitFor      *int64               `json:"waitFor,omitempty"`
-	IncludeTags  []string             `json:"includeTags,omitempty"`
-	ExcludeTags  []string             `json:"excludeTags,omitempty"`
-	CSSSelector  *string              `json:"cssSelector,omitempty"`
-	Renderer     *string              `json:"renderer,omitempty"`
-	Browser      *string              `json:"browser,omitempty"`
+	URL         string   `json:"url"`
+	Formats     []string `json:"formats,omitempty"`
+	RenderJS    *bool    `json:"renderJs,omitempty"`
+	WaitFor     *int64   `json:"waitFor,omitempty"`
+	IncludeTags []string `json:"includeTags,omitempty"`
+	ExcludeTags []string `json:"excludeTags,omitempty"`
+	CSSSelector *string  `json:"cssSelector,omitempty"`
+	// Renderer is deprecated: the new scraper uses chromedp only.
+	Renderer *string `json:"renderer,omitempty"`
+	// Browser is deprecated: the new scraper uses chromedp only.
+	Browser *string `json:"browser,omitempty"`
 }
 
 type SearchArgs struct {
@@ -47,8 +48,9 @@ type SearchArgs struct {
 	Region     string   `json:"region,omitempty"`
 	Safesearch string   `json:"safesearch,omitempty"`
 	Timelimit  string   `json:"timelimit,omitempty"`
-	RenderJS   bool     `json:"renderJs,omitempty"`
+	RenderJS   *bool    `json:"renderJs,omitempty"`
 	Formats    []string `json:"formats,omitempty"`
+	Scrape     bool     `json:"scrape,omitempty"`
 }
 
 func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, any, error) {
@@ -60,86 +62,63 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		return errorResult(fmt.Sprintf("invalid URL: %v", urlErr)), nil, nil
 	}
 
-	preferredRenderer, normalizeErr := normalizePinnedRenderer(args.Renderer, args.Browser)
-	if normalizeErr != nil {
-		return errorResult(normalizeErr.Error()), nil, nil
-	}
-	if validateErr := validatePinnedRenderer(s.state.Renderer, preferredRenderer, args.RenderJS); validateErr != nil {
-		return errorResult(validateErr.Error()), nil, nil
+	// Log deprecation warning if the caller pinned a renderer/browser.
+	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
+		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
+		utils.Log.Warn("deprecated renderer/browser fields ignored for scrape", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
 	}
 
-	formats := []types.OutputFormat{types.FormatMarkdown}
-	if len(args.Formats) > 0 {
-		formats = make([]types.OutputFormat, len(args.Formats))
-		for i, f := range args.Formats {
-			formats[i] = types.OutputFormat(f)
-		}
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized"), nil, nil
 	}
 
-	scrapeReq := &types.ScrapeRequest{
+	coreReq := &core.ScrapeRequest{
 		URL:          args.URL,
-		Formats:      formats,
+		Formats:      args.Formats,
 		RenderJS:     args.RenderJS,
 		WaitFor:      args.WaitFor,
 		IncludeTags:  args.IncludeTags,
 		ExcludeTags:  args.ExcludeTags,
 		CSSSelector:  args.CSSSelector,
-		Browser:      preferredRenderer,
 	}
-	if scrapeReq.RenderJS == nil && preferredRenderer != nil {
-		forceJS := true
-		scrapeReq.RenderJS = &forceJS
+	if coreReq.RenderJS != nil && *coreReq.RenderJS && coreReq.WaitFor == nil {
+		defaultWait := int64(2000)
+		coreReq.WaitFor = &defaultWait
 	}
-	if scrapeReq.RenderJS != nil && *scrapeReq.RenderJS && scrapeReq.WaitFor == nil {
-		defaultWaitFor := int64(2000)
-		scrapeReq.WaitFor = &defaultWaitFor
-	}
-	if scrapeReq.Headers == nil {
-		scrapeReq.Headers = make(map[string]string)
+	if coreReq.Formats == nil {
+		coreReq.Formats = []string{"markdown"}
 	}
 
 	// Check robots.txt if respect_robots_txt is enabled
 	if s.config.Crawler.RespectRobotsTxt {
-		parsedURL, _ := url.Parse(args.URL)
-		if parsedURL != nil {
-			origin := parsedURL.Scheme + "://" + parsedURL.Host
-			robots := crawler.FetchRobotsTxt(origin, s.config.Crawler.UserAgent)
-			if robots != nil && !robots.IsAllowed(parsedURL.Path) {
-				return errorResult("access denied by robots.txt"), nil, nil
-			}
+		if err := crawler.CheckRobotsTxt(args.URL, s.config.Crawler.UserAgent); err != nil {
+			return errorResult(err.Message), nil, nil
 		}
 	}
 
-	data, scrapeErr := crawler.ScrapeURL(
-		scrapeReq,
-		s.state.Renderer,
-		s.config.Extraction.LLM,
-		s.config.Crawler.Stealth.Enabled,
-		s.config.Renderer.RenderJSDefault,
-		utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
-	)
-
+	data, scrapeErr := scraper.Scrape(ctx, coreReq)
 	if scrapeErr != nil {
 		return errorResult(fmt.Sprintf("scrape error: %v", scrapeErr)), nil, nil
 	}
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: formatScrapeData(data)},
+			&mcp.TextContent{Text: formatCoreScrapeData(data)},
 		},
 	}, nil, nil
 }
 
 type CrawlArgs struct {
-	URL            string                `json:"url"`
-	MaxDepth       *uint32               `json:"maxDepth,omitempty"`
-	MaxPages       *uint32               `json:"maxPages,omitempty"`
-	Formats        []string              `json:"formats,omitempty"`
-	RenderJS       *bool                 `json:"renderJs,omitempty"`
-	WaitFor        *int64                `json:"waitFor,omitempty"`
-	Extract        *types.ExtractOptions `json:"extract,omitempty"`
-	Renderer       *string               `json:"renderer,omitempty"`
-	Browser        *string               `json:"browser,omitempty"`
+	URL      string   `json:"url"`
+	MaxDepth *uint32  `json:"maxDepth,omitempty"`
+	MaxPages *uint32  `json:"maxPages,omitempty"`
+	Formats  []string `json:"formats,omitempty"`
+	RenderJS *bool    `json:"renderJs,omitempty"`
+	WaitFor  *int64   `json:"waitFor,omitempty"`
+	// Renderer/Browser are deprecated: the new scraper uses chromedp only.
+	Renderer *string `json:"renderer,omitempty"`
+	Browser  *string `json:"browser,omitempty"`
 }
 
 func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, any, error) {
@@ -151,12 +130,9 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		return errorResult(fmt.Sprintf("invalid URL: %v", urlErr)), nil, nil
 	}
 
-	preferredRenderer, normalizeErr := normalizePinnedRenderer(args.Renderer, args.Browser)
-	if normalizeErr != nil {
-		return errorResult(normalizeErr.Error()), nil, nil
-	}
-	if validateErr := validatePinnedRenderer(s.state.Renderer, preferredRenderer, args.RenderJS); validateErr != nil {
-		return errorResult(validateErr.Error()), nil, nil
+	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
+		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
+		utils.Log.Warn("deprecated renderer/browser fields ignored for crawl", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
 	}
 
 	maxDepth := uint32(s.config.Crawler.DefaultMaxDepth)
@@ -176,23 +152,24 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		}
 	}
 
-	scrapeReq := &types.ScrapeRequest{
-		Formats: formats,
+	for _, f := range formats {
+		if f == types.FormatJson {
+			return errorResult("'json' format is not supported on quickcrawl_crawl. Use quickcrawl_scrape for LLM-based JSON extraction."), nil, nil
+		}
 	}
 
 	crawlReq := &types.CrawlRequest{
-		URL:          args.URL,
-		MaxDepth:     &maxDepth,
-		MaxPages:     &maxPages,
-		Formats:      scrapeReq.Formats,
-		RenderJS:     args.RenderJS,
-		WaitFor:      args.WaitFor,
-		Browser:      preferredRenderer,
-		Extract:      args.Extract,
+		URL:      args.URL,
+		MaxDepth: &maxDepth,
+		MaxPages: &maxPages,
+		Formats:  formats,
+		RenderJS: args.RenderJS,
+		WaitFor:  args.WaitFor,
 	}
-	if crawlReq.RenderJS == nil && preferredRenderer != nil {
-		forceJS := true
-		crawlReq.RenderJS = &forceJS
+
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized"), nil, nil
 	}
 
 	id := s.state.StartCrawlJob(crawlReq)
@@ -209,13 +186,12 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		opts := crawler.CrawlOptions{
 			ID:                id,
 			Req:               crawlReq,
-			Renderer:          s.state.Renderer,
+			Scraper:           scraper,
 			MaxConcurrency:    s.config.Crawler.MaxConcurrency,
 			RespectRobots:     s.config.Crawler.RespectRobotsTxt,
 			RequestsPerSecond: s.config.Crawler.RequestsPerSecond,
 			UserAgent:         s.config.Crawler.UserAgent,
 			StateCh:           stateCh,
-			LLMConfig:         s.config.Extraction.LLM,
 			JitterFactor:      s.config.Crawler.Stealth.JitterFactor,
 		}
 		crawler.RunCrawl(opts)
@@ -290,11 +266,16 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 	crawlCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized"), nil, nil
+	}
+
 	urls, discoverErr := crawler.DiscoverUrls(
 		args.URL,
 		maxDepth,
 		useSitemap,
-		s.state.Renderer,
+		scraper,
 		s.config.Crawler.RespectRobotsTxt,
 		s.config.Crawler.MaxConcurrency,
 		s.config.Crawler.RequestsPerSecond,
@@ -337,6 +318,11 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		region = "us-en"
 	}
 
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized"), nil, nil
+	}
+
 	engine := search.New()
 	results, searchErr := engine.Search(args.Query, region, safesearch, args.Timelimit)
 	if searchErr != nil {
@@ -351,19 +337,30 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		}, nil, nil
 	}
 
-	rend := s.state.Renderer
-	if rend == nil {
-		return errorResult("renderer is not initialized"), nil, nil
-	}
-	llmConfig := s.config.Extraction.LLM
-
-	defaultFormats := []types.OutputFormat{types.FormatMarkdown}
-	formats := defaultFormats
-	if len(args.Formats) > 0 {
-		formats = make([]types.OutputFormat, len(args.Formats))
-		for i, f := range args.Formats {
-			formats[i] = types.OutputFormat(f)
+	if !args.Scrape {
+		orderedResults := make([]types.SearchResult, 0, len(results))
+		for _, r := range results {
+			orderedResults = append(orderedResults, types.SearchResult{
+				Title:       r.Title,
+				Description: r.Body,
+				URL:         r.Href,
+			})
 		}
+		response := map[string]interface{}{
+			"results": orderedResults,
+			"count":   len(orderedResults),
+		}
+		data, _ := json.Marshal(response)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: string(data)},
+			},
+		}, nil, nil
+	}
+
+	formats := []string{"markdown"}
+	if len(args.Formats) > 0 {
+		formats = args.Formats
 	}
 
 	maxWorkers := 10
@@ -382,7 +379,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("search MCP: panic recovered while scraping %s: %v", result.Href, rec)
+					utils.Log.Warn("search MCP panic recovered while scraping", "url", result.Href, "error", rec)
 					mu.Lock()
 					resultMap[index] = types.SearchResult{
 						Title:       result.Title,
@@ -397,7 +394,7 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 			defer func() { <-semaphore }()
 
 			if _, urlErr := types.ValidateURL(result.Href); urlErr != nil {
-				log.Printf("search MCP: skipping invalid URL %s: %v", result.Href, urlErr)
+				utils.Log.Warn("search MCP skipping invalid URL", "url", result.Href, "error", urlErr)
 				mu.Lock()
 				resultMap[index] = types.SearchResult{
 					Title:       result.Title,
@@ -408,11 +405,10 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 				return
 			}
 
-			renderJS := args.RenderJS
-			scrapeReq := &types.ScrapeRequest{
+			scrapeReq := &core.ScrapeRequest{
 				URL:      result.Href,
 				Formats:  formats,
-				RenderJS: &renderJS,
+				RenderJS: args.RenderJS,
 			}
 
 			searchResult := types.SearchResult{
@@ -421,26 +417,21 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 				URL:         result.Href,
 			}
 
-			data, scrapeErr := crawler.ScrapeURL(
-				scrapeReq,
-				rend,
-				llmConfig,
-				s.config.Crawler.Stealth.Enabled,
-				&renderJS,
-				utils.HeaderStrategy(s.config.Crawler.Stealth.Strategy),
-			)
-
+			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
 			if scrapeErr != nil {
-				log.Printf("search MCP: failed to scrape %s: %v", result.Href, scrapeErr)
+				utils.Log.Warn("search MCP failed to scrape", "url", result.Href, "error", scrapeErr)
 			} else if data != nil {
 				if data.Markdown != nil {
-					searchResult.Markdown = data.Markdown
+					s := *data.Markdown
+					searchResult.Markdown = &s
 				}
 				if data.HTML != nil {
-					searchResult.HTML = data.HTML
+					s := *data.HTML
+					searchResult.HTML = &s
 				}
 				if data.PlainText != nil {
-					searchResult.PlainText = data.PlainText
+					s := *data.PlainText
+					searchResult.PlainText = &s
 				}
 				if data.Links != nil {
 					searchResult.Links = data.Links
@@ -493,7 +484,11 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-func formatScrapeData(data *types.ScrapeData) string {
+// formatCoreScrapeData serializes a *core.ScrapeData into a JSON string
+// suitable for the MCP text content. Field selection mirrors the
+// legacy formatScrapeData helper so existing MCP clients see the same
+// payload shape.
+func formatCoreScrapeData(data *core.ScrapeData) string {
 	if data == nil {
 		return `{"error": "no data"}`
 	}
@@ -551,53 +546,14 @@ func AddTools(server *mcp.Server, s *Server) {
 		InputSchema: searchInputSchema(),
 	}, s.HandleSearch)
 
-	log.Printf("MCP tools registered: quickcrawl_scrape, quickcrawl_crawl, quickcrawl_check_crawl_status, quickcrawl_map, quickcrawl_search")
+	utils.Log.Info("MCP tools registered", "tools", "quickcrawl_scrape, quickcrawl_crawl, quickcrawl_check_crawl_status, quickcrawl_map, quickcrawl_search")
 }
 
-func normalizePinnedRenderer(rendererName, browserName *string) (*string, error) {
-	if rendererName != nil && browserName != nil && *rendererName != "" && *browserName != "" && *rendererName != *browserName {
-		return nil, fmt.Errorf("renderer and browser must match when both are provided")
+func strVal(p *string) string {
+	if p == nil {
+		return ""
 	}
-
-	name := firstNonEmpty(rendererName, browserName)
-	if name == nil {
-		return nil, nil
-	}
-
-	switch *name {
-	case "auto":
-		return nil, nil
-	case "lightpanda", "chrome":
-		return name, nil
-	default:
-		return nil, fmt.Errorf("invalid renderer %q; valid values: auto, lightpanda, chrome", *name)
-	}
-}
-
-func validatePinnedRenderer(rend interface{ JSRendererNames() []string }, preferredRenderer *string, renderJS *bool) error {
-	if preferredRenderer == nil || *preferredRenderer == "" {
-		return nil
-	}
-	if renderJS != nil && !*renderJS {
-		return nil
-	}
-
-	for _, name := range rend.JSRendererNames() {
-		if name == *preferredRenderer {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("renderer %q not available; configured renderers: [%s]", *preferredRenderer, strings.Join(rend.JSRendererNames(), ", "))
-}
-
-func firstNonEmpty(values ...*string) *string {
-	for _, v := range values {
-		if v != nil && *v != "" {
-			return v
-		}
-	}
-	return nil
+	return *p
 }
 
 func scrapeInputSchema() map[string]any {
@@ -623,11 +579,6 @@ func scrapeInputSchema() map[string]any {
 			"waitFor": map[string]any{
 				"type":        "integer",
 				"description": "Milliseconds to wait after JS rendering for late content or XHRs",
-			},
-			"renderer": map[string]any{
-				"type":        "string",
-				"enum":        []string{"auto", "lightpanda", "chrome"},
-				"description": "Pin this request to a specific renderer. auto uses the configured fallback chain. Other values hard-pin to a single renderer with no fallback. Pinning a non-auto value implies renderJs:true unless renderJs:false is set explicitly.",
 			},
 			"includeTags": map[string]any{
 				"type":        "array",
@@ -672,11 +623,6 @@ func crawlInputSchema() map[string]any {
 				"type":        "integer",
 				"description": "Milliseconds to wait after JS rendering on each page",
 			},
-			"renderer": map[string]any{
-				"type":        "string",
-				"enum":        []string{"auto", "lightpanda", "chrome"},
-				"description": "Pin every crawled page to a specific renderer. auto uses the configured fallback chain. Other values hard-pin to a single renderer with no fallback. Pinning a non-auto value implies renderJs:true unless renderJs:false is set explicitly.",
-			},
 			"formats": map[string]any{
 				"type":        "array",
 				"description": "Output formats for each crawled page",
@@ -708,7 +654,11 @@ func searchInputSchema() map[string]any {
 			},
 			"renderJs": map[string]any{
 				"type":        "boolean",
-				"description": "Enable JavaScript rendering",
+				"description": "Enable JavaScript rendering (true = force JS, false = HTTP only, omit = auto-detect/default)",
+			},
+			"scrape": map[string]any{
+				"type":        "boolean",
+				"description": "Scrape each result URL and include extracted content (default: false; when false, only metadata is returned)",
 			},
 			"formats": map[string]any{
 				"type":        "array",

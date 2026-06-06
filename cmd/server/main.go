@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,66 +12,52 @@ import (
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
-// main initializes and starts the quickcrawl HTTP server.
-// It loads configuration, sets up the renderer and handlers,
-// then listens for incoming requests.
 func main() {
+	utils.InitLogger()
+
 	// Step 1: Load configuration from TOML file + environment variables.
-	// Config includes server port, crawler settings, renderer mode, etc.
 	cfg, err := api.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %s", err.Error())
+		utils.Log.Error(fmt.Sprintf("failed to load config: %s", err.Error()))
+		os.Exit(1)
 	}
 
-	// Step 2: Initialize application state.
-	// AppState holds crawl job tracking (in-memory map protected by mutex),
-	// and manages job expiration via a background goroutine.
+	// Step 2: Build the shared *core.Scraper.
+	// This is the single bootstrap that wires together the HTTP fetcher,
+	// the chromedp-based renderer, and the LLM extractor — and is the
+	// single render path used by /v1/scrape, /v1/crawl, /v1/map, and /v1/search.
+	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if scrapeErr != nil {
+		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
+		os.Exit(1)
+	}
+
+	// Step 3: Initialize application state.
+	// AppState holds the *core.Scraper and the crawl job tracking map.
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
-		log.Fatalf("failed to initialize server state: %s", stateErr.Message)
+		_ = scraper.Close()
+		utils.Log.Error(fmt.Sprintf("failed to initialize server state: %s", stateErr.Message))
+		os.Exit(1)
 	}
-
-	// Step 3: Initialize the page renderer.
-	// FallbackRenderer orchestrates multiple fetch strategies:
-	// - HTTP fetcher (always available, fastest)
-	// - Browser-based fetchers (Chrome, LightPanda) for JS-heavy pages
-	// It uses a fallback pattern: HTTP first, then escalates to browser rendering
-	// when needed (SPA detection, anti-bot challenges, auth blocks).
-	rend, rendererErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendererErr != nil {
-		log.Fatalf("failed to initialize renderer: %s", rendererErr.Message)
-	}
-
-	state.Renderer = rend
+	state.CoreScraper = scraper
 
 	// Step 4: Ensure cleanup on shutdown.
 	defer state.Close()
 
 	// Step 5: Log running browser instances for debugging.
-	browsers := rend.BrowsersInfo()
+	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
 		for _, b := range browsers {
-			log.Printf("browser started: %s (%s)", b.Name, b.WSURL)
+			utils.Log.Info("browser started", "name", b.Name, "ws_url", b.WSURL)
 		}
 	}
 
 	// Step 6: Set up Gin router with routes and middleware.
-	// Routes:
-	//   GET  /health           - Health check with renderer/browser status
-	//   POST /v1/scrape        - Scrape a single URL
-	//   POST /v1/crawl         - Start an async BFS crawl job
-	//   GET  /v1/crawl/:id     - Get crawl job status/results
-	//   DELETE /v1/crawl/:id   - Cancel a crawl job
-	//   POST /v1/map           - Discover URLs without scraping content
-	// Middleware: CORS, optional rate limiting
 	router := routes.NewRouter(state, cfg.Server.RateLimitRPS)
 	engine := router.Setup()
 
@@ -84,11 +69,11 @@ func main() {
 		Handler: engine,
 	}
 
-	// Start server in a goroutine
 	go func() {
-		log.Printf("quickcrawl starting on %s", addr)
+		utils.Log.Info(fmt.Sprintf("quickcrawl starting on %s", addr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %s", err.Error())
+			utils.Log.Error(fmt.Sprintf("server error: %s", err.Error()))
+			os.Exit(1)
 		}
 	}()
 
@@ -97,15 +82,16 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down server...")
+	utils.Log.Info("shutting down server...")
 
 	// Give outstanding requests 30 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("server forced to shutdown: %s", err.Error())
+		utils.Log.Error(fmt.Sprintf("server forced to shutdown: %s", err.Error()))
+		os.Exit(1)
 	}
 
-	log.Println("server exited gracefully")
+	utils.Log.Info("server exited gracefully")
 }
