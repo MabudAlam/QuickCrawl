@@ -36,6 +36,7 @@ type ScrapeRequest struct {
 	Extract             *types.ExtractOptions
 	LLMExtractionPrompt *string
 	LLMResponseFormat   *string
+	TTL                 *int64
 	Browser             *string
 }
 
@@ -68,8 +69,10 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 		return nil, err
 	}
 
-	//If the renderJS field is not specified in the request, default to false (no JavaScript rendering). If waitFor is not specified, default to 0 (no extra wait beyond what the load event signals).
-	renderJS := resolveRenderJS(req.RenderJS, false)
+	//If the renderJS field is not specified in the request, default to nil (auto mode).
+	//In auto mode, the renderer first tries HTTP and escalates to browser if needed.
+	//If waitFor is not specified, default to 0 (no extra wait beyond what the load event signals).
+	renderJS := req.RenderJS
 
 	//If the wait is not specified, default to 0 (no extra wait). The page is considered ready as soon as the browser's load event fires, which the renderer already waits for. Callers who want extra hydration time should pass an explicit waitFor.
 	waitMs := resolveWaitMs(req.WaitFor, 0)
@@ -96,7 +99,6 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 		SourceURL:    result.URL,
 		StatusCode:   int(result.StatusCode),
 		RenderedMode: &result.RenderedWith,
-		TimeTaken:    result.TimeTakenMs,
 		Formats:      formats,
 		IncludeTags:  req.IncludeTags,
 		ExcludeTags:  req.ExcludeTags,
@@ -108,7 +110,6 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 	data.Metadata.SourceURL = result.URL
 	data.Metadata.StatusCode = result.StatusCode
 	data.Metadata.RenderedMode = &result.RenderedWith
-	data.Metadata.TimeTaken = result.TimeTakenMs
 
 	// LLM-based structured extraction runs only when the caller asks for the
 	// "json" output format AND has supplied a schema (top-level or under
@@ -165,12 +166,7 @@ func validateRequest(req *ScrapeRequest) *QuickCrawlError {
 }
 
 // this method  checks if the renderJS is enabled if not then just do http
-func resolveRenderJS(reqRenderJS *bool, defaultVal bool) bool {
-	if reqRenderJS != nil {
-		return *reqRenderJS
-	}
-	return defaultVal
-}
+// REMOVED: resolveRenderJS is no longer used — renderJS is passed as *bool directly
 
 func resolveWaitMs(waitFor *int64, defaultVal int64) int64 {
 	if waitFor != nil && *waitFor > 0 {
@@ -243,8 +239,9 @@ func (s *Scraper) BrowsersInfo() []types.BrowserInfo {
 // a *types.FetchResult. It is used by the crawl and map pipelines which
 // need a types.FetchResult shape to feed into the shared extractor.
 //
+// renderJS=nil  (auto) → HTTP first, then check and escalate to browser if needed
+// renderJS=true → chromedp-based browser fetch (full JavaScript).
 // renderJS=false → HTTP-only fetch via the shared *renderer.HTTPFetcher.
-// renderJS=true  → chromedp-based browser fetch (full JavaScript).
 //
 // The preferredBrowser parameter is accepted for backwards compatibility
 // with the legacy FallbackRenderer.Fetch signature. The new model has a
@@ -253,7 +250,7 @@ func (s *Scraper) FetchHTML(
 	ctx context.Context,
 	rawURL string,
 	headers map[string]string,
-	renderJS bool,
+	renderJS *bool,
 	waitMs int64,
 	preferredBrowser *string,
 ) (*types.FetchResult, *QuickCrawlError) {
