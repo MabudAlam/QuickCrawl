@@ -128,8 +128,11 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		IncludeTags: opts.IncludeTags,
 		ExcludeTags: opts.ExcludeTags,
 		CSSSelector: opts.CSSSelector,
-		OnlyMain:    opts.OnlyMain,
 	})
+
+	// The pre processing removes most of the extras from the html content
+
+	contentHTML = ExtractMainContent(contentHTML)
 
 	// ── Step 3: Post-process HTML ─────────────────────────────────────────────
 	// Sanitizer + DOM cleanup + wrapper flattening + formatted document output.
@@ -317,7 +320,6 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 			Language:      meta.Language,
 			StatusCode:    uint16(opts.StatusCode),
 			RenderedMode:  opts.RenderedMode,
-			TimeTaken:     opts.TimeTaken,
 		},
 	}
 }
@@ -405,7 +407,6 @@ func extractPDF(opts ExtractOptions) *types.ScrapeData {
 			SourceURL:    opts.SourceURL,
 			StatusCode:   uint16(opts.StatusCode),
 			RenderedMode: opts.RenderedMode,
-			TimeTaken:    opts.TimeTaken,
 		},
 	}
 }

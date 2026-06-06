@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -29,12 +29,12 @@ Example:
 	RunE: runMap,
 }
 
-// mapFlags holds the configuration for the map command.
 var mapFlags = struct {
 	maxDepth   int
 	useSitemap bool
 	timeout    int
-	renderer   string
+	// renderer is deprecated and ignored.
+	renderer string
 }{}
 
 func init() {
@@ -47,10 +47,9 @@ func init() {
 	mapCmd.Flags().IntVar(&mapFlags.timeout, "timeout", 30000,
 		"Timeout in milliseconds for the entire operation")
 	mapCmd.Flags().StringVar(&mapFlags.renderer, "renderer", "auto",
-		"Renderer: auto, lightpanda, chrome")
+		"Deprecated: ignored. The scraper uses chromedp only.")
 }
 
-// runMap executes the URL discovery command.
 func runMap(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("a URL argument is required")
@@ -58,34 +57,25 @@ func runMap(cmd *cobra.Command, args []string) error {
 
 	targetURL := args[0]
 
-	// Validate URL.
 	parsedURL, urlErr := url.Parse(targetURL)
 	if urlErr != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return fmt.Errorf("invalid URL: %s", targetURL)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid URL scheme: %s (only http/https)", parsedURL.Scheme)
+		return fmt.Errorf("invalid URL scheme: %s (only http/https)", targetURL)
 	}
 
-	// Load configuration.
 	cfg, err := loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create renderer.
-	rend, rendErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendErr != nil {
-		return fmt.Errorf("failed to initialize renderer: %w", rendErr)
+	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if qErr != nil {
+		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}
-	defer rend.Close()
+	defer scraper.Close()
 
-	// Set up options.
 	maxDepth := uint32(mapFlags.maxDepth)
 	if maxDepth > 10 {
 		maxDepth = 10
@@ -100,28 +90,24 @@ func runMap(cmd *cobra.Command, args []string) error {
 		BaseURL:           targetURL,
 		MaxDepth:          maxDepth,
 		UseSitemap:        mapFlags.useSitemap,
-		Renderer:          rend,
+		Scraper:           scraper,
 		MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 		RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 		UserAgent:         cfg.Crawler.UserAgent,
 		Timeout:           &timeout,
 	}
 
-	// Discover URLs.
 	result, mapErr := crawler.Map(opts)
 	if mapErr != nil {
 		return fmt.Errorf("map failed: %w", mapErr)
 	}
 
-	// Output results - one JSON object with array of links.
 	outputMapResults(result)
 
 	return nil
 }
 
-// outputMapResults formats and outputs the discovered URLs.
 func outputMapResults(result *types.MapData) {
-	// Wrap in a JSON object for easy parsing.
 	wrapper := map[string]interface{}{
 		"links": result.Links,
 		"count": len(result.Links),

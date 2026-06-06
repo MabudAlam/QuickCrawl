@@ -1,14 +1,15 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/crawler"
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
@@ -23,8 +24,8 @@ var searchCmd = &cobra.Command{
 	Long: `Search DuckDuckGo and optionally scrape content from results.
 
 This command searches DuckDuckGo, then for each result optionally fetches
-the content using the configured renderer. Results include title, URL,
-snippet, and scraped content in requested formats.
+the content using the in-process chromedp-based scraper. Results include
+title, URL, snippet, and scraped content in requested formats.
 
 Note: Scraping individual results requires a separate fetch, so results
 are processed concurrently with a default of 10 workers.
@@ -45,6 +46,8 @@ var searchFlags = struct {
 	renderJS   bool
 	scrape     bool
 	workers    int
+	// renderer is deprecated and ignored.
+	renderer string
 }{}
 
 func init() {
@@ -64,6 +67,8 @@ func init() {
 		"Also scrape content from each result URL")
 	searchCmd.Flags().IntVar(&searchFlags.workers, "workers", 10,
 		"Number of concurrent workers for scraping results")
+	searchCmd.Flags().StringVar(&searchFlags.renderer, "renderer", "auto",
+		"Deprecated: ignored. The scraper uses chromedp only.")
 }
 
 // runSearch executes the search command.
@@ -74,12 +79,10 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	query := args[0]
 
-	// Validate query isn't empty after trimming.
 	if strings.TrimSpace(query) == "" {
 		return fmt.Errorf("search query cannot be empty")
 	}
 
-	// Set defaults from flags or use sensible defaults.
 	region := searchFlags.region
 	if region == "" {
 		region = "us-en"
@@ -90,7 +93,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		safesearch = "moderate"
 	}
 
-	// Perform the search.
+	// Log deprecation notice if the user pinned a renderer backend.
+	if searchFlags.renderer != "" && searchFlags.renderer != "auto" {
+		utils.Log.Warn("--renderer is deprecated and ignored; the new scraper uses chromedp only", "value", searchFlags.renderer)
+	}
+
 	engine := search.New()
 	results, searchErr := engine.Search(query, region, safesearch, searchFlags.timelimit)
 	if searchErr != nil {
@@ -98,45 +105,37 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
-		output(`{"results": [], "count": 0}`+"\n")
+		output(`{"results": [], "count": 0}` + "\n")
 		return nil
 	}
 
-	// If --scrape flag is set, fetch content from each result.
 	if searchFlags.scrape {
 		return scrapeSearchResults(results)
 	}
 
-	// Just output the search results without scraping.
 	return outputSearchResults(results)
 }
 
-// scrapeSearchResults fetches content from each search result URL.
-// Results are processed concurrently with a configurable number of workers.
+// scrapeSearchResults fetches content from each search result URL using
+// the shared *core.Scraper (chromedp + HTTP). Results are processed
+// concurrently with a configurable number of workers.
 func scrapeSearchResults(results []search.TextResult) error {
-	// Load configuration.
-	cfg, err := loadConfig()
+	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
+	}
+	if teardown != nil {
+		defer teardown()
 	}
 
-	// Create renderer.
-	rend, rendErr := renderer.NewFallbackRendererWithConfig(
-		&cfg.Renderer,
-		cfg.Crawler.UserAgent,
-		&cfg.Crawler.Stealth,
-		cfg.Renderer.RenderJSDefault,
-	)
-	if rendErr != nil {
-		return fmt.Errorf("failed to initialize renderer: %w", rendErr)
+	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	if qErr != nil {
+		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}
-	defer rend.Close()
+	defer scraper.Close()
 
-	// Parse formats.
 	formats := parseFormats(searchFlags.formats)
 
-	// Determine number of workers.
-	// Use the smaller of configured workers or result count.
 	maxWorkers := searchFlags.workers
 	if maxWorkers <= 0 {
 		maxWorkers = 10
@@ -145,66 +144,84 @@ func scrapeSearchResults(results []search.TextResult) error {
 		maxWorkers = len(results)
 	}
 
-	// Semaphore to limit concurrent requests.
 	sem := make(chan struct{}, maxWorkers)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	// Map to store results in original order.
 	resultMap := make(map[int]types.SearchResult, len(results))
 
 	for i, r := range results {
 		wg.Add(1)
-		sem <- struct{}{}
-
 		go func(index int, result search.TextResult) {
 			defer wg.Done()
+			defer func() {
+				if rec := recover(); rec != nil {
+					utils.Log.Info(fmt.Sprintf("search: panic recovered while scraping %s: %v", result.Href, rec))
+					mu.Lock()
+					resultMap[index] = types.SearchResult{
+						Title:       result.Title,
+						Description: result.Body,
+						URL:         result.Href,
+					}
+					mu.Unlock()
+				}
+			}()
+
+			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Default to just the search result data (title, URL, snippet).
 			searchResult := types.SearchResult{
 				Title:       result.Title,
 				Description: result.Body,
 				URL:         result.Href,
 			}
 
-			// Validate URL before scraping.
-			if _, urlErr := url.Parse(result.Href); urlErr == nil {
-				renderJS := searchFlags.renderJS
-				scrapeReq := &types.ScrapeRequest{
-					URL:      result.Href,
-					Formats:  formats,
-					RenderJS: &renderJS,
+			if _, urlErr := url.Parse(result.Href); urlErr != nil {
+				utils.Log.Info(fmt.Sprintf("search: skipping invalid URL %s: %v", result.Href, urlErr))
+				mu.Lock()
+				resultMap[index] = searchResult
+				mu.Unlock()
+				return
+			}
+
+			renderJS := searchFlags.renderJS
+			scrapeReq := &core.ScrapeRequest{
+				URL:      result.Href,
+				Formats:  formatsToStrings(formats),
+				RenderJS: &renderJS,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
+			cancel()
+
+			if scrapeErr != nil {
+				utils.Log.Info(fmt.Sprintf("search: failed to scrape %s: %v", result.Href, scrapeErr))
+			} else if data != nil {
+				if data.Markdown != nil {
+					s := *data.Markdown
+					searchResult.Markdown = &s
 				}
-
-				data, scrapeErr := crawler.ScrapeURL(
-					scrapeReq,
-					rend,
-					cfg.Extraction.LLM,
-					cfg.Crawler.Stealth.Enabled,
-					cfg.Renderer.RenderJSDefault,
-					utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy),
-				)
-
-				if scrapeErr == nil && data != nil {
-					if data.Markdown != nil {
-						searchResult.Markdown = data.Markdown
-					}
-					if data.HTML != nil {
-						searchResult.HTML = data.HTML
-					}
-					if data.PlainText != nil {
-						searchResult.PlainText = data.PlainText
-					}
-					if data.Links != nil {
-						searchResult.Links = data.Links
-					}
-					if len(data.JSON) > 0 {
-						searchResult.RawJSON = data.JSON
-					}
-					if data.Metadata.SourceURL != "" {
-						searchResult.URL = data.Metadata.SourceURL
-					}
+				if data.HTML != nil {
+					s := *data.HTML
+					searchResult.HTML = &s
+				}
+				if data.RawHTML != nil {
+					s := *data.RawHTML
+					searchResult.RawHTML = &s
+				}
+				if data.PlainText != nil {
+					s := *data.PlainText
+					searchResult.PlainText = &s
+				}
+				if data.Links != nil {
+					searchResult.Links = data.Links
+				}
+				if len(data.JSON) > 0 {
+					searchResult.RawJSON = data.JSON
+				}
+				if data.Metadata.SourceURL != "" {
+					searchResult.URL = data.Metadata.SourceURL
 				}
 			}
 
@@ -216,7 +233,6 @@ func scrapeSearchResults(results []search.TextResult) error {
 
 	wg.Wait()
 
-	// Collect results in order.
 	orderedResults := make([]types.SearchResult, 0, len(results))
 	for i := range results {
 		orderedResults = append(orderedResults, resultMap[i])
@@ -227,7 +243,6 @@ func scrapeSearchResults(results []search.TextResult) error {
 
 // outputSearchResults outputs raw search results without scraping.
 func outputSearchResults(results []search.TextResult) error {
-	// Convert to the standard search result format.
 	searchResults := make([]types.SearchResult, len(results))
 	for i, r := range results {
 		searchResults[i] = types.SearchResult{

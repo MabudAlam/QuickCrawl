@@ -1,4 +1,4 @@
-package renderer
+package utils
 
 import (
 	"regexp"
@@ -7,9 +7,7 @@ import (
 
 var akamaiRefPattern = regexp.MustCompile(`Reference #\d+\.[0-9a-f]+\.\d+\.[0-9a-f]+`)
 
-// pageNeedsJavaScript reports whether the input HTML looks like a shell that
-// still needs client-side rendering to become useful.
-func pageNeedsJavaScript(html string) bool {
+func PageNeedsJavaScript(html string) bool {
 	if len(html) > 500000 {
 		return false
 	}
@@ -19,7 +17,7 @@ func pageNeedsJavaScript(html string) bool {
 		checkLen = 500000
 	}
 	lower := strings.ToLower(html[:checkLen])
-	bodyLen := extractBodyTextLength(lower)
+	bodyLen := ExtractBodyTextLength(lower)
 
 	if bodyLen < 200 {
 		spaIndicators := []string{
@@ -91,16 +89,14 @@ func pageNeedsJavaScript(html string) bool {
 	return false
 }
 
-// pageLooksLikeGenericBotWall reports whether the visible text looks like a
-// generic anti-bot interstitial rather than real content.
-func pageLooksLikeGenericBotWall(html string) bool {
+func PageLooksLikeGenericBotWall(html string) bool {
 	if len(html) > 80000 {
 		return false
 	}
 
 	lower := strings.ToLower(html)
 	bodyStripped := bodyHTMLWithoutScriptsLower(lower)
-	bodyText := visibleTextFromStrippedHTML(bodyStripped)
+	bodyText := VisibleTextFromStrippedHTML(bodyStripped)
 	if countVisibleRunes(bodyText) > 600 {
 		return false
 	}
@@ -126,9 +122,7 @@ func pageLooksLikeGenericBotWall(html string) bool {
 	return false
 }
 
-// pageLooksLikeVendorBlock returns the anti-bot vendor name when the HTML
-// contains a stable vendor-specific signature.
-func pageLooksLikeVendorBlock(html string) string {
+func PageLooksLikeVendorBlock(html string) string {
 	if len(html) > 200000 {
 		return ""
 	}
@@ -170,8 +164,7 @@ func pageLooksLikeVendorBlock(html string) string {
 	return ""
 }
 
-// pageLooksLikeThinHTML reports whether the body contains little visible text.
-func pageLooksLikeThinHTML(html string) bool {
+func PageLooksLikeThinHTML(html string) bool {
 	if len(html) > 500000 {
 		return false
 	}
@@ -180,23 +173,18 @@ func pageLooksLikeThinHTML(html string) bool {
 		checkLen = 500000
 	}
 	lower := strings.ToLower(html[:checkLen])
-	return extractBodyTextLength(lower) < 200
+	return ExtractBodyTextLength(lower) < 200
 }
 
-// FailedRenderReason describes a hydrated page that still looks broken.
 type FailedRenderReason string
 
 const (
-	// FailedRenderNextJsClientError marks a Next.js client-side error boundary.
-	FailedRenderNextJsClientError FailedRenderReason = "nextjs_client_error"
-	// FailedRenderReactMinifiedError marks the React production error page.
+	FailedRenderNextJsClientError  FailedRenderReason = "nextjs_client_error"
 	FailedRenderReactMinifiedError FailedRenderReason = "react_minified_error"
-	// FailedRenderEmptyNextRoot marks an empty Next.js root shell.
-	FailedRenderEmptyNextRoot FailedRenderReason = "empty_next_root"
+	FailedRenderEmptyNextRoot      FailedRenderReason = "empty_next_root"
 )
 
-// pageLooksLikeFailedRender detects framework-level error shells in HTML.
-func pageLooksLikeFailedRender(html string) (FailedRenderReason, bool) {
+func PageLooksLikeFailedRender(html string) (FailedRenderReason, bool) {
 	if len(html) > 200000 {
 		return "", false
 	}
@@ -227,16 +215,14 @@ func pageLooksLikeFailedRender(html string) (FailedRenderReason, bool) {
 	return "", false
 }
 
-// pageLooksLikeLoadingPlaceholder reports whether the page is mostly a loader
-// or skeleton screen rather than real content.
-func pageLooksLikeLoadingPlaceholder(html string) bool {
+func PageLooksLikeLoadingPlaceholder(html string) bool {
 	if len(html) > 80000 {
 		return false
 	}
 
 	lower := strings.ToLower(html)
 	bodyStripped := bodyHTMLWithoutScriptsLower(lower)
-	bodyText := visibleTextFromStrippedHTML(bodyStripped)
+	bodyText := VisibleTextFromStrippedHTML(bodyStripped)
 	bodyTextLen := countVisibleRunes(bodyText)
 
 	if bodyTextLen == 0 {
@@ -280,8 +266,7 @@ func pageLooksLikeLoadingPlaceholder(html string) bool {
 	return false
 }
 
-// pageHasBlockInterstitial checks if the page shows a bot challenge or access interstitial.
-func pageHasBlockInterstitial(html string) bool {
+func PageHasBlockInterstitial(html string) bool {
 	if len(html) > 500000 {
 		return false
 	}
@@ -301,13 +286,11 @@ func pageHasBlockInterstitial(html string) bool {
 		}
 	}
 
-	return pageLooksLikeGenericBotWall(html) || pageLooksLikeVendorBlock(html) != ""
+	return PageLooksLikeGenericBotWall(html) || PageLooksLikeVendorBlock(html) != ""
 }
 
-// pageHasClientSideCrash checks for application crash overlays or framework-level errors.
-func pageHasClientSideCrash(html string) bool {
-	if reason, ok := pageLooksLikeFailedRender(html); ok {
-		_ = reason
+func PageHasClientSideCrash(html string) bool {
+	if _, ok := PageLooksLikeFailedRender(html); ok {
 		return true
 	}
 
@@ -328,18 +311,15 @@ func pageHasClientSideCrash(html string) bool {
 	return false
 }
 
-// pageHasMinimalContent checks if rendered HTML has very little content.
-func pageHasMinimalContent(html string) bool {
-	return pageLooksLikeThinHTML(html)
+func PageHasMinimalContent(html string) bool {
+	return PageLooksLikeThinHTML(html)
 }
 
-// visibleTextLength returns the amount of visible text in a rendered document.
-func visibleTextLength(html string) int {
-	return extractBodyTextLength(strings.ToLower(html))
+func VisibleTextLength(html string) int {
+	return ExtractBodyTextLength(strings.ToLower(html))
 }
 
-// copyHeaders creates a copy of a headers map so callers can mutate it safely.
-func copyHeaders(headers map[string]string) map[string]string {
+func CopyHeaders(headers map[string]string) map[string]string {
 	if len(headers) == 0 {
 		return map[string]string{}
 	}
@@ -350,8 +330,6 @@ func copyHeaders(headers map[string]string) map[string]string {
 	return out
 }
 
-// bodyHTMLWithoutScriptsLower returns the lowercased body HTML with script and
-// style blocks removed.
 func bodyHTMLWithoutScriptsLower(lower string) string {
 	bodyStart := strings.Index(lower, "<body")
 	if bodyStart == -1 {
@@ -372,9 +350,7 @@ func bodyHTMLWithoutScriptsLower(lower string) string {
 	return stripTagBlocks(body, "style")
 }
 
-// visibleTextFromStrippedHTML removes all tags from an HTML fragment and
-// collapses whitespace into single spaces.
-func visibleTextFromStrippedHTML(stripped string) string {
+func VisibleTextFromStrippedHTML(stripped string) string {
 	var builder strings.Builder
 	builder.Grow(len(stripped))
 	inTag := false
@@ -403,17 +379,14 @@ func visibleTextFromStrippedHTML(stripped string) string {
 	return builder.String()
 }
 
-// extractBodyTextLength estimates the number of visible non-whitespace runes
-// inside the document body.
-func extractBodyTextLength(lower string) int {
+func ExtractBodyTextLength(lower string) int {
 	if !strings.Contains(lower, "<body") {
 		return 1000
 	}
 	stripped := bodyHTMLWithoutScriptsLower(lower)
-	return countVisibleRunes(visibleTextFromStrippedHTML(stripped))
+	return countVisibleRunes(VisibleTextFromStrippedHTML(stripped))
 }
 
-// stripTagBlocks removes all `<tag ...>...</tag>` blocks from a lowercased HTML fragment.
 func stripTagBlocks(html, tag string) string {
 	var result strings.Builder
 	result.Grow(len(html))

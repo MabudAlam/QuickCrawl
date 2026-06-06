@@ -15,7 +15,6 @@ def main():
         result = client.scrape(
             "https://example.com",
             formats=["markdown", "html", "links"],
-            only_main_content=True,
         )
 
         print("=== Markdown ===")
