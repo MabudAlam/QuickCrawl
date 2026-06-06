@@ -6,11 +6,15 @@ require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/JohannesKaufmann/html-to-markdown v1.4.0
 	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
 	github.com/gin-gonic/gin v1.12.0
+	github.com/gookit/slog v0.6.0
+	github.com/klauspost/compress v1.18.6
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/modelcontextprotocol/go-sdk v1.5.0
+	github.com/redis/go-redis/v9 v9.20.0
 	github.com/spf13/cobra v1.10.2
 	github.com/temoto/robotstxt v1.1.2
 	golang.org/x/net v0.51.0
@@ -22,7 +26,7 @@ require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
-	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
@@ -40,7 +44,6 @@ require (
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/gookit/goutil v0.7.1 // indirect
 	github.com/gookit/gsr v0.1.1 // indirect
-	github.com/gookit/slog v0.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -61,6 +64,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
