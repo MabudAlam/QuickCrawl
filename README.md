@@ -2,7 +2,7 @@
 
 <div align="center">
 
-# **Quickcrawl**
+![QuickCrawl Logo](playground/public/qc-dark.svg)
 
 ### 🚀 Web Scraping API for AI Agents — Scrape, crawl, and map websites with a single binary.
 
