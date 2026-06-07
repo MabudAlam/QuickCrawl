@@ -13,11 +13,11 @@
   --ring: oklch(0% 0 0);
   --overlay: oklch(0% 0 0 / 0.8);
   --shadow: 4px 4px 0px 0px var(--border);
-  --chart-1: #A985FF;
-  --chart-2: #00D696;
-  --chart-3: #FACC00;
-  --chart-4: #FF4D50;
-  --chart-5: #0099FF;
+  --chart-1: #a985ff;
+  --chart-2: #00d696;
+  --chart-3: #facc00;
+  --chart-4: #ff4d50;
+  --chart-5: #0099ff;
   --chart-active-dot: #000;
 }
 
@@ -59,12 +59,37 @@
 
 @layer base {
   body {
-    @apply text-foreground font-base bg-background;
+    @apply bg-background font-base text-foreground;
   }
 
-  h1, h2, h3, h4, h5, h6{
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-heading;
   }
+}
+
+@keyframes float-in-air {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.float-in-air {
+  animation: float-in-air 2.4s ease-in-out infinite;
+}
+
+.float-in-air:hover {
+  animation-play-state: paused;
+  transform: translateY(-4px);
 }
 
 .markdown-content h1 {
@@ -93,7 +118,8 @@
   line-height: 1.6;
 }
 
-.markdown-content ul, .markdown-content ol {
+.markdown-content ul,
+.markdown-content ol {
   margin-left: 1.5rem;
   margin-bottom: 0.75rem;
 }
@@ -152,7 +178,8 @@
   margin-bottom: 0.75rem;
 }
 
-.markdown-content th, .markdown-content td {
+.markdown-content th,
+.markdown-content td {
   border: 1px solid var(--border);
   padding: 0.5rem;
   text-align: left;
