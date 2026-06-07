@@ -4,6 +4,8 @@ FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 COPY . .
 
+ENV GOTOOLCHAIN=auto
+
 RUN go build -v -o quickcrawl-server ./cmd/server
 
 # Runtime stage
