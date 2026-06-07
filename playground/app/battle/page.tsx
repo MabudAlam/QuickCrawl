@@ -154,7 +154,8 @@ async function scrapeWithQuickCrawl(
 async function scrapeWithTinyFish(
   url: string,
   sharedStartTime: number,
-  formatList: string[] = ["markdown"]
+  formatList: string[] = ["markdown"],
+  ttl: number | undefined = undefined
 ): Promise<ScrapeResult> {
   const apiKey = process.env.NEXT_PUBLIC_TINY_FISH_API_KEY
 
@@ -198,6 +199,7 @@ async function scrapeWithTinyFish(
           format,
           links: includeLinks,
           image_links: includeImageLinks,
+          ...(ttl !== undefined && { ttl }),
         }),
       })
       markdownTimeTaken = Date.now() - mdStartTime
@@ -208,7 +210,8 @@ async function scrapeWithTinyFish(
         if (includeMarkdown) markdown = mdResult.text
         if (includePlainText) html = mdResult.text
         if (includeLinks && mdResult.links) links = mdResult.links
-        if (includeImageLinks && mdResult.image_links) imageLinks = mdResult.image_links
+        if (includeImageLinks && mdResult.image_links)
+          imageLinks = mdResult.image_links
       }
     }
 
@@ -221,6 +224,7 @@ async function scrapeWithTinyFish(
           format: "html",
           links: includeLinks,
           image_links: includeImageLinks,
+          ...(ttl !== undefined && { ttl }),
         }),
       })
       htmlTimeTaken = Date.now() - htmlStartTime
@@ -230,7 +234,8 @@ async function scrapeWithTinyFish(
       if (htmlResult && !htmlResult.error) {
         html = htmlResult.text
         if (includeLinks && htmlResult.links) links = htmlResult.links
-        if (includeImageLinks && htmlResult.image_links) imageLinks = htmlResult.image_links
+        if (includeImageLinks && htmlResult.image_links)
+          imageLinks = htmlResult.image_links
       }
     }
 
@@ -322,12 +327,14 @@ function ResultCard({
                 HTML: {result.htmlTimeTaken}ms
               </Badge>
             )}
-            {result.timeTaken && result.markdownTimeTaken === undefined && result.htmlTimeTaken === undefined && (
-              <Badge variant="neutral" className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {result.timeTaken}ms
-              </Badge>
-            )}
+            {result.timeTaken &&
+              result.markdownTimeTaken === undefined &&
+              result.htmlTimeTaken === undefined && (
+                <Badge variant="neutral" className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {result.timeTaken}ms
+                </Badge>
+              )}
             {result.success ? (
               <CheckCircle className={`h-5 w-5 ${badgeColor}`} />
             ) : (
@@ -348,89 +355,120 @@ function ResultCard({
             <span>Waiting for result...</span>
           </div>
         ) : (
-          <Tabs defaultValue={showHtml ? "html" : showImageLinks ? "imageLinks" : "markdown"}>
-<TabsList className="mb-3 flex flex-wrap">
-              {showImageLinks && <TabsTrigger value="imageGrid">Images</TabsTrigger>}
-              {showImageLinks && <TabsTrigger value="imageLinks">URLs</TabsTrigger>}
+          <Tabs
+            defaultValue={
+              showHtml ? "html" : showImageLinks ? "imageLinks" : "markdown"
+            }
+          >
+            <TabsList className="mb-3 flex flex-wrap">
+              {showImageLinks && (
+                <TabsTrigger value="imageGrid">Images</TabsTrigger>
+              )}
+              {showImageLinks && (
+                <TabsTrigger value="imageLinks">URLs</TabsTrigger>
+              )}
               {showHtml && <TabsTrigger value="html">HTML</TabsTrigger>}
-              {showHtml && <TabsTrigger value="html-preview">HTML Preview</TabsTrigger>}
+              {showHtml && (
+                <TabsTrigger value="html-preview">HTML Preview</TabsTrigger>
+              )}
               <TabsTrigger value="markdown">Markdown</TabsTrigger>
-              {showPlainText && <TabsTrigger value="plainText">Plain Text</TabsTrigger>}
+              {showPlainText && (
+                <TabsTrigger value="plainText">Plain Text</TabsTrigger>
+              )}
               {showLinks && <TabsTrigger value="links">Links</TabsTrigger>}
-              {showRawHtml && <TabsTrigger value="rawHtml">Raw HTML</TabsTrigger>}
+              {showRawHtml && (
+                <TabsTrigger value="rawHtml">Raw HTML</TabsTrigger>
+              )}
             </TabsList>
             {showImageLinks && (
               <TabsContent value="imageGrid">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                  {result.data?.imageLinks && result.data.imageLinks.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                  {result.data?.imageLinks &&
+                  result.data.imageLinks.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                       {result.data.imageLinks.map((link, i) => (
-                        <div key={i} className="group relative aspect-square bg-background rounded-lg overflow-hidden border border-border">
+                        <div
+                          key={i}
+                          className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-background"
+                        >
                           <img
                             src={link}
                             alt={`Image ${i + 1}`}
-                            className="w-full h-full object-cover object-center"
+                            className="h-full w-full object-cover object-center"
                             loading="lazy"
                             onError={(e) => {
                               const img = e.target as HTMLImageElement
-                              img.style.display = 'none'
-                              const errorDiv = img.nextElementSibling as HTMLElement | null
-                              if (errorDiv) errorDiv.classList.remove('hidden')
+                              img.style.display = "none"
+                              const errorDiv =
+                                img.nextElementSibling as HTMLElement | null
+                              if (errorDiv) errorDiv.classList.remove("hidden")
                             }}
                           />
-                          <div className="hidden absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground text-xs p-2 text-center">
+                          <div className="bg-muted text-muted-foreground absolute inset-0 flex hidden items-center justify-center p-2 text-center text-xs">
                             Failed to load
                           </div>
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                             <a
                               href={link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-2 bg-background rounded-full hover:bg-background/80"
+                              className="rounded-full bg-background p-2 hover:bg-background/80"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <ExternalLink className="w-5 h-5" />
+                              <ExternalLink className="h-5 w-5" />
                             </a>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground text-sm">No image links found</p>
+                    <p className="text-muted-foreground text-sm">
+                      No image links found
+                    </p>
                   )}
                 </div>
               </TabsContent>
             )}
             {showImageLinks && (
               <TabsContent value="imageLinks">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                  {result.data?.imageLinks && result.data.imageLinks.length > 0 ? (
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                  {result.data?.imageLinks &&
+                  result.data.imageLinks.length > 0 ? (
                     <ul className="space-y-2">
                       {result.data.imageLinks.map((link, i) => (
                         <li key={i} className="text-xs break-all">
-                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-main hover:text-main/80">
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-main hover:text-main/80"
+                          >
                             {link}
                           </a>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-muted-foreground text-sm">No image links found</p>
+                    <p className="text-muted-foreground text-sm">
+                      No image links found
+                    </p>
                   )}
                 </div>
               </TabsContent>
             )}
             {showHtml && (
               <TabsContent value="html">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                  <div className="flex justify-end mb-1">
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                  <div className="mb-1 flex justify-end">
                     <Button
                       variant="noShadow"
                       size="sm"
                       className="h-7 text-xs"
-                      onClick={() => copyToClipboard(result.data?.html || "", "html")}
+                      onClick={() =>
+                        copyToClipboard(result.data?.html || "", "html")
+                      }
                     >
-                      <Copy className="h-3 w-3 mr-1" />
+                      <Copy className="mr-1 h-3 w-3" />
                       {copied === "html" ? "Copied!" : "Copy"}
                     </Button>
                   </div>
@@ -442,7 +480,10 @@ function ResultCard({
             )}
             {showHtml && (
               <TabsContent value="html-preview">
-                <div className="rounded-md border overflow-hidden bg-background" style={{ height: "500px" }}>
+                <div
+                  className="overflow-hidden rounded-md border bg-background"
+                  style={{ height: "500px" }}
+                >
                   <iframe
                     srcDoc={`<!DOCTYPE html>
 <html>
@@ -461,9 +502,9 @@ function ResultCard({
     code { padding: 2px 4px; border-radius: 3px; }
   </style>
 </head>
-<body class="${theme || 'light'}">${result.data?.html || "<p>No HTML content</p>"}</body>
+<body class="${theme || "light"}">${result.data?.html || "<p>No HTML content</p>"}</body>
 </html>`}
-                    className="w-full h-full bg-background"
+                    className="h-full w-full bg-background"
                     sandbox="allow-scripts allow-same-origin"
                     title="HTML Preview"
                   />
@@ -471,15 +512,17 @@ function ResultCard({
               </TabsContent>
             )}
             <TabsContent value="markdown">
-              <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                <div className="flex justify-end mb-1">
+              <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                <div className="mb-1 flex justify-end">
                   <Button
                     variant="noShadow"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => copyToClipboard(result.data?.markdown || "", "markdown")}
+                    onClick={() =>
+                      copyToClipboard(result.data?.markdown || "", "markdown")
+                    }
                   >
-                    <Copy className="h-3 w-3 mr-1" />
+                    <Copy className="mr-1 h-3 w-3" />
                     {copied === "markdown" ? "Copied!" : "Copy"}
                   </Button>
                 </div>
@@ -490,15 +533,20 @@ function ResultCard({
             </TabsContent>
             {showPlainText && (
               <TabsContent value="plainText">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                  <div className="flex justify-end mb-1">
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                  <div className="mb-1 flex justify-end">
                     <Button
                       variant="noShadow"
                       size="sm"
                       className="h-7 text-xs"
-                      onClick={() => copyToClipboard(result.data?.plainText || "", "plainText")}
+                      onClick={() =>
+                        copyToClipboard(
+                          result.data?.plainText || "",
+                          "plainText"
+                        )
+                      }
                     >
-                      <Copy className="h-3 w-3 mr-1" />
+                      <Copy className="mr-1 h-3 w-3" />
                       {copied === "plainText" ? "Copied!" : "Copy"}
                     </Button>
                   </div>
@@ -510,34 +558,43 @@ function ResultCard({
             )}
             {showLinks && (
               <TabsContent value="links">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
                   {result.data?.links && result.data.links.length > 0 ? (
                     <ul className="space-y-2">
                       {result.data.links.map((link, i) => (
                         <li key={i} className="text-xs break-all">
-                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-main hover:text-main/80">
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-main hover:text-main/80"
+                          >
                             {link}
                           </a>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-muted-foreground text-sm">No links found</p>
+                    <p className="text-muted-foreground text-sm">
+                      No links found
+                    </p>
                   )}
                 </div>
               </TabsContent>
             )}
             {showRawHtml && (
               <TabsContent value="rawHtml">
-                <div className="bg-secondary-background max-h-[500px] overflow-auto rounded-md p-3">
-                  <div className="flex justify-end mb-1">
+                <div className="max-h-[500px] overflow-auto rounded-md bg-secondary-background p-3">
+                  <div className="mb-1 flex justify-end">
                     <Button
                       variant="noShadow"
                       size="sm"
                       className="h-7 text-xs"
-                      onClick={() => copyToClipboard(result.data?.rawHtml || "", "rawHtml")}
+                      onClick={() =>
+                        copyToClipboard(result.data?.rawHtml || "", "rawHtml")
+                      }
                     >
-                      <Copy className="h-3 w-3 mr-1" />
+                      <Copy className="mr-1 h-3 w-3" />
                       {copied === "rawHtml" ? "Copied!" : "Copy"}
                     </Button>
                   </div>
@@ -561,7 +618,14 @@ export default function BattlePage() {
   const [error, setError] = useState<string | null>(null)
   const [renderJs, setRenderJs] = useState<boolean | null>(null)
   const [ttl, setTtl] = useState<number | undefined>(undefined)
-  const [formats, setFormats] = useState<{ markdown: boolean; html: boolean; plainText: boolean; links: boolean; imageLinks: boolean; rawHtml: boolean }>({
+  const [formats, setFormats] = useState<{
+    markdown: boolean
+    html: boolean
+    plainText: boolean
+    links: boolean
+    imageLinks: boolean
+    rawHtml: boolean
+  }>({
     markdown: true,
     html: true,
     plainText: false,
@@ -618,7 +682,12 @@ export default function BattlePage() {
         ttl,
         formatList
       )
-      const tinyfishPromise = scrapeWithTinyFish(normalizedUrl, startTime, formatList)
+      const tinyfishPromise = scrapeWithTinyFish(
+        normalizedUrl,
+        startTime,
+        formatList,
+        ttl
+      )
 
       // Update results as each one completes (independently)
       quickcrawlPromise.then((result) => {
@@ -662,7 +731,7 @@ export default function BattlePage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto max-w-7xl px-4 py-8">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-2 flex items-center justify-between">
             <h1 className="text-3xl font-bold tracking-tight">Battle</h1>
             <div className="flex items-center gap-3">
               <a
@@ -671,15 +740,17 @@ export default function BattlePage() {
                 rel="noopener noreferrer"
               >
                 <Button variant="noShadow">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                   </svg>
                   GitHub
                 </Button>
               </a>
-              <a
-                href="/playground"
-              >
+              <a href="/playground">
                 <Button variant="noShadow">
                   <LayoutDashboard className="h-4 w-4" />
                   Playground
@@ -688,7 +759,9 @@ export default function BattlePage() {
               {mounted && (
                 <Button
                   variant="noShadow"
-                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                  onClick={() =>
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                  }
                 >
                   {resolvedTheme === "dark" ? (
                     <SunIcon className="h-4 w-4" />
@@ -704,30 +777,31 @@ export default function BattlePage() {
           </p>
         </div>
 
-          <Card className="mb-8">
+        <Card className="mb-8">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Input
                   placeholder="Enter URL to compare (e.g., https://example.com)"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={isLoading}
-                  className="flex-1 min-w-0"
+                  className="min-w-0 flex-1"
                 />
-<NeumorphCombobox
+                <NeumorphCombobox
                   value={url}
                   onValueChange={(value) => setUrl(value)}
                   placeholder="Examples"
                   className="w-full sm:w-[180px]"
                   disabled={isLoading}
-                  options={[
-                    { value: "https://www.xda-developers.com/a-self-hosted-llms-is-way-more-powerful-than-a-chat-interface/", label: "XDA Developers" },
-                    { value: "https://news.ycombinator.com/item?id=44741682", label: "Hacker News" },
-                    { value: "https://substack.com/home/post/p-193786550", label: "Substack" },
-                    { value: "https://www.jamesgPT.com/artificial-intelligence", label: "Blog Post" },
+options={[
+                    { value: "https://docs.tinyfish.ai/key-concepts/goals", label: "TinyFish Docs" },
+                    { value: "https://www.ycombinator.com/companies", label: "Hacker News" },
+                    { value: "https://www.xda-developers.com/use-custom-modes-to-automate-google-pixel/", label: "XDA Developers" },
                     { value: "https://github.com/MabudAlam/quickcrawl", label: "GitHub" },
+                    { value: "https://github.com/tinyfish-io/bigset/", label: "Bigset Github" },
+                    { value: "https://www.foundhotels.com/about-us/", label: "Found Hotels" },
                   ]}
                 />
                 <Button
@@ -749,24 +823,46 @@ export default function BattlePage() {
                 </Button>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-wrap">
+              <div className="flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:gap-6">
                 <div className="flex items-center gap-2">
                   <Label className="text-sm">Renderer</Label>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="default" size="sm" className="h-8 w-[140px] justify-start">
-                        {renderJs === null ? "Auto" : renderJs ? "Browser" : "HTTP"}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-8 w-[140px] justify-start"
+                      >
+                        {renderJs === null
+                          ? "Auto"
+                          : renderJs
+                            ? "Browser"
+                            : "HTTP"}
                         <ChevronDown className="ml-auto h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
                       <DropdownMenuRadioGroup
-                        value={renderJs === null ? "auto" : renderJs ? "browser" : "http"}
-                        onValueChange={(v) => setRenderJs(v === "auto" ? null : v === "browser")}
+                        value={
+                          renderJs === null
+                            ? "auto"
+                            : renderJs
+                              ? "browser"
+                              : "http"
+                        }
+                        onValueChange={(v) =>
+                          setRenderJs(v === "auto" ? null : v === "browser")
+                        }
                       >
-                        <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="browser">Browser</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="auto">
+                          Auto
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="http">
+                          HTTP
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="browser">
+                          Browser
+                        </DropdownMenuRadioItem>
                       </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -777,7 +873,11 @@ export default function BattlePage() {
                     type="number"
                     placeholder="3600"
                     value={ttl ?? ""}
-                    onChange={(e) => setTtl(e.target.value ? parseInt(e.target.value) : undefined)}
+                    onChange={(e) =>
+                      setTtl(
+                        e.target.value ? parseInt(e.target.value) : undefined
+                      )
+                    }
                     className="h-8 w-[100px]"
                     min={0}
                   />
@@ -792,7 +892,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-markdown" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-markdown"
+                    className="cursor-pointer text-sm"
+                  >
                     Markdown
                   </Label>
                 </div>
@@ -805,7 +908,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-html" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-html"
+                    className="cursor-pointer text-sm"
+                  >
                     HTML
                   </Label>
                 </div>
@@ -818,7 +924,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-plainText" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-plainText"
+                    className="cursor-pointer text-sm"
+                  >
                     Plain Text
                   </Label>
                 </div>
@@ -831,7 +940,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-links" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-links"
+                    className="cursor-pointer text-sm"
+                  >
                     Links
                   </Label>
                 </div>
@@ -844,7 +956,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-imageLinks" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-imageLinks"
+                    className="cursor-pointer text-sm"
+                  >
                     Image Links
                   </Label>
                 </div>
@@ -857,7 +972,10 @@ export default function BattlePage() {
                     }
                     disabled={isLoading}
                   />
-                  <Label htmlFor="format-rawHtml" className="cursor-pointer text-sm">
+                  <Label
+                    htmlFor="format-rawHtml"
+                    className="cursor-pointer text-sm"
+                  >
                     Raw HTML
                   </Label>
                 </div>
@@ -908,7 +1026,13 @@ export default function BattlePage() {
                 showLinks={formats.links}
                 showImageLinks={formats.imageLinks}
                 showRawHtml={formats.rawHtml}
-                theme={mounted ? (resolvedTheme === "dark" ? "dark" : "light") : "light"}
+                theme={
+                  mounted
+                    ? resolvedTheme === "dark"
+                      ? "dark"
+                      : "light"
+                    : "light"
+                }
               />
               <ResultCard
                 title="TinyFish"
@@ -919,7 +1043,13 @@ export default function BattlePage() {
                 showLinks={formats.links}
                 showImageLinks={formats.imageLinks}
                 showRawHtml={formats.rawHtml}
-                theme={mounted ? (resolvedTheme === "dark" ? "dark" : "light") : "light"}
+                theme={
+                  mounted
+                    ? resolvedTheme === "dark"
+                      ? "dark"
+                      : "light"
+                    : "light"
+                }
               />
             </div>
           </div>
