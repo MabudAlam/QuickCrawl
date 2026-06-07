@@ -353,7 +353,7 @@ function ResultCard({
               {showImageLinks && <TabsTrigger value="imageGrid">Images</TabsTrigger>}
               {showImageLinks && <TabsTrigger value="imageLinks">URLs</TabsTrigger>}
               {showHtml && <TabsTrigger value="html">HTML</TabsTrigger>}
-              {showHtml && <TabsTrigger value="html-preview">Preview</TabsTrigger>}
+              {showHtml && <TabsTrigger value="html-preview">HTML Preview</TabsTrigger>}
               <TabsTrigger value="markdown">Markdown</TabsTrigger>
               {showPlainText && <TabsTrigger value="plainText">Plain Text</TabsTrigger>}
               {showLinks && <TabsTrigger value="links">Links</TabsTrigger>}
