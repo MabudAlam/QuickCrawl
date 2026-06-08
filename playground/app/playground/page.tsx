@@ -1495,6 +1495,18 @@ export default function PlaygroundPage({
                 Compare QuickCrawl and TinyFish scrape results side by side
               </TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a href="/battle-articles">
+                  <Button variant="noShadow" size="sm">
+                    Battle Articles
+                  </Button>
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Compare across 15 news articles
+              </TooltipContent>
+            </Tooltip>
           </div>
         </header>
 

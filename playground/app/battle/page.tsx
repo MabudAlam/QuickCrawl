@@ -14,6 +14,7 @@ import {
   ChevronDown,
   SunIcon,
   MoonIcon,
+  BarChart3,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -754,6 +755,12 @@ export default function BattlePage() {
                 <Button variant="noShadow">
                   <LayoutDashboard className="h-4 w-4" />
                   Playground
+                </Button>
+              </a>
+              <a href="/battle-articles">
+                <Button variant="noShadow">
+                  <BarChart3 className="h-4 w-4" />
+                  Battle Articles
                 </Button>
               </a>
               {mounted && (
