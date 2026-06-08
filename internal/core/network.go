@@ -282,52 +282,14 @@ func navigateIgnoringHTTPStatus(urlstr string, waitForLoad *time.Duration) chrom
 		_ = frameID
 		_ = errText
 
-		// Wait for the page lifecycle event that signals the browser
-		// has finished rendering. We listen for Page.loadEventFired,
-		// which fires for both successful navigations AND for the
-		// chrome-error:// page (the error page is itself a document
-		// load, so the load event still fires).
-		//
-		// The default 30s timeout is a defensive backstop. Real pages
-		// load in a few seconds; only hung/nested frames would ever
-		// hit this. If we do hit it, the surrounding chromedp.Run
-		// will return a context-deadline error which the caller maps
-		// to ErrTimeout.
-		timeout := 30 * time.Second
-		if waitForLoad != nil {
-			timeout = *waitForLoad
-		}
-		loadCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-
-		// We use a buffered channel + listen-then-wait pattern. The
-		// listener is attached for the duration of the load wait only
-		// — the page-load event would otherwise leak into the
-		// subsequent chromedp actions and trigger their internal
-		// "navigation in progress" guards.
-		loadCh := make(chan struct{}, 1)
-		chromedp.ListenTarget(loadCtx, func(ev any) {
-			if _, ok := ev.(*page.EventLoadEventFired); ok {
-				select {
-				case loadCh <- struct{}{}:
-				default:
-				}
-			}
-		})
-
-		select {
-		case <-loadCh:
-			return nil
-		case <-loadCtx.Done():
-			// If the parent context was cancelled, propagate that.
-			// Otherwise the load event really did time out, which
-			// is rare but possible (e.g. a WebSocket-only page
-			// that never fires load).
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return nil
-		}
+		// Don't wait for Page.loadEventFired here - just return immediately
+		// after navigation. The SPA readiness poll (WaitForSPAReady) that runs
+		// after this action will handle waiting for content to be ready.
+		// This avoids a race condition where the load event fires before our
+		// ListenTarget listener is attached, which was causing 45s timeouts
+		// on browserless. See crw's post_navigate_phase which similarly
+		// proceeds immediately after navigation.
+		return nil
 	})
 }
 
