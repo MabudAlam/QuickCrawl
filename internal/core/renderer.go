@@ -34,14 +34,14 @@ type Renderer struct {
 // it is built by toCoreFetchResult from a *types.FetchResult. For browser fetches
 // it is built directly inside fetchWithCDPBrowser.
 type FetchResult struct {
-	URL          string  // URL that was fetched
-	FinalURL     string  // Final URL after redirects
-	StatusCode   uint16  // HTTP status code (200 for browser unless anti-bot)
-	HTML         string  // Fetched HTML content
-	ContentType  string  // Content-Type header value (lowercased, no charset)
-	RawBytes     []byte  // Raw bytes (for PDFs)
-	RenderedWith string  // "http", "browser", or "pdf"
-	Warning      *string // Non-fatal warning (e.g. anti-bot detected)
+	URL          string   // URL that was fetched
+	FinalURL     string   // Final URL after redirects
+	StatusCode   uint16   // HTTP status code (200 for browser unless anti-bot)
+	HTML         string   // Fetched HTML content
+	ContentType  string   // Content-Type header value (lowercased, no charset)
+	RawBytes     []byte   // Raw bytes (for PDFs)
+	RenderedWith string   // "http", "browser", or "pdf"
+	Warning      *string  // Non-fatal warning (e.g. anti-bot detected)
 	BlockedURLs  []string // URLs blocked by the blocklist (browser path only)
 }
 
@@ -322,10 +322,10 @@ func toCoreFetchResult(r *types.FetchResult, rawURL string) *FetchResult {
 		return &FetchResult{URL: rawURL, RenderedWith: "http"}
 	}
 	out := &FetchResult{
-		URL:         r.URL,
-		StatusCode:  r.StatusCode,
-		HTML:        r.HTML,
-		RawBytes:    r.RawBytes,
+		URL:        r.URL,
+		StatusCode: r.StatusCode,
+		HTML:       r.HTML,
+		RawBytes:   r.RawBytes,
 	}
 	if r.FinalURL != nil {
 		out.FinalURL = *r.FinalURL
@@ -421,7 +421,6 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	if renderer.allocCtx == nil {
 		return nil, ErrBrowserNotAvailable.New("no browser WS URL configured")
 	}
-
 
 	// Step 2: Acquire a concurrency slot for this host.
 	// This prevents overwhelming any single origin with parallel browser fetches.
@@ -796,7 +795,6 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	if finalURL == "" {
 		finalURL = rawURL
 	}
-
 
 	// Step 6: Build the result and check for anti-bot pages.
 	result := &FetchResult{

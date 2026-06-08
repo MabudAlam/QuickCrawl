@@ -10,6 +10,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  TooltipProvider,
 } from "@/components/ui/tooltip"
 
 function Dialog({
@@ -69,15 +70,17 @@ function DialogContent({
         {...props}
       >
         {children}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogPrimitive.Close className="absolute top-4 right-4 rounded-base opacity-100 ring-offset-white focus:ring-2 focus:ring-black focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
-              <X />
-              <span className="sr-only">Close</span>
-            </DialogPrimitive.Close>
-          </TooltipTrigger>
-          <TooltipContent side="left">Close dialog</TooltipContent>
-        </Tooltip>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DialogPrimitive.Close className="absolute top-4 right-4 rounded-base opacity-100 ring-offset-white focus:ring-2 focus:ring-black focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+                <X />
+                <span className="sr-only">Close</span>
+              </DialogPrimitive.Close>
+            </TooltipTrigger>
+            <TooltipContent side="left">Close dialog</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </DialogPrimitive.Content>
     </DialogPortal>
   )
