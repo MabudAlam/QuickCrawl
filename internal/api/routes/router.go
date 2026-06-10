@@ -63,6 +63,10 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 	// Health check endpoint - returns renderer/browser availability and active job count
 	engine.GET("/health", h.Health)
 
+	// Readability comparison endpoints
+	engine.POST("/compare", h.Compare)
+	engine.POST("/compare-url", h.CompareURL)
+
 	// v1 API group
 	v1 := engine.Group("/v1")
 	{

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import {
   Loader2,
   Play,
@@ -13,6 +13,7 @@ import {
   MoonIcon,
   BarChart3,
   Eye,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,15 +26,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTheme } from "next-themes"
 import ReactMarkdown from "react-markdown"
+
+function computeSimpleDiff(textA: string, textB: string): { a: string[]; b: string[] } {
+  const wordsA = textA.split(/\s+/)
+  const wordsB = textB.split(/\s+/)
+  const resultA: string[] = []
+  const resultB: string[] = []
+  const setB = new Set(wordsB)
+
+  for (const word of wordsA) {
+    if (setB.has(word)) {
+      resultA.push(word)
+    } else {
+      resultA.push(`[[${word}]]`)
+    }
+  }
+
+  const setA = new Set(wordsA)
+  for (const word of wordsB) {
+    if (setA.has(word)) {
+      resultB.push(word)
+    } else {
+      resultB.push(`[[${word}]]`)
+    }
+  }
+
+  return { a: resultA, b: resultB }
+}
 
 const BATCH_1 = [
   {
@@ -268,7 +292,7 @@ export default function BattleArticlesPage() {
 
   const activeUrls = BATCHES[selectedBatch]
 
-  const BATCH_SIZE = 5
+  
 
   const handleStart = async () => {
     setIsRunning(true)
@@ -278,27 +302,21 @@ export default function BattleArticlesPage() {
 
     const newResults: ArticleResult[] = []
 
-    for (let i = 0; i < activeUrls.length; i += BATCH_SIZE) {
-      const batch = activeUrls.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < activeUrls.length; i++) {
+      const article = activeUrls[i]
       setCurrentIndex(i)
 
-      const batchResults = await Promise.all(
-        batch.map(async (article) => {
-          const [qcResult, tfResult] = await Promise.all([
-            scrapeWithQuickCrawl(article.url, true, 0),
-            scrapeWithTinyFish(article.url),
-          ])
+      const [qcResult, tfResult] = await Promise.all([
+        scrapeWithQuickCrawl(article.url, true, 0),
+        scrapeWithTinyFish(article.url),
+      ])
 
-          return {
-            url: article.url,
-            publisher: article.publisher,
-            quickcrawl: qcResult,
-            tinyfish: tfResult,
-          }
-        })
-      )
-
-      newResults.push(...batchResults)
+      newResults.push({
+        url: article.url,
+        publisher: article.publisher,
+        quickcrawl: qcResult,
+        tinyfish: tfResult,
+      })
       setResults([...newResults])
     }
 
@@ -398,7 +416,7 @@ export default function BattleArticlesPage() {
                 {isRunning ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Running... {currentIndex >= 0 ? `${Math.min(currentIndex + BATCH_SIZE, activeUrls.length)}/${activeUrls.length}` : ""}
+                    Running... {currentIndex >= 0 ? `${currentIndex + 1}/${activeUrls.length}` : ""}
                   </>
                 ) : (
                   <>
@@ -436,13 +454,13 @@ export default function BattleArticlesPage() {
             <CardContent className="pt-6">
               <div className="mb-2 flex items-center justify-between text-sm">
                 <span>
-                  Processing batch: {activeUrls[currentIndex].publisher} and {BATCH_SIZE} more...
+                  Processing: {activeUrls[currentIndex]?.publisher || ""}...
                 </span>
                 <span>
-                  {Math.min(currentIndex + BATCH_SIZE, activeUrls.length)} / {activeUrls.length}
+                  {currentIndex + 1} / {activeUrls.length}
                 </span>
               </div>
-              <Progress value={((currentIndex + BATCH_SIZE) / activeUrls.length) * 100} className="h-2" />
+              <Progress value={((currentIndex + 1) / activeUrls.length) * 100} className="h-2" />
             </CardContent>
           </Card>
         )}
@@ -606,90 +624,160 @@ export default function BattleArticlesPage() {
         )}
       </div>
 
-      <Dialog open={!!selectedResult} onOpenChange={() => setSelectedResult(null)}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">
-              {selectedResult?.publisher} - Content Comparison
-            </DialogTitle>
-          </DialogHeader>
-          {selectedResult && (
-            <Tabs defaultValue="quickcrawl" className="flex-1 overflow-hidden flex flex-col">
-              <TabsList className="mb-3">
-                <TabsTrigger value="quickcrawl" className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-                  QuickCrawl ({selectedResult.quickcrawl.charCount.toLocaleString()} chars)
-                </TabsTrigger>
-                <TabsTrigger value="tinyfish" className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-blue-500" />
-                  TinyFish ({selectedResult.tinyfish.charCount.toLocaleString()} chars)
-                </TabsTrigger>
-                <TabsTrigger value="side-by-side">Side by Side</TabsTrigger>
-              </TabsList>
-              <div className="flex-1 overflow-auto">
-                <TabsContent value="quickcrawl" className="h-full">
-                  <div className="rounded-lg border border-border bg-secondary-background p-4 h-full overflow-auto">
-                    {selectedResult.quickcrawl.markdown ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{selectedResult.quickcrawl.markdown}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">No content available</p>
-                    )}
-                  </div>
-                </TabsContent>
-                <TabsContent value="tinyfish" className="h-full">
-                  <div className="rounded-lg border border-border bg-secondary-background p-4 h-full overflow-auto">
-                    {selectedResult.tinyfish.markdown ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{selectedResult.tinyfish.markdown}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">No content available</p>
-                    )}
-                  </div>
-                </TabsContent>
-                <TabsContent value="side-by-side" className="h-full">
-                  <div className="grid grid-cols-2 gap-4 h-full">
-                    <div className="rounded-lg border border-green-500/30 bg-secondary-background p-4 overflow-auto">
-                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-                        <div className="h-3 w-3 rounded-full bg-green-500" />
-                        <span className="font-medium text-green-500">QuickCrawl</span>
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {selectedResult.quickcrawl.charCount.toLocaleString()} chars
-                        </span>
-                      </div>
-                      {selectedResult.quickcrawl.markdown ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{selectedResult.quickcrawl.markdown}</ReactMarkdown>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">No content</p>
-                      )}
-                    </div>
-                    <div className="rounded-lg border border-blue-500/30 bg-secondary-background p-4 overflow-auto">
-                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-                        <div className="h-3 w-3 rounded-full bg-blue-500" />
-                        <span className="font-medium text-blue-500">TinyFish</span>
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {selectedResult.tinyfish.charCount.toLocaleString()} chars
-                        </span>
-                      </div>
-                      {selectedResult.tinyfish.markdown ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{selectedResult.tinyfish.markdown}</ReactMarkdown>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">No content</p>
-                      )}
-                    </div>
-                  </div>
-                </TabsContent>
+      <TooltipProvider>
+        <Sheet open={!!selectedResult} onOpenChange={() => setSelectedResult(null)}>
+          <SheetContent side="right" className="w-[60%] flex flex-col">
+            <SheetHeader className="flex flex-row items-center justify-between pr-8">
+              <div className="flex flex-col gap-1">
+                <SheetTitle className="text-lg font-bold">
+                  {selectedResult?.publisher} - Content Comparison
+                </SheetTitle>
+                {selectedResult && (
+                  <a
+                    href={selectedResult.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-blue-500 hover:underline"
+                  >
+                    {selectedResult.url}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
+            </SheetHeader>
+            {selectedResult && (
+              <div className="flex-1 overflow-hidden flex flex-col mt-4">
+                <Tabs defaultValue="quickcrawl" className="flex-1 overflow-hidden flex flex-col">
+                  <TabsList className="mb-3">
+                    <TabsTrigger value="quickcrawl" className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-green-500" />
+                      QuickCrawl ({selectedResult.quickcrawl.charCount.toLocaleString()} chars)
+                    </TabsTrigger>
+                    <TabsTrigger value="side-by-side">Side by Side</TabsTrigger>
+                    <TabsTrigger value="diff">Diff View</TabsTrigger>
+                    <TabsTrigger value="tinyfish" className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-blue-500" />
+                      TinyFish ({selectedResult.tinyfish.charCount.toLocaleString()} chars)
+                    </TabsTrigger>
+                  </TabsList>
+                  <div className="flex-1 overflow-auto">
+<TabsContent value="side-by-side" className="h-full">
+                    <div className="grid grid-cols-2 gap-6 h-full min-h-[500px]">
+                      <div className="rounded-lg border-2 border-green-500/30 bg-secondary-background p-5 overflow-auto flex flex-col">
+                        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border sticky top-0 bg-secondary-background z-10">
+                          <div className="h-3 w-3 rounded-full bg-green-500" />
+                          <span className="font-semibold text-green-500">QuickCrawl</span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {selectedResult.quickcrawl.charCount.toLocaleString()} chars
+                          </span>
+                          {selectedResult.quickcrawl.success && (
+                            <CheckCircle className="h-4 w-4 text-green-500 ml-2" />
+                          )}
+                        </div>
+                        {selectedResult.quickcrawl.markdown ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none flex-1">
+                            <ReactMarkdown>{selectedResult.quickcrawl.markdown}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No content available</p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border-2 border-blue-500/30 bg-secondary-background p-5 overflow-auto flex flex-col">
+                        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border sticky top-0 bg-secondary-background z-10">
+                          <div className="h-3 w-3 rounded-full bg-blue-500" />
+                          <span className="font-semibold text-blue-500">TinyFish</span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {selectedResult.tinyfish.charCount.toLocaleString()} chars
+                          </span>
+                          {selectedResult.tinyfish.success && (
+                            <CheckCircle className="h-4 w-4 text-blue-500 ml-2" />
+                          )}
+                        </div>
+                        {selectedResult.tinyfish.markdown ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none flex-1">
+                            <ReactMarkdown>{selectedResult.tinyfish.markdown}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No content available</p>
+                        )}
+                      </div>
+                    </div>
+                  </TabsContent>
+                    <TabsContent value="diff" className="h-full">
+                      {(() => {
+                        const qc = selectedResult.quickcrawl.markdown || ""
+                        const tf = selectedResult.tinyfish.markdown || ""
+                        const diff = computeSimpleDiff(qc, tf)
+                        const missingInQC = diff.b.filter(w => w.startsWith("[[")).length
+                        const missingInTF = diff.a.filter(w => w.startsWith("[[")).length
+                        return (
+                          <div className="h-full overflow-auto">
+                            <div className="mb-4 flex items-center gap-4 text-sm">
+                              <div className="flex items-center gap-2">
+                                <div className="h-3 w-3 rounded-full bg-green-500" />
+                                <span className="text-green-500">QuickCrawl missing: {missingInQC} words</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="h-3 w-3 rounded-full bg-blue-500" />
+                                <span className="text-blue-500">TinyFish missing: {missingInTF} words</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="rounded-lg border border-green-500/30 bg-secondary-background p-4">
+                                <div className="mb-2 flex items-center gap-2 border-b border-border pb-2">
+                                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                                  <span className="font-medium text-green-500">QuickCrawl</span>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap break-words font-mono max-h-[600px] overflow-auto">
+                                  {diff.a.join(" ")}
+                                </pre>
+                              </div>
+                              <div className="rounded-lg border border-blue-500/30 bg-secondary-background p-4">
+                                <div className="mb-2 flex items-center gap-2 border-b border-border pb-2">
+                                  <div className="h-3 w-3 rounded-full bg-blue-500" />
+                                  <span className="font-medium text-blue-500">TinyFish</span>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap break-words font-mono max-h-[600px] overflow-auto">
+                                  {diff.b.join(" ")}
+                                </pre>
+                              </div>
+                            </div>
+                            <div className="mt-4 text-xs text-muted-foreground">
+                              <span className="text-red-400">[[word]]</span> = word present in other but missing here
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </TabsContent>
+                    <TabsContent value="quickcrawl" className="h-full">
+                      <div className="rounded-lg border border-border bg-secondary-background p-4 h-full overflow-auto">
+                        {selectedResult.quickcrawl.markdown ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <ReactMarkdown>{selectedResult.quickcrawl.markdown}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No content available</p>
+                        )}
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="tinyfish" className="h-full">
+                      <div className="rounded-lg border border-border bg-secondary-background p-4 h-full overflow-auto">
+                        {selectedResult.tinyfish.markdown ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <ReactMarkdown>{selectedResult.tinyfish.markdown}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No content available</p>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+      </TooltipProvider>
     </div>
   )
 }
