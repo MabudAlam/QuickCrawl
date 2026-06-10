@@ -67,14 +67,14 @@ export function AppSidebar({
   onEndpointChange,
   health,
 }: AppSidebarProps) {
-  const { resolvedTheme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme, mounted } = useTheme()
 
   return (
     <SidebarPrimitive collapsible="icon" className="border-r-2 border-border">
       <SidebarHeader className="border-b-2 border-border bg-secondary-background">
         <div className="flex items-center gap-3 px-3 py-3">
           <img
-            src={resolvedTheme === "dark" ? "/qc-dark.svg" : "/qc.svg"}
+            src={mounted && resolvedTheme === "dark" ? "/qc-dark.svg" : "/qc.svg"}
             alt="QuickCrawl"
             className="h-10 w-auto object-contain"
           />
@@ -136,13 +136,13 @@ export function AppSidebar({
               setTheme(resolvedTheme === "dark" ? "light" : "dark")
             }
           >
-            {resolvedTheme === "dark" ? (
+            {mounted && resolvedTheme === "dark" ? (
               <SunIcon className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
             ) : (
               <MoonIcon className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
             )}
             <span className="group-data-[collapsible=icon]:hidden">
-              {resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}
+              {mounted && resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}
             </span>
           </Button>
           <Button

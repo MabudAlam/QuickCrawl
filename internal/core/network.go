@@ -287,7 +287,7 @@ func navigateIgnoringHTTPStatus(urlstr string, waitForLoad *time.Duration) chrom
 		// after this action will handle waiting for content to be ready.
 		// This avoids a race condition where the load event fires before our
 		// ListenTarget listener is attached, which was causing 45s timeouts
-		// on browserless. See REMOVED's post_navigate_phase which similarly
+		// on browserless. See crw's post_navigate_phase which similarly
 		// proceeds immediately after navigation.
 		return nil
 	})
