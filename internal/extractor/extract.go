@@ -124,19 +124,23 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 	// Strip the head, remove obvious noise, apply selectors, and isolate the
 	// main article if requested. This keeps the downstream post-process stage
 	// focused on structural cleanup only.
-	contentHTML := preprocessHTML(opts.RawHTML, HTMLPreprocessOptions{
-		IncludeTags: opts.IncludeTags,
-		ExcludeTags: opts.ExcludeTags,
-		CSSSelector: opts.CSSSelector,
-	})
+	// contentHTML := preprocessHTML(opts.RawHTML, HTMLPreprocessOptions{
+	// 	IncludeTags:      opts.IncludeTags,
+	// 	ExcludeTags:      opts.ExcludeTags,
+	// 	CSSSelector:      opts.CSSSelector,
+	// 	SkipNoisePatterns: true,
+	// })
 
 	// The pre processing removes most of the extras from the html content
 
-	contentHTML = ExtractMainContent(contentHTML)
+	contentHTML := ExtractMainContent(opts.RawHTML)
+
+	// Apply noise patterns AFTER content selection to remove sidebar noise.
+	// contentHTML = applyNoisePatterns(contentHTML)
 
 	// ── Step 3: Post-process HTML ─────────────────────────────────────────────
 	// Sanitizer + DOM cleanup + wrapper flattening + formatted document output.
-	contentHTML = postprocessHTML(contentHTML)
+	// contentHTML = postprocessHTML(contentHTML)
 
 	// Debug trace: log content sizes at each pipeline stage.
 	if strings.Contains(opts.SourceURL, "github.com") {
@@ -282,10 +286,11 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		rawHTML = &raw
 	}
 
-	// ── Step 7: Clean HTML output ─────────────────────────────────────────────
+	// ── Step 7: Clean HTML output with title and excerpt ─────────────────────
 	var html *string
 	if formatNeeded[types.FormatHtml] {
-		html = &contentHTML
+		extracted := ExtractHTML(opts.RawHTML)
+		html = &extracted.Content
 	}
 
 	// ── Step 8: Links ─────────────────────────────────────────────────────────

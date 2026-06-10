@@ -63,3 +63,13 @@ type ExtractedMetadata struct {
 	// CanonicalURL is the canonical URL from link rel="canonical"
 	CanonicalURL *string
 }
+
+// ExtractedHTML contains the extracted HTML content along with its metadata.
+type ExtractedHTML struct {
+	// Title is the article title extracted by readability
+	Title string
+	// Excerpt is the article excerpt/summary extracted by readability
+	Excerpt string
+	// Content is the main article HTML content
+	Content string
+}

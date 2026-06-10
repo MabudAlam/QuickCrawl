@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,10 +15,12 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
+	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/gin-gonic/gin"
+	readability "github.com/thara/readability-go"
 )
 
 // Handler is the single HTTP entry point. It owns the application state
@@ -631,4 +634,145 @@ func scrapeFormatsToStrings(formats []types.OutputFormat) []string {
 // stringPtr is a helper to create a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
+}
+
+type ComparisonResult struct {
+	Library      string `json:"library"`
+	Title        string `json:"title"`
+	Byline       string `json:"byline"`
+	Excerpt      string `json:"excerpt"`
+	SiteName     string `json:"siteName"`
+	Content      string `json:"content"`
+	Text         string `json:"text"`
+	ContentLen   int    `json:"contentLength"`
+	TextLen      int    `json:"textLength"`
+	Duration     string `json:"duration"`
+}
+
+type ComparisonResponse struct {
+	Results    []ComparisonResult `json:"results"`
+	SourceURL  string             `json:"source_url"`
+	SourceType string             `json:"source_type"`
+}
+
+// Compare handles POST /compare - compares readability extraction on provided HTML
+func (h *Handler) Compare(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	var req struct {
+		HTML string `json:"html"`
+		URL  string `json:"url"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON request"})
+		return
+	}
+
+	if req.HTML == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "html is required"})
+		return
+	}
+
+	if req.URL == "" {
+		req.URL = "https://example.com/article"
+	}
+
+	response := compareHTMLReadability(req.HTML, req.URL)
+	c.JSON(http.StatusOK, response)
+}
+
+// CompareURL handles POST /compare-url - fetches URL then compares readability extraction
+func (h *Handler) CompareURL(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON request"})
+		return
+	}
+
+	if req.URL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+		return
+	}
+
+	resp, err := http.Get(req.URL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch URL: %v", err)})
+		return
+	}
+	defer resp.Body.Close()
+
+	html, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to read body: %v", err)})
+		return
+	}
+
+	response := compareHTMLReadability(string(html), req.URL)
+	c.JSON(http.StatusOK, response)
+}
+
+func compareHTMLReadability(html, pageURL string) ComparisonResponse {
+	results := make([]ComparisonResult, 0, 2)
+
+	start := time.Now()
+	extracted := extractor.ExtractHTML(html)
+	ourDuration := time.Since(start)
+
+	if extracted.Content != "" {
+		results = append(results, ComparisonResult{
+			Library:    "Our Readability",
+			Title:      extracted.Title,
+			Byline:     "",
+			Excerpt:    extracted.Excerpt,
+			SiteName:   "",
+			Content:    extracted.Content,
+			Text:       stripHTMLTags(extracted.Content),
+			ContentLen: len(extracted.Content),
+			TextLen:    len(stripHTMLTags(extracted.Content)),
+			Duration:   fmt.Sprintf("%.2fms", float64(ourDuration.Microseconds())/1000.0),
+		})
+	}
+
+	start = time.Now()
+	article2, err := readability.Parse(strings.NewReader(html), pageURL)
+	extDuration := time.Since(start)
+
+	if err == nil && article2 != nil {
+		results = append(results, ComparisonResult{
+			Library:    "External Readability",
+			Title:      article2.Title,
+			Byline:     article2.Byline,
+			Excerpt:    article2.Excerpt,
+			SiteName:   article2.SiteName,
+			Content:    article2.Content,
+			Text:       article2.TextContent,
+			ContentLen: len(article2.Content),
+			TextLen:    len(article2.TextContent),
+			Duration:   fmt.Sprintf("%.2fms", float64(extDuration.Microseconds())/1000.0),
+		})
+	}
+
+	return ComparisonResponse{
+		Results:    results,
+		SourceURL:  pageURL,
+		SourceType: "html",
+	}
+}
+
+var stripTagsRe = regexp.MustCompile(`<[^>]*>`)
+
+func stripHTMLTags(html string) string {
+	return stripTagsRe.ReplaceAllString(html, "")
 }

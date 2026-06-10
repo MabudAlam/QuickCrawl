@@ -5,12 +5,18 @@ request_timeout_secs = 60
 rate_limit_rps = 10
 
 [renderer]
-page_timeout_ms = 30000
+page_timeout_ms = 45000
 pool_size = 4
-render_mode="auto"
+render_mode = "auto"
+browser = "cloak"
 
 [renderer.chrome]
-ws_url = ""
+# Cloak browser config - CloakBrowser creates dynamic Chrome instances
+# Use just the base URL without browser ID path
+ws_url = "ws://cloakbrowser-production-7be4.up.railway.app"
+chrome_intercept_resources = true
+# Cloak doesn't need chrome args encoding
+chrome_args = []
 
 [crawler]
 max_concurrency = 40
@@ -26,10 +32,9 @@ enabled = true
 strategy = "modern_browser"
 jitter_factor = 0.2
 inject_headers = true
+nav_budget_ms = 12000
 
 [extraction.llm]
-# api_key is loaded from the EXTRACTION__LLM__API_KEY env var (set in .env or your shell).
-# Do NOT commit the key to source control.
 api_key = ""
 model = "gpt-4o-mini"
 base_url = ""
@@ -39,5 +44,5 @@ response_format = "extracted_data"
 
 [cache]
 enabled = true
-redis_url = ""
+redis_url = "redis://default:IkWLwrHLFbohJnDnYWilLYXnyUmvIoCi@acela.proxy.rlwy.net:28402"
 ttl_default_secs = 3600

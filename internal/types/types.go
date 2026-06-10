@@ -317,7 +317,8 @@ type CapturedNetworkResponse struct {
 
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
 type CdpEndpoint struct {
-	WSURL string `toml:"ws_url" json:"wsUrl"` // WebSocket URL
+	WSURL          string   `toml:"ws_url" json:"wsUrl"`           // WebSocket URL
+	ChromeArgs    []string `toml:"chrome_args" json:"chromeArgs"` // Chrome launch flags
 }
 
 // BrowserInfo contains information about a running browser instance.
@@ -336,6 +337,7 @@ type BrowserInfo struct {
 type RendererConfig struct {
 	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
 	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
+	Browser      string       `toml:"browser" json:"browser"`              // Browser: cloak, browserless, lightpanda
 	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
 }
 
