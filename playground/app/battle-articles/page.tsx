@@ -268,6 +268,8 @@ export default function BattleArticlesPage() {
 
   const activeUrls = BATCHES[selectedBatch]
 
+  const BATCH_SIZE = 5
+
   const handleStart = async () => {
     setIsRunning(true)
     setError(null)
@@ -276,22 +278,27 @@ export default function BattleArticlesPage() {
 
     const newResults: ArticleResult[] = []
 
-    for (let i = 0; i < activeUrls.length; i++) {
+    for (let i = 0; i < activeUrls.length; i += BATCH_SIZE) {
+      const batch = activeUrls.slice(i, i + BATCH_SIZE)
       setCurrentIndex(i)
-      const article = activeUrls[i]
 
-      const [qcResult, tfResult] = await Promise.all([
-        scrapeWithQuickCrawl(article.url, true, 0),
-        scrapeWithTinyFish(article.url),
-      ])
+      const batchResults = await Promise.all(
+        batch.map(async (article) => {
+          const [qcResult, tfResult] = await Promise.all([
+            scrapeWithQuickCrawl(article.url, true, 0),
+            scrapeWithTinyFish(article.url),
+          ])
 
-      newResults.push({
-        url: article.url,
-        publisher: article.publisher,
-        quickcrawl: qcResult,
-        tinyfish: tfResult,
-      })
+          return {
+            url: article.url,
+            publisher: article.publisher,
+            quickcrawl: qcResult,
+            tinyfish: tfResult,
+          }
+        })
+      )
 
+      newResults.push(...batchResults)
       setResults([...newResults])
     }
 
@@ -391,7 +398,7 @@ export default function BattleArticlesPage() {
                 {isRunning ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Running... {currentIndex >= 0 ? `${currentIndex + 1}/${activeUrls.length}` : ""}
+                    Running... {currentIndex >= 0 ? `${Math.min(currentIndex + BATCH_SIZE, activeUrls.length)}/${activeUrls.length}` : ""}
                   </>
                 ) : (
                   <>
@@ -429,14 +436,13 @@ export default function BattleArticlesPage() {
             <CardContent className="pt-6">
               <div className="mb-2 flex items-center justify-between text-sm">
                 <span>
-                  Processing: {activeUrls[currentIndex].publisher} -{" "}
-                  {activeUrls[currentIndex].url.slice(0, 50)}...
+                  Processing batch: {activeUrls[currentIndex].publisher} and {BATCH_SIZE} more...
                 </span>
                 <span>
-                  {currentIndex + 1} / {activeUrls.length}
+                  {Math.min(currentIndex + BATCH_SIZE, activeUrls.length)} / {activeUrls.length}
                 </span>
               </div>
-              <Progress value={((currentIndex + 1) / activeUrls.length) * 100} className="h-2" />
+              <Progress value={((currentIndex + BATCH_SIZE) / activeUrls.length) * 100} className="h-2" />
             </CardContent>
           </Card>
         )}

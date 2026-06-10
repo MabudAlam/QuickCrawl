@@ -3,8 +3,10 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,12 +21,14 @@ type Config struct {
 }
 
 type BrowserConfig struct {
-	Mode            BrowserMode
+	Mode BrowserMode
+	BrowserType     string       // "browserless", "cloak", "lightpanda"
 	WSURL           string
 	NumBrowsers     int
 	PageTimeout     time.Duration
 	PoolSize        int
-	StealthEnabled  bool // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
+	StealthEnabled  bool     // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
+	ChromeArgs      []string // Chrome launch flags for browserless
 }
 
 type BrowserMode string
@@ -74,10 +78,11 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 	switch {
 	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "":
 		configuredWS := strings.TrimSpace(cfg.Renderer.Chrome.WSURL)
-		if discovered := discoverChromeWSURL(configuredWS); discovered != "" {
-			coreCfg.Browser.WSURL = discovered
-		} else {
+		wsURL, err := GetCDPURL(configuredWS)
+		if err != nil {
 			coreCfg.Browser.WSURL = configuredWS
+		} else {
+			coreCfg.Browser.WSURL = wsURL
 		}
 	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) == "":
 		coreCfg.Browser.WSURL = ""
@@ -89,6 +94,19 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 		coreCfg.Browser.PageTimeout = time.Duration(cfg.Renderer.PageTimeoutMs) * time.Millisecond
 	}
 	coreCfg.Browser.StealthEnabled = cfg.Crawler.Stealth.Enabled
+	coreCfg.Browser.BrowserType = cfg.Renderer.Browser
+
+	// Handle Chrome launch args for browserless.
+	// Chrome flags are passed via the launch JSON object, URL-encoded.
+	// Example: ?launch=%7B%22args%22%3A%5B...%5D%7D
+	// Only encode for browserless; cloak and lightpanda don't need this encoding.
+	if cfg.Renderer.Chrome != nil && len(cfg.Renderer.Chrome.ChromeArgs) > 0 {
+		coreCfg.Browser.ChromeArgs = cfg.Renderer.Chrome.ChromeArgs
+		// Only encode chrome args for browserless
+		if cfg.Renderer.Browser == "browserless" {
+			coreCfg.Browser.WSURL = encodeChromeArgsToURL(coreCfg.Browser.WSURL, cfg.Renderer.Chrome.ChromeArgs)
+		}
+	}
 
 	var stealthProfile *utils.HeaderProfile
 	if cfg.Crawler.Stealth.Enabled && cfg.Crawler.Stealth.InjectHeaders {
@@ -100,38 +118,76 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 	return NewScraper(coreCfg, httpFetcher, llm)
 }
 
-// chromeVersionResponse is the subset of the Chrome DevTools /json/version
-// payload we need. The endpoint returns a few extra fields (V8 version,
-// protocol version, user agent) which we discard.
-type chromeVersionResponse struct {
-	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+type VersionResponse struct {
+	Browser                 string `json:"Browser"`
+	ProtocolVersion         string `json:"Protocol-Version"`
+	UserAgent               string `json:"User-Agent"`
+	V8Version                string `json:"V8-Version"`
+	WebKitVersion           string `json:"WebKit-Version"`
+	WebSocketDebuggerURL    string `json:"webSocketDebuggerUrl"`
 }
 
-// discoverChromeWSURL queries the Chrome DevTools /json/version endpoint to
-// recover the current browser WebSocket URL. Chrome assigns a fresh browser
-// ID on every restart, so a hardcoded ws://.../devtools/browser/<uuid> URL
-// in the config becomes stale the moment Chrome is restarted. Without this
-// discovery step, the chromedp RemoteAllocator would attempt to dial a
-// session ID that no longer exists and every /v1/scrape with renderJs=true
-// would fail with a fast "context deadline" error.
-func discoverChromeWSURL(configuredWSURL string) string {
-	base, ok := wsURLToHTTPBase(configuredWSURL)
-	if !ok {
-		return ""
+func GetCDPURL(baseURL string) (string, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	// Browserless v2 / commercial CDP endpoints serve a WebSocket directly
+	// and don't expose /json/version. Detect these and use the URL as-is.
+	// Mirrors 's is_browserless_direct_ws() check at cdp.rs:665-670.
+	if isBrowserlessDirectWS(baseURL) {
+		return baseURL, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	httpBase, ok := wsURLToHTTPBase(baseURL)
+	if !ok {
+		return "", fmt.Errorf("invalid ws URL: %s", baseURL)
+	}
+
+	resp, err := http.Get(httpBase + "/json/version")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status: %s", resp.Status)
+	}
+
+	var version VersionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&version); err != nil {
+		return "", err
+	}
+
+	if version.WebSocketDebuggerURL == "" {
+		return "", fmt.Errorf("webSocketDebuggerUrl not found")
+	}
+
+	return version.WebSocketDebuggerURL, nil
+}
+
+// discoverCloakBrowserWSURL queries the CloakBrowser /json/version endpoint to
+// recover the current browser WebSocket URL. CloakBrowser creates a new Chrome
+// instance for each new WebSocket connection, so the URL must be discovered
+// fresh for each request. This function is called per-request, not at startup.
+func discoverCloakBrowserWSURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	httpBase, ok := wsURLToHTTPBase(baseURL)
+	if !ok {
+		return baseURL
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/json/version", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpBase+"/json/version", nil)
 	if err != nil {
-		utils.Log.Info("chrome discovery: failed to build request", "base", base, "error", err)
-		return ""
+		utils.Log.Info("cloak discovery: failed to build request", "base", httpBase, "error", err)
+		return baseURL
 	}
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		utils.Log.Info("chrome discovery: failed to reach /json/version", "base", base, "error", err)
-		return ""
+		utils.Log.Info("cloak discovery: failed to reach /json/version", "base", httpBase, "error", err)
+		return baseURL
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -139,29 +195,36 @@ func discoverChromeWSURL(configuredWSURL string) string {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		utils.Log.Info("chrome discovery: /json/version returned non-200", "base", base, "status", resp.StatusCode)
-		return ""
+		utils.Log.Info("cloak discovery: /json/version returned non-200", "base", httpBase, "status", resp.StatusCode)
+		return baseURL
 	}
 
-	var payload chromeVersionResponse
+	var payload struct {
+		WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		utils.Log.Info("chrome discovery: failed to decode response", "base", base, "error", err)
-		return ""
+		utils.Log.Info("cloak discovery: failed to decode response", "base", httpBase, "error", err)
+		return baseURL
 	}
+
 	if payload.WebSocketDebuggerURL == "" {
-		utils.Log.Info("chrome discovery: response missing webSocketDebuggerUrl", "base", base)
-		return ""
+		utils.Log.Info("cloak discovery: response missing webSocketDebuggerUrl", "base", httpBase)
+		return baseURL
 	}
-	if payload.WebSocketDebuggerURL != configuredWSURL {
-		utils.Log.Info("chrome discovery: configured WS URL was stale; using live URL", "url", payload.WebSocketDebuggerURL)
-	}
+
 	return payload.WebSocketDebuggerURL
 }
 
-// wsURLToHTTPBase converts a Chrome DevTools WebSocket URL to its HTTP origin
-// counterpart. ws://host:port/path -> http://host:port. Returns ok=false for
-// URLs that don't look like ws:// or wss:// so the caller can fall back to
-// the raw configured value.
+// isBrowserlessDirectWS returns true for commercial / browserless-style CDP
+// endpoints that serve a WebSocket directly and don't expose /json/version.
+// Such URLs either carry a token= query parameter or use a browser-named path.
+func isBrowserlessDirectWS(url string) bool {
+	if strings.Contains(url, "token=") {
+		return true
+	}
+	return strings.Contains(url, "/chromium") || strings.Contains(url, "/firefox") || strings.Contains(url, "/webkit")
+}
+
 func wsURLToHTTPBase(wsURL string) (string, bool) {
 	lower := strings.ToLower(wsURL)
 	var schemeLen int
@@ -181,4 +244,42 @@ func wsURLToHTTPBase(wsURL string) (string, bool) {
 		rest = rest[:i]
 	}
 	return httpScheme + rest, true
+}
+
+// encodeChromeArgsToURL encodes Chrome launch args into the browserless WebSocket URL.
+// browserless v2 accepts Chrome flags via the launch JSON object:
+// wss://host/chromium?token=TOKEN&launch=<url_encoded_json>
+//
+// The launch JSON format:
+//   {"args":["--flag1","--flag2",...]}
+func encodeChromeArgsToURL(wsURL string, args []string) string {
+	if len(args) == 0 {
+		return wsURL
+	}
+
+	// Build the launch JSON
+	launchJSON := map[string]any{"args": args}
+	jsonBytes, err := json.Marshal(launchJSON)
+	if err != nil {
+		return wsURL
+	}
+
+	// URL-encode the JSON
+	encoded := url.QueryEscape(string(jsonBytes))
+
+	// Parse the existing URL
+	parsed, err := url.Parse(wsURL)
+	if err != nil {
+		return wsURL
+	}
+
+	// Build new query string
+	newQuery := parsed.RawQuery
+	if newQuery != "" {
+		newQuery += "&"
+	}
+	newQuery += "launch=" + encoded
+
+	// Reconstruct URL manually
+	return parsed.Scheme + "://" + parsed.Host + parsed.Path + "?" + newQuery
 }

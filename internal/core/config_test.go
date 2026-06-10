@@ -10,82 +10,65 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
-func TestDiscoverChromeWSURL_StaleUUIDReplaced(t *testing.T) {
+func TestGetCDPURL_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/version" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(chromeVersionResponse{
-			WebSocketDebuggerURL: "ws://" + r.Host + "/devtools/browser/NEW-UUID-FROM-CHROME",
+		_ = json.NewEncoder(w).Encode(VersionResponse{
+			WebSocketDebuggerURL: "wss://" + r.Host + "/devtools/browser/NEW-UUID-FROM-CHROME",
 		})
 	}))
 	defer srv.Close()
 
-	configured := strings.Replace(srv.URL, "http://", "ws://", 1) + "/devtools/browser/OLD-STALE-UUID"
-	got := discoverChromeWSURL(configured)
-	want := strings.Replace(srv.URL, "http://", "ws://", 1) + "/devtools/browser/NEW-UUID-FROM-CHROME"
+	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1)
+	got, err := GetCDPURL(wsURL)
+	want := "wss://" + srv.Listener.Addr().String() + "/devtools/browser/NEW-UUID-FROM-CHROME"
+	if err != nil {
+		t.Fatalf("GetCDPURL returned error: %v", err)
+	}
 	if got != want {
-		t.Errorf("discoverChromeWSURL = %q, want %q", got, want)
+		t.Errorf("GetCDPURL = %q, want %q", got, want)
 	}
 }
 
-func TestDiscoverChromeWSURL_EndpointUnreachable(t *testing.T) {
-	wsURL := "ws://127.0.0.1:1/devtools/browser/anything"
-	if got := discoverChromeWSURL(wsURL); got != "" {
-		t.Errorf("expected empty string on unreachable endpoint, got %q", got)
+func TestGetCDPURL_EndpointUnreachable(t *testing.T) {
+	_, err := GetCDPURL("http://127.0.0.1:1")
+	if err == nil {
+		t.Errorf("expected error on unreachable endpoint")
 	}
 }
 
-func TestDiscoverChromeWSURL_BadStatusCode(t *testing.T) {
+func TestGetCDPURL_BadStatusCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 	}))
 	defer srv.Close()
-	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) + "/devtools/browser/abc"
-	if got := discoverChromeWSURL(wsURL); got != "" {
-		t.Errorf("expected empty string on 404, got %q", got)
+	_, err := GetCDPURL(srv.URL)
+	if err == nil {
+		t.Errorf("expected error on 404")
 	}
 }
 
-func TestDiscoverChromeWSURL_MalformedPayload(t *testing.T) {
+func TestGetCDPURL_MalformedPayload(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
-	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) + "/devtools/browser/abc"
-	if got := discoverChromeWSURL(wsURL); got != "" {
-		t.Errorf("expected empty string on malformed JSON, got %q", got)
+	_, err := GetCDPURL(srv.URL)
+	if err == nil {
+		t.Errorf("expected error on malformed JSON")
 	}
 }
 
-func TestDiscoverChromeWSURL_MissingField(t *testing.T) {
+func TestGetCDPURL_MissingField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"browser": "Chrome/x"})
 	}))
 	defer srv.Close()
-	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) + "/devtools/browser/abc"
-	if got := discoverChromeWSURL(wsURL); got != "" {
-		t.Errorf("expected empty string when field is missing, got %q", got)
-	}
-}
-
-func TestWSURLToHTTPBase(t *testing.T) {
-	cases := []struct {
-		in  string
-		out string
-		ok  bool
-	}{
-		{"ws://localhost:9222/devtools/browser/abc", "http://localhost:9222", true},
-		{"WS://Localhost:9222", "http://Localhost:9222", true},
-		{"wss://chrome.example.com/devtools", "https://chrome.example.com", true},
-		{"http://localhost:9222/json", "", false},
-		{"", "", false},
-	}
-	for _, c := range cases {
-		got, ok := wsURLToHTTPBase(c.in)
-		if got != c.out || ok != c.ok {
-			t.Errorf("wsURLToHTTPBase(%q) = (%q, %v), want (%q, %v)", c.in, got, ok, c.out, c.ok)
-		}
+	_, err := GetCDPURL(srv.URL)
+	if err == nil {
+		t.Errorf("expected error when field is missing")
 	}
 }
 
