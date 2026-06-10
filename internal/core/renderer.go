@@ -428,7 +428,23 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	release := renderer.pool.Acquire(host)
 	defer release()
 
-	// Step 3: Create a new chromedp context.
+	// Step 3: For CloakBrowser, discover a fresh WS URL per request.
+	// CloakBrowser creates a new Chrome instance for each WebSocket connection,
+	// so the URL from startup would be stale.
+	var allocCtx context.Context
+	var allocCancel context.CancelFunc
+	if renderer.cfg.BrowserType == "cloak" {
+		wsURL := discoverCloakBrowserWSURL(renderer.cfg.WSURL)
+		if wsURL == "" {
+			return nil, ErrBrowserNotAvailable.New("cloak browser discovery failed")
+		}
+		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), wsURL, chromedp.NoModifyURL)
+		defer allocCancel()
+	} else {
+		allocCtx = renderer.allocCtx
+	}
+
+	// Step 4: Create a new chromedp context.
 	// chromedp.NewContext creates a new browser tab (target) from the allocator.
 	// The RemoteAllocator reuses the persistent Chrome connection.
 	//
@@ -446,10 +462,10 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// or (c) issue the createBrowserContext + createTarget via raw CDP and
 	// attach with chromedp.WithTargetID. All three options preserve the
 	// WithNewBrowserContext() call at this site — no other code change.
-	browserCtx, cancelBrowser := chromedp.NewContext(renderer.allocCtx)
+	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
 
-	// Step 4: Apply the page timeout to the browser context.
+	// Step 5: Apply the page timeout to the browser context.
 	// All chromedp actions within runCtx will fail if they exceed this deadline.
 	runCtx, cancel := context.WithTimeout(browserCtx, renderer.cfg.PageTimeout)
 	defer cancel()
