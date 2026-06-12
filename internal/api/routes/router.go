@@ -63,9 +63,9 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 	// Health check endpoint - returns renderer/browser availability and active job count
 	engine.GET("/health", h.Health)
 
-	// Readability comparison endpoints
-	engine.POST("/compare", h.Compare)
-	engine.POST("/compare-url", h.CompareURL)
+	// // Readability comparison endpoints
+	// engine.POST("/compare", h.Compare)
+	// engine.POST("/compare-url", h.CompareURL)
 
 	// v1 API group
 	v1 := engine.Group("/v1")
@@ -86,7 +86,7 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 		// POST /v1/map - Discover all URLs on a website without scraping content
 		v1.POST("/map", h.Map)
 
-		// POST /v1/search - Search DuckDuckGo
+		// POST /v1/search - Search SearXNG
 		v1.POST("/search", h.Search)
 	}
 }
