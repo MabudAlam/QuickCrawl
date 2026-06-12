@@ -10,20 +10,24 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // AppState holds the application state including configuration and running jobs.
 // It is the central state manager for the API server, coordinating between
 // the HTTP handlers, scraper, and crawl job tracking.
 type AppState struct {
-	Config      *types.AppConfig    // Application configuration
-	CoreScraper *core.Scraper       // Single source of truth for all scraping (HTTP + chromedp)
-	Cache       *cache.RedisCache   // Redis cache for scrape results
-	CrawlJobs   map[string]CrawlJob // Active crawl jobs (protected by mu)
-	mu          sync.RWMutex        // Mutex for thread-safe CrawlJobs access
-	ctx         context.Context     // Context for controlling background goroutines
-	cancel      context.CancelFunc  // Cancel function to stop background goroutines
+	Config      *types.AppConfig        // Application configuration
+	CoreScraper *core.Scraper           // Single source of truth for all scraping (HTTP + chromedp)
+	Cache       *cache.RedisCache       // Redis cache for scrape results
+	SearXNG     *search.SearXNGSearcher // SearXNG search client (lazy-initialized)
+	CrawlJobs   map[string]CrawlJob     // Active crawl jobs (protected by mu)
+	mu          sync.RWMutex            // Mutex for thread-safe CrawlJobs access
+	searchMu    sync.Mutex              // Mutex for lazy SearXNG init
+	ctx         context.Context         // Context for controlling background goroutines
+	cancel      context.CancelFunc      // Cancel function to stop background goroutines
 }
 
 // CrawlJob represents a single crawl job with its metadata and current state.
@@ -54,9 +58,11 @@ func NewAppState(cfg *types.AppConfig) (*AppState, *types.QuickCrawlError) {
 	if cfg.Cache.Enabled {
 		redisCache, err := cache.NewRedisCache(cfg.Cache)
 		if err != nil {
-			return nil,&types.QuickCrawlError{Code: types.CodeInternalErr, Message: err.Error()}
+			utils.Log.Warn("redis unavailable, starting without cache", "error", err)
+			state.Cache = nil
+		} else {
+			state.Cache = redisCache
 		}
-		state.Cache = redisCache
 	}
 
 	go state.removeExpiredJobs()
@@ -165,6 +171,24 @@ func (s *AppState) RendererBrowsersInfo() []types.BrowserInfo {
 		return nil
 	}
 	return s.CoreScraper.BrowsersInfo()
+}
+
+// GetSearXNG returns a lazy-initialized SearXNG search client configured
+// from AppConfig. Thread-safe via searchMu.
+func (s *AppState) GetSearXNG() (*search.SearXNGSearcher, error) {
+	if err := s.Config.Search.Validate(); err != nil {
+		return nil, err
+	}
+	s.searchMu.Lock()
+	defer s.searchMu.Unlock()
+	if s.SearXNG != nil {
+		return s.SearXNG, nil
+	}
+	s.SearXNG = search.NewSearXNG(
+		s.Config.Search.BaseURL,
+		s.Config.Search.TimeoutSecs,
+	)
+	return s.SearXNG, nil
 }
 
 // CheckHealth returns the fetcher availability map. Delegates to the
