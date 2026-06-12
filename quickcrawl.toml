@@ -13,7 +13,7 @@ browser = "cloak"
 [renderer.chrome]
 # Cloak browser config - CloakBrowser creates dynamic Chrome instances
 # Use just the base URL without browser ID path
-ws_url = "ws://cloakbrowser-production-7be4.up.railway.app"
+ws_url = "ws://localhost:9222"
 chrome_intercept_resources = true
 # Cloak doesn't need chrome args encoding
 chrome_args = []
@@ -46,3 +46,12 @@ response_format = "extracted_data"
 enabled = true
 redis_url = "redis://default:IkWLwrHLFbohJnDnYWilLYXnyUmvIoCi@acela.proxy.rlwy.net:28402"
 ttl_default_secs = 3600
+
+[search]
+base_url = ""
+timeout_secs = 30
+# BM25F per-field weights. A match in the title is weighted 2x more
+# than a match in the snippet, reflecting that titles are stronger
+# relevance signals.
+bm25f_title_weight = 2.0
+bm25f_snippet_weight = 1.0
