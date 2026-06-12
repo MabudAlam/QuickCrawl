@@ -255,13 +255,13 @@ async (opts) => {
 func applyAutoScrollDefaults(opts AutoScrollOptions) AutoScrollOptions {
 	eff := opts
 	if eff.MaxSteps <= 0 {
-		eff.MaxSteps = 30
+		eff.MaxSteps = 10
 	}
 	if eff.PauseMs <= 0 {
-		eff.PauseMs = 200
+		eff.PauseMs = 100
 	}
 	if eff.StagnantLimit <= 0 {
-		eff.StagnantLimit = 3
+		eff.StagnantLimit = 1
 	}
 	// LoadLazyImages: the caller almost always wants this on,
 	// and the cost on pages without lazy images is one no-op
