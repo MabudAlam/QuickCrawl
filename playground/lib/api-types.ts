@@ -39,16 +39,27 @@ export interface SearchRequest {
   query: string;
   region?: string;
   safesearch?: string;
+  timeRange?: string;
+  language?: string;
+  categories?: string;
+  page?: number;
   timelimit?: string;
+  use_bm25?: boolean;
   renderJs?: boolean | null;
   formats?: Format[];
   scrape?: boolean;
 }
 
 export interface SearchResult {
+  position: number;
+  score: number;
+  bm25_score?: number;
   title: string;
-  description: string;
   url: string;
+  site_name?: string;
+  snippet: string;
+  engine?: string;
+  published?: string;
   markdown?: string;
   html?: string;
   rawHtml?: string;
@@ -58,7 +69,12 @@ export interface SearchResult {
 }
 
 export interface SearchResponse {
+  query: string;
   results: SearchResult[];
+  total_results: number;
+  page: number;
+  engine: string;
+  took_ms: number;
 }
 
 export type Format = "markdown" | "html" | "rawHtml" | "plainText" | "links" | "json" | "imageLinks";

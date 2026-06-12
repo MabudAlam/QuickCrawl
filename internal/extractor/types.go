@@ -25,7 +25,6 @@ type ExtractOptions struct {
 	// RenderedMode indicates how the content was rendered (e.g., "http", "pdf")
 	RenderedMode *string
 
-
 	// Formats specifies which output formats to generate
 	Formats []types.OutputFormat
 
@@ -37,6 +36,11 @@ type ExtractOptions struct {
 
 	// CSSSelector extracts content from elements matching this selector
 	CSSSelector *string
+
+	// ExtractorVersion selects which extraction pipeline to use.
+	// "legacy" uses the goquery-based extraction from html_legacy.go.
+	// "default" or empty uses the readability-based extraction from html.go.
+	ExtractorVersion string
 }
 
 // ExtractedMetadata contains page metadata extracted from HTML.
@@ -62,4 +66,28 @@ type ExtractedMetadata struct {
 
 	// CanonicalURL is the canonical URL from link rel="canonical"
 	CanonicalURL *string
+
+	// Author is the article author from meta name="author",
+	// meta property="article:author", or meta name="byl".
+	Author *string
+
+	// PublishedTime is the article publication timestamp from
+	// meta property="article:published_time", meta name="pubdate",
+	// meta name="date", or meta[itemprop="datePublished"].
+	PublishedTime *string
+
+	// ModifiedTime is the article last-modified timestamp from
+	// meta property="article:modified_time", meta name="lastmod",
+	// or meta[itemprop="dateModified"].
+	ModifiedTime *string
+}
+
+// ExtractedHTML contains the extracted HTML content along with its metadata.
+type ExtractedHTML struct {
+	// Title is the article title extracted by readability
+	Title string
+	// Excerpt is the article excerpt/summary extracted by readability
+	Excerpt string
+	// Content is the main article HTML content
+	Content string
 }

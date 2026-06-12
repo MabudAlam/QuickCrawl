@@ -42,7 +42,7 @@ var rootCmd = &cobra.Command{
 	Long: `QuickCrawl is a fast, configurable web scraping and crawling tool.
 
 It can scrape single pages, crawl entire websites, discover URLs via sitemaps,
-and search DuckDuckGo. Supports JavaScript rendering, proxy configuration,
+and search SearXNG. Supports JavaScript rendering, proxy configuration,
 stealth mode, and structured data extraction via LLM.
 
 Examples:
@@ -55,7 +55,7 @@ Examples:
   # Discover URLs on a site using sitemap
   quickcrawl map https://example.com --max-depth 3
 
-  # Search DuckDuckGo and scrape results
+  # Search SearXNG and scrape results
   quickcrawl search "golang web scraping" --formats markdown`,
 
 	// Run is executed when no subcommand is specified.

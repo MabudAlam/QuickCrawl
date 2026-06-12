@@ -7,7 +7,7 @@ Python SDK for QuickCrawl — a fast, configurable web scraping and crawling too
 - **Scrape** single pages with multiple output formats (markdown, HTML, links, JSON)
 - **Crawl** entire websites using BFS with configurable depth and page limits
 - **Map** discover URLs without scraping content
-- **Search** DuckDuckGo and optionally scrape result pages
+- **Search** SearXNG and optionally scrape result pages
 - JavaScript rendering support via browser backends
 - Proxy configuration and stealth mode
 

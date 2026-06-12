@@ -240,39 +240,56 @@ type MapResponse struct {
 
 // SearchRequest defines parameters for a search operation.
 type SearchRequest struct {
-	Query      string         `json:"query"`                // Search query
-	Region     string         `json:"region"`               // Region code (e.g., "us-en")
-	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "moderate", "strict", "off"
-	Timelimit  string         `json:"timelimit,omitempty"`  // Time limit filter (e.g., "d" for day)
-	RenderJS   *bool          `json:"renderJs,omitempty"`   // Enable JavaScript rendering (nil = auto, true = force JS, false = HTTP only)
-	Formats    []OutputFormat `json:"formats"`              // Desired output formats
-	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false)
+	Query      string         `json:"query"`                // Search query (required)
+	Region     string         `json:"region,omitempty"`     // Region code, e.g. "us-en". Mapped to SearXNG language.
+	Language   string         `json:"language,omitempty"`   // SearXNG language code, e.g. "en", "auto", "all".
+	TimeRange  string         `json:"timeRange,omitempty"`  // SearXNG time range: "day", "month", "year".
+	Categories string         `json:"categories,omitempty"` // Comma-separated SearXNG categories, e.g. "general,news".
+	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "0", "1", "2". Mapped to SearXNG safesearch.
+	Timelimit  string         `json:"timelimit,omitempty"`  // Legacy: time limit filter (e.g., "d" for day)
+	Page       int            `json:"page,omitempty"`       // SearXNG pageno, default 1.
+	UseBM25    bool           `json:"use_bm25,omitempty"`   // Use BM25 scoring algorithm (default: false)
+	RenderJS   *bool          `json:"renderJs,omitempty"`   // Enable JavaScript rendering for the scrape-each-result step.
+	Formats    []OutputFormat `json:"formats,omitempty"`    // Desired output formats when scrape=true.
+	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false).
 }
 
 // Defaults sets default values for optional fields.
 func (r *SearchRequest) Defaults() {
-	if r.Region == "" {
-		r.Region = "us-en"
+	if r.Region == "" && r.Language == "" {
+		r.Language = "auto"
 	}
 	if r.Safesearch == "" {
-		r.Safesearch = "moderate"
+		r.Safesearch = "0"
 	}
-	if r.Formats == nil {
+	if r.Categories == "" {
+		r.Categories = "general"
+	}
+	if r.Page <= 0 {
+		r.Page = 1
+	}
+	if r.Scrape && r.Formats == nil {
 		r.Formats = []OutputFormat{FormatMarkdown}
 	}
 }
 
-// SearchResult represents a single search result with scraped content.
+// SearchResult represents a single search result with optional scraped content.
 type SearchResult struct {
-	Title       string   `json:"title"`       // Result title
-	Description string   `json:"description"` // Result snippet/description
-	URL         string   `json:"url"`         // Result URL
-	Markdown    *string  `json:"markdown,omitempty"`
-	HTML        *string  `json:"html,omitempty"`
-	RawHTML     *string  `json:"rawHtml,omitempty"`
-	PlainText   *string  `json:"plainText,omitempty"`
-	Links       []string `json:"links,omitempty"`
-	RawJSON     []byte   `json:"rawJson,omitempty"`
+	Position  int      `json:"position"`                   // 1-based position in the result set
+	Score     float64  `json:"score"`                       // Native score from search engine
+	BM25Score float64  `json:"bm25_score,omitempty"`       // BM25 relevance score (set when use_bm25=true)
+	Title     string   `json:"title"`                      // Result title
+	URL       string   `json:"url"`                        // Result URL
+	SiteName  string   `json:"site_name,omitempty"`        // Hostname extracted from URL.
+	Snippet   string   `json:"snippet,omitempty"`           // Search snippet / description.
+	Engine    string   `json:"-"`                          // Internal only, not exposed in API response
+	Published string   `json:"published_date,omitempty"`   // ISO 8601 publish date if available.
+	Markdown  *string  `json:"markdown,omitempty"`
+	HTML      *string  `json:"html,omitempty"`
+	RawHTML   *string  `json:"raw_html,omitempty"`
+	PlainText *string  `json:"plain_text,omitempty"`
+	Links     []string `json:"links,omitempty"`
+	RawJSON   []byte   `json:"raw_json,omitempty"`
 }
 
 // SearchData contains the search results.
@@ -280,11 +297,13 @@ type SearchData struct {
 	Results []SearchResult `json:"results"` // List of search results
 }
 
-// SearchResponse is returned by the search endpoint.
+// SearchResponse is returned by the search endpoint. Matches the public
+// "firecrawl-style" flat shape: {query, results, total_results, page}.
 type SearchResponse struct {
-	Success bool        `json:"success"`         // Whether operation succeeded
-	Data    *SearchData `json:"data,omitempty"`  // Search results
-	Error   *string     `json:"error,omitempty"` // Error message
+	Query        string         `json:"query"`        // Echo of the search query.
+	Results      []SearchResult `json:"results"`      // List of search results.
+	TotalResults int            `json:"total_results"`// Number of results returned.
+	Page         int            `json:"page"`         // 0-based page index.
 }
 
 // =============================================================================
@@ -317,7 +336,8 @@ type CapturedNetworkResponse struct {
 
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
 type CdpEndpoint struct {
-	WSURL string `toml:"ws_url" json:"wsUrl"` // WebSocket URL
+	WSURL          string   `toml:"ws_url" json:"wsUrl"`           // WebSocket URL
+	ChromeArgs    []string `toml:"chrome_args" json:"chromeArgs"` // Chrome launch flags
 }
 
 // BrowserInfo contains information about a running browser instance.
@@ -336,6 +356,7 @@ type BrowserInfo struct {
 type RendererConfig struct {
 	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
 	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
+	Browser      string       `toml:"browser" json:"browser"`              // Browser: cloak, browserless, lightpanda
 	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
 }
 
@@ -517,6 +538,7 @@ type AppConfig struct {
 	Crawler    CrawlerConfig    `toml:"crawler" json:"crawler"`       // Crawler settings
 	Extraction ExtractionConfig `toml:"extraction" json:"extraction"` // Extraction settings
 	Cache      CacheConfig      `toml:"cache" json:"cache"`           // Cache settings
+	Search     SearchConfig     `toml:"search" json:"search"`         // Search engine settings
 }
 
 // Defaults sets default values for all subsystems.
@@ -526,6 +548,51 @@ func (c *AppConfig) Defaults() {
 	c.Crawler.Defaults()
 	c.Extraction.Defaults()
 	c.Cache.Defaults()
+	c.Search.Defaults()
+}
+
+// SearchConfig configures the search backend used by the /v1/search endpoint.
+// SearchConfig configures the SearXNG search backend.
+// Only SearXNG is supported as the search engine.
+type SearchConfig struct {
+	// BaseURL is the SearXNG instance root (no trailing slash). The
+	// search client appends /search?q=...&format=json.
+	BaseURL string `toml:"base_url" json:"baseUrl"`
+
+	// TimeoutSecs is the request timeout for the upstream search call.
+	TimeoutSecs int `toml:"timeout_secs" json:"timeoutSecs"`
+
+	// BM25F weights for re-ranking. Matches in higher-weight fields
+	// (typically the title) contribute more to the final score.
+	BM25FTitleWeight   float64 `toml:"bm25f_title_weight" json:"bm25fTitleWeight"`
+	BM25FSnippetWeight float64 `toml:"bm25f_snippet_weight" json:"bm25fSnippetWeight"`
+}
+
+// Defaults sets the default timeout and BM25F weights. BaseURL must be
+// set separately.
+func (s *SearchConfig) Defaults() {
+	if s.TimeoutSecs == 0 {
+		s.TimeoutSecs = 30
+	}
+	if s.BM25FTitleWeight == 0 {
+		s.BM25FTitleWeight = 2.0
+	}
+	if s.BM25FSnippetWeight == 0 {
+		s.BM25FSnippetWeight = 1.0
+	}
+}
+
+// Validate checks if the search config is valid. Returns an error
+// with configuration guidance if BaseURL is empty.
+func (s *SearchConfig) Validate() error {
+	if strings.TrimSpace(s.BaseURL) == "" {
+		return fmt.Errorf(
+			"search.base_url is required and cannot be empty; " +
+				"set it in quickcrawl.toml ([search] base_url) " +
+				"or via the SEARCH__BASE_URL environment variable",
+		)
+	}
+	return nil
 }
 
 // HTTPClientConfig holds HTTP client settings.
