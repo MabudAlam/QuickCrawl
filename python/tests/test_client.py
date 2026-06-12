@@ -124,6 +124,70 @@ class TestMap:
 
 
 @pytest.mark.unit
+class TestSearch:
+    def test_search_http_returns_full_response(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        mock_response = {
+            "query": "golang",
+            "results": [
+                {"position": 1, "score": 9.0, "title": "Go", "url": "https://go.dev", "site_name": "go.dev", "snippet": "..."},
+            ],
+            "total_results": 1,
+            "page": 0,
+        }
+
+        with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
+            result = client.search("golang")
+
+        assert result == mock_response
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "/v1/search"
+        body = call_args[0][1]
+        assert body["query"] == "golang"
+        assert body["page"] == 0
+        assert "use_bm25" not in body
+
+    def test_search_http_with_bm25_and_page(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        mock_response = {"query": "x", "results": [], "total_results": 0, "page": 2}
+
+        with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
+            result = client.search("x", use_bm25=True, page=2, timelimit="w")
+
+        body = mock_post.call_args[0][1]
+        assert body["use_bm25"] is True
+        assert body["page"] == 2
+        assert body["timelimit"] == "w"
+        assert result["page"] == 2
+
+    def test_search_subprocess_passes_all_flags(self) -> None:
+        client = QuickCrawlClient()
+        mock_response = {"query": "go", "results": [], "total_results": 0, "page": 1}
+
+        with patch.object(client, "_cli_call", return_value=mock_response) as mock_cli:
+            result = client.search(
+                "go",
+                page=1,
+                timelimit="d",
+                use_bm25=True,
+                scrape=True,
+                region="gb-en",
+                safesearch="strict",
+            )
+
+        args = mock_cli.call_args[0][0]
+        assert "search" in args
+        assert "go" in args
+        assert "--page" in args and "1" in args
+        assert "--timelimit" in args and "d" in args
+        assert "--use-bm25" in args
+        assert "--scrape" in args
+        assert "--region" in args and "gb-en" in args
+        assert "--safesearch" in args and "strict" in args
+        assert result == mock_response
+
+
+@pytest.mark.unit
 class TestLifecycle:
     def test_close_terminates_process(self) -> None:
         client = QuickCrawlClient()
