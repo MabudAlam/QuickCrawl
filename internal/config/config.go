@@ -146,6 +146,20 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 		cfg.Extraction.LLM.ResponseFormat = v
 	}
 
+	// Search configuration
+	if v := envString("SEARCH__BASE_URL"); v != "" {
+		cfg.Search.BaseURL = v
+	}
+	if v := envInt("SEARCH__TIMEOUT_SECS"); v != nil {
+		cfg.Search.TimeoutSecs = *v
+	}
+	if v := envFloat64("SEARCH__BM25F_TITLE_WEIGHT"); v != nil {
+		cfg.Search.BM25FTitleWeight = *v
+	}
+	if v := envFloat64("SEARCH__BM25F_SNIPPET_WEIGHT"); v != nil {
+		cfg.Search.BM25FSnippetWeight = *v
+	}
+
 	// Cache - REDIS_URL takes precedence, parsed for host/password/db
 	if v := envString("REDIS_URL"); v != "" {
 		_ = cfg.Cache.ParseRedisURL(v)
