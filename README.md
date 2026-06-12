@@ -14,7 +14,7 @@
 [![Chrome](https://img.shields.io/badge/Chrome-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white)](https://www.google.com/chrome/)
 [![Chrome](https://img.shields.io/badge/Chrome-45B8D8?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.google.com/chrome/)
 [![LightPanda](https://img.shields.io/badge/LightPanda-DD2777?style=for-the-badge&logo=panda&logoColor=white)](https://github.com/nicholasjackson/lightpanda)
-[![DuckDuckGo](https://img.shields.io/badge/DuckDuckGo-DE5833?style=for-the-badge&logo=duckduckgo&logoColor=white)](https://duckduckgo.com/)
+[![SearXNG](https://img.shields.io/badge/SearXNG-风?style=for-the-badge&logo=search&logoColor=white)](https://searxng.org/)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/9gVVr1?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
@@ -37,7 +37,7 @@ Quickcrawl is a powerful Go-based web scraping service that brings intelligence 
 | 🗺️ **URL Mapping** | Discover all URLs on a site instantly without scraping content |
 | 🧠 **JavaScript Rendering** | Auto-detect SPAs and render via LightPanda or Chrome |
 | 📊 **LLM Extraction** | Send a JSON schema, get validated structured data back |
-| 🔍 **Web Search** | DuckDuckGo-powered search for AI agent integration |
+| 🔍 **Web Search** | SearXNG-powered search for AI agent integration |
 | 🤖 **MCP Server** | Built-in stdio transport for seamless AI agent integration |
 | 📦 **Multi-format Output** | Markdown, HTML, RawHTML, PlainText, Links, JSON |
 
@@ -89,7 +89,7 @@ Quickcrawl MCP server provides AI agents with web scraping capabilities:
 | `cancel_crawl` | Cancel running crawl |
 | `map` | Discover URLs on a site |
 | `site_map` | Discover URLs without scraping content (sitemap-aware) |
-| `search` | Search DuckDuckGo |
+| `search` | Search SearXNG |
 
 ### OpenCode Integration
 
@@ -157,7 +157,7 @@ quickcrawl crawl https://example.com --max-pages 10 --max-depth 3
 # Discover URLs (without scraping content)
 quickcrawl map https://example.com --max-depth 2
 
-# Search DuckDuckGo
+# Search SearXNG
 quickcrawl search "golang web scraping"
 quickcrawl search "python" --scrape --formats markdown
 ```
@@ -249,7 +249,7 @@ graph TD
     Crawler --> Sitemap["🗺️ Sitemap"]
     Crawler --> RateLimit["⚡ Rate Limiter"]
 
-    Handlers --> Search["🔍 DuckDuckGo Search"]
+    Handlers --> Search["🔍 SearXNG Search"]
     Search --> LLM["🧠 LLM Extraction"]
     LLM --> JSONSchema["📋 JSON Schema Output"]
 ```
@@ -630,7 +630,7 @@ success, `404 Not Found` if the job ID is unknown.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/search` | Search DuckDuckGo and optionally scrape results in parallel |
+| `POST` | `/v1/search` | Search SearXNG and optionally scrape results in parallel |
 
 By default `/v1/search` returns only search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content (markdown/html/etc.) from each result URL — 10 workers in parallel.
 
@@ -784,7 +784,7 @@ quickcrawl/
 │   ├── crawler/             # BFS crawler, robots.txt, sitemap
 │   ├── extractor/           # HTML cleaning, markdown conversion, link extraction
 │   ├── renderer/            # HTTP, browser fetching via CDP
-│   ├── search/              # DuckDuckGo integration
+│   ├── search/              # SearXNG integration
 │   ├── mcp/                 # MCP tool implementation
 │   └── types/               # Type definitions
 ├── playground/              # Web UI playground
