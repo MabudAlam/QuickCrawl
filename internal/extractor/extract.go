@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/PuerkitoBio/goquery"
@@ -17,7 +18,7 @@ import (
 // extraction strategies. Candidates below this threshold are considered
 // insufficient and trigger the next fallback.
 // ExtractMetadata extracts page metadata from HTML including title, description,
-// Open Graph tags, canonical URL, and language.
+// author, published/updated timestamps, Open Graph tags, canonical URL, and language.
 func ExtractMetadata(html string) ExtractedMetadata {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
@@ -52,6 +53,32 @@ func ExtractMetadata(html string) ExtractedMetadata {
 		meta.Language = stringPtr(strings.TrimSpace(lang))
 	}
 
+	if author, exists := doc.Find("meta[name=\"author\"]").First().Attr("content"); exists && author != "" {
+		meta.Author = stringPtr(strings.TrimSpace(author))
+	} else if author, exists := doc.Find("meta[property=\"article:author\"]").First().Attr("content"); exists && author != "" {
+		meta.Author = stringPtr(strings.TrimSpace(author))
+	} else if author, exists := doc.Find("meta[name=\"byl\"]").First().Attr("content"); exists && author != "" {
+		meta.Author = stringPtr(strings.TrimSpace(author))
+	}
+
+	if pubTime, exists := doc.Find("meta[property=\"article:published_time\"]").First().Attr("content"); exists && pubTime != "" {
+		meta.PublishedTime = stringPtr(strings.TrimSpace(pubTime))
+	} else if pubTime, exists := doc.Find("meta[name=\"pubdate\"]").First().Attr("content"); exists && pubTime != "" {
+		meta.PublishedTime = stringPtr(strings.TrimSpace(pubTime))
+	} else if pubTime, exists := doc.Find("meta[name=\"date\"]").First().Attr("content"); exists && pubTime != "" {
+		meta.PublishedTime = stringPtr(strings.TrimSpace(pubTime))
+	} else if pubTime, exists := doc.Find("meta[itemprop=\"datePublished\"]").First().Attr("content"); exists && pubTime != "" {
+		meta.PublishedTime = stringPtr(strings.TrimSpace(pubTime))
+	}
+
+	if updTime, exists := doc.Find("meta[property=\"article:modified_time\"]").First().Attr("content"); exists && updTime != "" {
+		meta.ModifiedTime = stringPtr(strings.TrimSpace(updTime))
+	} else if updTime, exists := doc.Find("meta[name=\"lastmod\"]").First().Attr("content"); exists && updTime != "" {
+		meta.ModifiedTime = stringPtr(strings.TrimSpace(updTime))
+	} else if updTime, exists := doc.Find("meta[itemprop=\"dateModified\"]").First().Attr("content"); exists && updTime != "" {
+		meta.ModifiedTime = stringPtr(strings.TrimSpace(updTime))
+	}
+
 	return meta
 }
 
@@ -70,6 +97,129 @@ func reflowInlineLists(md string) string {
 	md = re3.ReplaceAllString(md, "\", $1")
 
 	return md
+}
+
+// articleHeaderMarkdown builds the leading `# Title` / `*By Author*` /
+// `*Published …; Updated …*` block prepended to markdown output. Lines
+// that are empty (no author, no dates) are skipped so the result is
+// tight. Returns an empty string if no header info is available.
+func articleHeaderMarkdown(meta ExtractedMetadata) string {
+	var b strings.Builder
+
+	var title string
+	if meta.OGTitle != nil && *meta.OGTitle != "" {
+		title = *meta.OGTitle
+	} else if meta.Title != nil {
+		title = *meta.Title
+	}
+	if idx := strings.IndexAny(title, "|\u2013\u2014-"); idx > 0 {
+		title = strings.TrimSpace(title[:idx])
+	}
+	if title != "" {
+		b.WriteString("# ")
+		b.WriteString(title)
+		b.WriteString("\n")
+	}
+
+	if meta.Author != nil && *meta.Author != "" {
+		b.WriteString("*By ")
+		b.WriteString(*meta.Author)
+		b.WriteString("*\n")
+	}
+
+	if meta.PublishedTime != nil || meta.ModifiedTime != nil {
+		b.WriteString("*")
+		if meta.PublishedTime != nil && *meta.PublishedTime != "" {
+			b.WriteString("Published ")
+			b.WriteString(formatDateForDisplay(*meta.PublishedTime))
+		}
+		if meta.ModifiedTime != nil && *meta.ModifiedTime != "" &&
+			(meta.PublishedTime == nil || *meta.ModifiedTime != *meta.PublishedTime) {
+			if meta.PublishedTime != nil {
+				b.WriteString("; ")
+			}
+			b.WriteString("Updated ")
+			b.WriteString(formatDateForDisplay(*meta.ModifiedTime))
+		}
+		b.WriteString("*\n")
+	}
+
+	return b.String()
+}
+
+// articleHeaderHTML builds an HTML block matching the markdown header:
+//   <h1>Title</h1>
+//   <p class="byline">By Author</p>
+//   <p class="dateline">Published …; Updated …</p>
+// Empty parts are omitted. Returns empty string if nothing to render.
+func articleHeaderHTML(meta ExtractedMetadata) string {
+	var b strings.Builder
+
+	var title string
+	if meta.OGTitle != nil && *meta.OGTitle != "" {
+		title = *meta.OGTitle
+	} else if meta.Title != nil {
+		title = *meta.Title
+	}
+	if idx := strings.IndexAny(title, "|\u2013\u2014-"); idx > 0 {
+		title = strings.TrimSpace(title[:idx])
+	}
+
+	if title != "" {
+		b.WriteString("    <h1>")
+		b.WriteString(escapeHTML(title))
+		b.WriteString("</h1>\n")
+	}
+
+	if meta.Author != nil && *meta.Author != "" {
+		b.WriteString("    <p class=\"byline\">By ")
+		b.WriteString(escapeHTML(*meta.Author))
+		b.WriteString("</p>\n")
+	}
+
+	if meta.PublishedTime != nil || meta.ModifiedTime != nil {
+		b.WriteString("    <p class=\"dateline\">")
+		if meta.PublishedTime != nil && *meta.PublishedTime != "" {
+			b.WriteString("Published ")
+			b.WriteString(escapeHTML(formatDateForDisplay(*meta.PublishedTime)))
+		}
+		if meta.ModifiedTime != nil && *meta.ModifiedTime != "" &&
+			(meta.PublishedTime == nil || *meta.ModifiedTime != *meta.PublishedTime) {
+			if meta.PublishedTime != nil {
+				b.WriteString("; ")
+			}
+			b.WriteString("Updated ")
+			b.WriteString(escapeHTML(formatDateForDisplay(*meta.ModifiedTime)))
+		}
+		b.WriteString("</p>\n")
+	}
+
+	return b.String()
+}
+
+// formatDateForDisplay converts an ISO 8601 timestamp into a human-readable
+// form. The input is preserved verbatim if it can't be parsed.
+func formatDateForDisplay(iso string) string {
+	t, err := time.Parse(time.RFC3339, iso)
+	if err != nil {
+		return iso
+	}
+	return t.UTC().Format("02 Jan 2006, 15:04 MST")
+}
+
+// stripH1FromHeader removes the leading <h1>...</h1> line from a header
+// fragment produced by articleHeaderHTML. The remaining byline and dateline
+// are returned (with leading/trailing whitespace trimmed).
+func stripH1FromHeader(header string) string {
+	lines := strings.Split(header, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "<h1>") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 // stringPtr returns a pointer to the given string.
@@ -120,31 +270,38 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 	// sections (e.g., title in nav, description in sidebar).
 	meta := ExtractMetadata(opts.RawHTML)
 
-	// ── Step 2: Preprocess HTML ───────────────────────────────────────────────
-	// Strip the head, remove obvious noise, apply selectors, and isolate the
-	// main article if requested. This keeps the downstream post-process stage
-	// focused on structural cleanup only.
-	// contentHTML := preprocessHTML(opts.RawHTML, HTMLPreprocessOptions{
-	// 	IncludeTags:      opts.IncludeTags,
-	// 	ExcludeTags:      opts.ExcludeTags,
-	// 	CSSSelector:      opts.CSSSelector,
-	// 	SkipNoisePatterns: true,
-	// })
+	flag := true
 
-	// The pre processing removes most of the extras from the html content
+	contentHTML := ""
+	bodyHTML := ""
+	if flag == true {
+		article := ExtractArticleWithMetadata(opts.RawHTML)
+		bodyHTML = article.Content
+		contentHTML = FormatDocument(article.Title, article.Excerpt, article.Content)
+	} else {
+		// ── Step 2: Preprocess HTML ───────────────────────────────────────────────
+		// Strip the head, remove obvious noise, apply selectors, and isolate the
+		// main article if requested. This keeps the downstream post-process stage
+		// focused on structural cleanup only.
+		bodyHTML = preprocessRawHTML(opts.RawHTML, HTMLPreprocessOptionInterface{
+			IncludeTags: opts.IncludeTags,
+			ExcludeTags: opts.ExcludeTags,
+			CSSSelector: opts.CSSSelector,
+		})
 
-	contentHTML := ExtractMainContent(opts.RawHTML)
+		// The pre processing removes most of the extras from the html content
 
-	// Apply noise patterns AFTER content selection to remove sidebar noise.
-	// contentHTML = applyNoisePatterns(contentHTML)
+		// bodyHTML = ExtractMainContent(bodyHTML)
 
-	// ── Step 3: Post-process HTML ─────────────────────────────────────────────
-	// Sanitizer + DOM cleanup + wrapper flattening + formatted document output.
-	// contentHTML = postprocessHTML(contentHTML)
+		// ── Step 3: Post-process HTML ─────────────────────────────────────────────
+		// Sanitizer + DOM cleanup + wrapper flattening + formatted document output.
+		bodyHTML = postprocessRawHTML(bodyHTML)
+		contentHTML = bodyHTML
 
-	// Debug trace: log content sizes at each pipeline stage.
-	if strings.Contains(opts.SourceURL, "github.com") {
-		go debugTrace(opts.RawHTML)
+		// Debug trace: log content sizes at each pipeline stage.
+		if strings.Contains(opts.SourceURL, "github.com") {
+			go debugTrace(opts.RawHTML)
+		}
 	}
 
 	formatNeeded := createFormatSet(opts.Formats)
@@ -155,7 +312,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 	// pilcrow ¶, section sign §, data-URI images, all images).
 	var markdown *string
 	if formatNeeded[types.FormatMarkdown] || formatNeeded[types.FormatJson] {
-		md := HTMLToMarkdown(contentHTML)
+		md := HTMLToMarkdown(bodyHTML)
 		mdTrimmed := strings.TrimSpace(md)
 
 		// Markdown candidate generation: only try expensive fallback strategies
@@ -169,8 +326,8 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 
 		if bestLen < minUsableMarkdownLen {
 			// Fallback 1: full clean + convert from raw HTML (bypasses include/exclude).
-			fullClean := preprocessHTML(opts.RawHTML, HTMLPreprocessOptions{BypassFilters: true})
-			fullClean = postprocessHTML(fullClean)
+			fullClean := preprocessRawHTML(opts.RawHTML, HTMLPreprocessOptionInterface{BypassFilters: true})
+			fullClean = postprocessRawHTML(fullClean)
 			fullMD := HTMLToMarkdown(fullClean)
 			if trimmed := strings.TrimSpace(fullMD); trimmed != "" {
 				candidates = append(candidates, candidate{name: "fullClean", content: fullMD})
@@ -192,7 +349,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 
 			// Fallback 3: plaintext as last resort.
 			if bestLen < minUsableMarkdownLen {
-				plainText := HTMLToPlaintext(contentHTML)
+				plainText := HTMLToPlaintext(bodyHTML)
 				if strings.TrimSpace(plainText) != "" {
 					candidates = append(candidates, candidate{name: "plaintext", content: plainText})
 				}
@@ -215,22 +372,17 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		bestMD := candidates[chosenIdx].content
 		bestTrimmed := strings.TrimSpace(bestMD)
 
-		// Prepend title if not already present.
-		if bestMD != "" && meta.Title != nil && !strings.Contains(bestTrimmed, *meta.Title) {
-			if ogTitle := meta.OGTitle; ogTitle != nil && !strings.Contains(bestTrimmed, *ogTitle) {
-				titleToPrepend := *ogTitle
-				if strings.Contains(titleToPrepend, "|") {
-					titleToPrepend = strings.Split(titleToPrepend, "|")[0]
-				} else if idx := strings.Index(titleToPrepend, " - "); idx != -1 {
-					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
-				} else if idx := strings.Index(titleToPrepend, " – "); idx != -1 {
-					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
-				} else if idx := strings.Index(titleToPrepend, " — "); idx != -1 {
-					titleToPrepend = strings.TrimSpace(titleToPrepend[:idx])
-				}
-				if titleToPrepend != "" {
-					bestMD = "# " + titleToPrepend + "\n\n" + bestMD
-					bestTrimmed = "# " + titleToPrepend + "\n\n" + bestTrimmed
+		// Prepend the article header (title, byline, dates) so the markdown
+		// output matches the structure of a published article. We only
+		// prepend if the body doesn't already start with the same title text
+		// (i.e. the readability pass kept it).
+		if bestMD != "" {
+			header := articleHeaderMarkdown(meta)
+			if header != "" {
+				headerFirstLine := strings.SplitN(header, "\n", 2)[0]
+				if headerFirstLine == "" || !strings.HasPrefix(bestTrimmed, strings.TrimPrefix(headerFirstLine, "# ")) {
+					bestMD = header + "\n" + bestMD
+					bestTrimmed = header + "\n" + bestTrimmed
 				}
 			}
 		}
@@ -275,7 +427,7 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 	// ── Step 5: Plain text ─────────────────────────────────────────────────────
 	var plainText *string
 	if formatNeeded[types.FormatPlainText] {
-		pt := HTMLToPlaintext(contentHTML)
+		pt := HTMLToPlaintext(bodyHTML)
 		plainText = &pt
 	}
 
@@ -286,11 +438,34 @@ func Extract(opts ExtractOptions) *types.ScrapeData {
 		rawHTML = &raw
 	}
 
-	// ── Step 7: Clean HTML output with title and excerpt ─────────────────────
+	// ── Step 7: Clean HTML output ─────────────────────────────────────────────
 	var html *string
 	if formatNeeded[types.FormatHtml] {
-		extracted := ExtractHTML(opts.RawHTML)
-		html = &extracted.Content
+		// Inject byline + dateline into the HTML output if not already
+		// present. We do this here (after FormatDocument) so it works for
+		// both the flag==true (wrapped) and flag==false (raw) paths.
+		htmlStr := contentHTML
+		if !strings.Contains(htmlStr, `class="byline"`) && !strings.Contains(htmlStr, `class="dateline"`) {
+			headerExtra := articleHeaderHTML(meta)
+			if headerExtra != "" {
+				// Drop the <h1> from the injected header so we don't
+				// duplicate the title (FormatDocument already adds one).
+				headerExtra = stripH1FromHeader(headerExtra)
+				if headerExtra != "" {
+					if idx := strings.Index(htmlStr, "<h1>"); idx >= 0 {
+						end := strings.Index(htmlStr[idx:], "</h1>") + len("</h1>")
+						htmlStr = htmlStr[:idx+end] + "\n" + headerExtra + htmlStr[idx+end:]
+					} else {
+						// No existing <h1>; insert at the top of <body>.
+						if bodyIdx := strings.Index(htmlStr, "<body>"); bodyIdx >= 0 {
+							insertAt := bodyIdx + len("<body>")
+							htmlStr = htmlStr[:insertAt] + "\n" + headerExtra + htmlStr[insertAt:]
+						}
+					}
+				}
+			}
+		}
+		html = &htmlStr
 	}
 
 	// ── Step 8: Links ─────────────────────────────────────────────────────────
@@ -430,13 +605,13 @@ func debugTrace(rawHTML string) {
 	}(rawHTML)
 
 	// Step 2: cleanNoise
-	cleaned := cleanNoise(afterHead)
+	cleaned := cleanNoiseMethid(afterHead)
 
 	// Step 3: applyNoisePatterns alone
-	noised := applyNoisePatterns(cleaned)
+	noised := applyNoisePattern(cleaned)
 
 	// Step 4: postprocessHTML (full)
-	post := postprocessHTML(noised)
+	post := postprocessRawHTML(noised)
 
 	// Step 5: markdown
 	md := HTMLToMarkdown(post)
