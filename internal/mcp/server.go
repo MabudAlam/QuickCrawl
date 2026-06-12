@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
@@ -48,6 +47,8 @@ type SearchArgs struct {
 	Region     string   `json:"region,omitempty"`
 	Safesearch string   `json:"safesearch,omitempty"`
 	Timelimit  string   `json:"timelimit,omitempty"`
+	Page       int      `json:"page,omitempty"`
+	UseBM25    bool     `json:"use_bm25,omitempty"`
 	RenderJS   *bool    `json:"renderJs,omitempty"`
 	Formats    []string `json:"formats,omitempty"`
 	Scrape     bool     `json:"scrape,omitempty"`
@@ -308,54 +309,9 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		return errorResult("query is required"), nil, nil
 	}
 
-	safesearch := "moderate"
-	if args.Safesearch != "" {
-		safesearch = args.Safesearch
-	}
-
-	region := args.Region
-	if region == "" {
-		region = "us-en"
-	}
-
-	scraper := s.state.CoreScraper
-	if scraper == nil {
-		return errorResult("scraper is not initialized"), nil, nil
-	}
-
-	engine := search.New()
-	results, searchErr := engine.Search(args.Query, region, safesearch, args.Timelimit)
-	if searchErr != nil {
-		return errorResult(fmt.Sprintf("search failed: %v", searchErr)), nil, nil
-	}
-
-	if len(results) == 0 {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: `{"results": [], "count": 0}`},
-			},
-		}, nil, nil
-	}
-
-	if !args.Scrape {
-		orderedResults := make([]types.SearchResult, 0, len(results))
-		for _, r := range results {
-			orderedResults = append(orderedResults, types.SearchResult{
-				Title:       r.Title,
-				Description: r.Body,
-				URL:         r.Href,
-			})
-		}
-		response := map[string]interface{}{
-			"results": orderedResults,
-			"count":   len(orderedResults),
-		}
-		data, _ := json.Marshal(response)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: string(data)},
-			},
-		}, nil, nil
+	searxng, searxngErr := s.state.GetSearXNG()
+	if searxngErr != nil {
+		return errorResult(fmt.Sprintf("search configuration error: %v", searxngErr)), nil, nil
 	}
 
 	formats := []string{"markdown"}
@@ -363,111 +319,79 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		formats = args.Formats
 	}
 
-	maxWorkers := 10
-	if len(results) < maxWorkers {
-		maxWorkers = len(results)
-	}
-	semaphore := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	resultMap := make(map[int]types.SearchResult, len(results))
-
-	for i, r := range results {
-		wg.Add(1)
-		go func(index int, result search.TextResult) {
-			defer wg.Done()
-			defer func() {
-				if rec := recover(); rec != nil {
-					utils.Log.Warn("search MCP panic recovered while scraping", "url", result.Href, "error", rec)
-					mu.Lock()
-					resultMap[index] = types.SearchResult{
-						Title:       result.Title,
-						Description: result.Body,
-						URL:         result.Href,
-					}
-					mu.Unlock()
-				}
-			}()
-
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			if _, urlErr := types.ValidateURL(result.Href); urlErr != nil {
-				utils.Log.Warn("search MCP skipping invalid URL", "url", result.Href, "error", urlErr)
-				mu.Lock()
-				resultMap[index] = types.SearchResult{
-					Title:       result.Title,
-					Description: result.Body,
-					URL:         result.Href,
-				}
-				mu.Unlock()
-				return
-			}
-
-			scrapeReq := &core.ScrapeRequest{
-				URL:      result.Href,
-				Formats:  formats,
-				RenderJS: args.RenderJS,
-			}
-
-			searchResult := types.SearchResult{
-				Title:       result.Title,
-				Description: result.Body,
-				URL:         result.Href,
-			}
-
-			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
-			if scrapeErr != nil {
-				utils.Log.Warn("search MCP failed to scrape", "url", result.Href, "error", scrapeErr)
-			} else if data != nil {
-				if data.Markdown != nil {
-					s := *data.Markdown
-					searchResult.Markdown = &s
-				}
-				if data.HTML != nil {
-					s := *data.HTML
-					searchResult.HTML = &s
-				}
-				if data.PlainText != nil {
-					s := *data.PlainText
-					searchResult.PlainText = &s
-				}
-				if data.Links != nil {
-					searchResult.Links = data.Links
-				}
-				if len(data.JSON) > 0 {
-					searchResult.RawJSON = data.JSON
-				}
-				if data.Metadata.SourceURL != "" {
-					searchResult.URL = data.Metadata.SourceURL
-				}
-			}
-
-			mu.Lock()
-			resultMap[index] = searchResult
-			mu.Unlock()
-		}(i, r)
+	resp, err := search.Search(ctx, searxng, s.state.CoreScraper, search.Request{
+		Query:      args.Query,
+		Language:   args.Region,
+		TimeRange:  args.Timelimit,
+		Safesearch: search.NormalizeSafesearch(args.Safesearch),
+		Page:       args.Page,
+		UseBM25:    args.UseBM25,
+		BM25FWeights: search.BM25FWeights{
+			Title:   s.config.Search.BM25FTitleWeight,
+			Snippet: s.config.Search.BM25FSnippetWeight,
+		},
+		Scrape:   args.Scrape,
+		Formats:  formats,
+		RenderJS: args.RenderJS,
+	})
+	if err != nil {
+		return errorResult(fmt.Sprintf("search failed: %v", err)), nil, nil
 	}
 
-	wg.Wait()
+	return mcpTextResult(searchResponseToMap(resp)), nil, nil
+}
 
-	orderedResults := make([]types.SearchResult, 0, len(results))
-	for i := range results {
-		orderedResults = append(orderedResults, resultMap[i])
+// searchResponseToMap converts the unified search.Response into the
+// MCP wire format (snake_case keys, bm25_score only when present).
+func searchResponseToMap(resp *search.Response) map[string]interface{} {
+	results := make([]map[string]interface{}, 0, len(resp.Results))
+	for _, it := range resp.Results {
+		entry := map[string]interface{}{
+			"position":  it.Position,
+			"score":     it.Score,
+			"site_name": it.SiteName,
+			"snippet":   it.Snippet,
+			"title":     it.Title,
+			"url":       it.URL,
+		}
+		if it.BM25Score != 0 {
+			entry["bm25_score"] = it.BM25Score
+		}
+		if it.Markdown != nil {
+			entry["markdown"] = *it.Markdown
+		}
+		if it.HTML != nil {
+			entry["html"] = *it.HTML
+		}
+		if it.PlainText != nil {
+			entry["plain_text"] = *it.PlainText
+		}
+		if len(it.Links) > 0 {
+			entry["links"] = it.Links
+		}
+		if len(it.RawJSON) > 0 {
+			entry["raw_json"] = it.RawJSON
+		}
+		if it.Published != "" {
+			entry["published_date"] = it.Published
+		}
+		results = append(results, entry)
 	}
-
-	response := map[string]interface{}{
-		"results": orderedResults,
-		"count":   len(orderedResults),
+	return map[string]interface{}{
+		"query":         resp.Query,
+		"results":       results,
+		"total_results": resp.TotalResults,
+		"page":          resp.Page,
 	}
+}
 
-	responseData, _ := json.Marshal(response)
+func mcpTextResult(payload map[string]interface{}) *mcp.CallToolResult {
+	data, _ := json.Marshal(payload)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(responseData)},
+			&mcp.TextContent{Text: string(data)},
 		},
-	}, nil, nil
+	}
 }
 
 func errorResult(msg string) *mcp.CallToolResult {
@@ -542,7 +466,7 @@ func AddTools(server *mcp.Server, s *Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search",
-		Description: "Search DuckDuckGo and scrape results in parallel with 10 concurrent workers",
+		Description: "Search SearXNG and scrape results in parallel with 10 concurrent workers",
 		InputSchema: searchInputSchema(),
 	}, s.HandleSearch)
 
@@ -651,6 +575,18 @@ func searchInputSchema() map[string]any {
 			"safesearch": map[string]any{
 				"type":        "string",
 				"description": "SafeSearch mode: moderate, strict, off",
+			},
+			"timelimit": map[string]any{
+				"type":        "string",
+				"description": "Time limit filter (d=day, w=week, m=month, y=year)",
+			},
+			"page": map[string]any{
+				"type":        "integer",
+				"description": "Page number (0-based, default 0)",
+			},
+			"use_bm25": map[string]any{
+				"type":        "boolean",
+				"description": "Use BM25 scoring algorithm instead of native score (default: false)",
 			},
 			"renderJs": map[string]any{
 				"type":        "boolean",
