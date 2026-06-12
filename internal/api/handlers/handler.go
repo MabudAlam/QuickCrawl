@@ -3,24 +3,19 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
-	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/gin-gonic/gin"
-	readability "github.com/thara/readability-go"
 )
 
 // Handler is the single HTTP entry point. It owns the application state
@@ -129,7 +124,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 			if err := json.Unmarshal(cachedData, &data); err == nil {
 				c.JSON(http.StatusOK, types.APIResponse[core.ScrapeData]{
 					Success: true,
-					Data:&data,
+					Data:    &data,
 					Warning: stringPtr("cache hit"),
 				})
 				return
@@ -181,7 +176,6 @@ func (h *Handler) Scrape(c *gin.Context) {
 			resp.Warning = nil
 		}
 	}
-
 
 	if resp.Success && h.State.Cache != nil && h.State.Cache.Enabled() {
 		if ttl == nil || *ttl > 0 {
@@ -411,9 +405,9 @@ func (h *Handler) Map(c *gin.Context) {
 	})
 }
 
-// Search handles POST /v1/search - searches DuckDuckGo and returns results
-// with scraped content. Each result is fetched via the shared *core.Scraper
-// so the search path uses the same code as /v1/scrape.
+// Search handles POST /v1/search - queries SearXNG and returns flat results.
+// When Scrape is true each URL is fetched via the shared *core.Scraper so the
+// search path uses the same rendering code as /v1/scrape.
 func (h *Handler) Search(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -432,140 +426,71 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	safesearch := "moderate"
-	if req.Safesearch != "" {
-		safesearch = req.Safesearch
-	}
-
-	engine := search.New()
-	results, searchErr := engine.Search(req.Query, req.Region, safesearch, req.Timelimit)
-	if searchErr != nil {
-		utils.Log.Error("search DuckDuckGo search failed", "error", searchErr)
-		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}](searchErr.Error()))
+	searxng, searxngErr := h.State.GetSearXNG()
+	if searxngErr != nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}](searxngErr.Error()))
 		return
 	}
 
-	if !req.Scrape {
-		searchResults := make([]types.SearchResult, 0, len(results))
-		for _, r := range results {
-			searchResults = append(searchResults, types.SearchResult{
-				Title:       r.Title,
-				Description: r.Body,
-				URL:         r.Href,
-			})
-		}
-		c.JSON(http.StatusOK, types.SearchResponse{
-			Success: true,
-			Data: &types.SearchData{
-				Results: searchResults,
-			},
-		})
-		return
+	formats := scrapeFormatsToStrings(req.Formats)
+	if req.Scrape && len(formats) == 0 {
+		formats = []string{"markdown"}
 	}
 
-	scraper := h.State.CoreScraper
-	if scraper == nil {
-		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("scraper is not initialized"))
-		return
-	}
-
-	const maxWorkers = 10
-	semaphore := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	resultMap := make(map[int]types.SearchResult, len(results))
-
-	for i, r := range results {
-		wg.Add(1)
-		go func(index int, result search.TextResult) {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					utils.Log.Warn("search panic recovered while scraping", "url", result.Href, "error", r)
-					mu.Lock()
-					resultMap[index] = types.SearchResult{
-						Title:       result.Title,
-						Description: result.Body,
-						URL:         result.Href,
-					}
-					mu.Unlock()
-				}
-			}()
-
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			if _, urlErr := types.ValidateURL(result.Href); urlErr != nil {
-				utils.Log.Warn("search skipping invalid URL", "url", result.Href, "error", urlErr)
-				mu.Lock()
-				resultMap[index] = types.SearchResult{
-					Title:       result.Title,
-					Description: result.Body,
-					URL:         result.Href,
-				}
-				mu.Unlock()
-				return
-			}
-
-			scrapeReq := &core.ScrapeRequest{
-				URL:      result.Href,
-				Formats:  scrapeFormatsToStrings(req.Formats),
-				RenderJS: req.RenderJS,
-			}
-
-			searchResult := types.SearchResult{
-				Title:       result.Title,
-				Description: result.Body,
-				URL:         result.Href,
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			data, scrapeErr := scraper.Scrape(ctx, scrapeReq)
-			cancel()
-			if scrapeErr != nil {
-				utils.Log.Warn("search failed to scrape", "url", result.Href, "error", scrapeErr, "type", fmt.Sprintf("%T", scrapeErr))
-			} else if data != nil {
-				if data.Markdown != nil {
-					s := *data.Markdown
-					searchResult.Markdown = &s
-				}
-				if data.HTML != nil {
-					s := *data.HTML
-					searchResult.HTML = &s
-				}
-				if data.RawHTML != nil {
-					s := *data.RawHTML
-					searchResult.RawHTML = &s
-				}
-				if data.PlainText != nil {
-					s := *data.PlainText
-					searchResult.PlainText = &s
-				}
-				if data.Links != nil {
-					searchResult.Links = data.Links
-				}
-			}
-
-			mu.Lock()
-			resultMap[index] = searchResult
-			mu.Unlock()
-		}(i, r)
-	}
-
-	wg.Wait()
-
-	searchResults := make([]types.SearchResult, 0, len(results))
-	for i := 0; i < len(results); i++ {
-		searchResults = append(searchResults, resultMap[i])
-	}
-
-	c.JSON(http.StatusOK, types.SearchResponse{
-		Success: true,
-		Data: &types.SearchData{
-			Results: searchResults,
+	resp, err := search.Search(c.Request.Context(), searxng, h.State.CoreScraper, search.Request{
+		Query:    req.Query,
+		Language: req.Language,
+		TimeRange: req.TimeRange,
+		Categories: req.Categories,
+		Safesearch: req.Safesearch,
+		Page:     req.Page,
+		UseBM25:  req.UseBM25,
+		BM25FWeights: search.BM25FWeights{
+			Title:   h.State.Config.Search.BM25FTitleWeight,
+			Snippet: h.State.Config.Search.BM25FSnippetWeight,
 		},
+		Scrape:   req.Scrape,
+		Formats:  formats,
+		RenderJS: req.RenderJS,
 	})
+	if err != nil {
+		utils.Log.Error("search service failed", "error", err)
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}](err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, searchResponseToAPIResponse(resp))
+}
+
+// searchResponseToAPIResponse converts the unified search response
+// into the HTTP API's types.SearchResponse wire format.
+func searchResponseToAPIResponse(resp *search.Response) types.SearchResponse {
+	results := make([]types.SearchResult, len(resp.Results))
+	for i, it := range resp.Results {
+		results[i] = types.SearchResult{
+			Position:  it.Position,
+			Score:     it.Score,
+			BM25Score: it.BM25Score,
+			Title:     it.Title,
+			URL:       it.URL,
+			SiteName:  it.SiteName,
+			Snippet:   it.Snippet,
+			Engine:    it.Engine,
+			Published: it.Published,
+			Markdown:  it.Markdown,
+			HTML:      it.HTML,
+			RawHTML:   it.RawHTML,
+			PlainText: it.PlainText,
+			Links:     it.Links,
+			RawJSON:   it.RawJSON,
+		}
+	}
+	return types.SearchResponse{
+		Query:        resp.Query,
+		Results:      results,
+		TotalResults: resp.TotalResults,
+		Page:         resp.Page,
+	}
 }
 
 // mapScrapeError converts a *core.QuickCrawlError from the scraper into
@@ -634,145 +559,4 @@ func scrapeFormatsToStrings(formats []types.OutputFormat) []string {
 // stringPtr is a helper to create a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
-}
-
-type ComparisonResult struct {
-	Library      string `json:"library"`
-	Title        string `json:"title"`
-	Byline       string `json:"byline"`
-	Excerpt      string `json:"excerpt"`
-	SiteName     string `json:"siteName"`
-	Content      string `json:"content"`
-	Text         string `json:"text"`
-	ContentLen   int    `json:"contentLength"`
-	TextLen      int    `json:"textLength"`
-	Duration     string `json:"duration"`
-}
-
-type ComparisonResponse struct {
-	Results    []ComparisonResult `json:"results"`
-	SourceURL  string             `json:"source_url"`
-	SourceType string             `json:"source_type"`
-}
-
-// Compare handles POST /compare - compares readability extraction on provided HTML
-func (h *Handler) Compare(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-		return
-	}
-
-	var req struct {
-		HTML string `json:"html"`
-		URL  string `json:"url"`
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON request"})
-		return
-	}
-
-	if req.HTML == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "html is required"})
-		return
-	}
-
-	if req.URL == "" {
-		req.URL = "https://example.com/article"
-	}
-
-	response := compareHTMLReadability(req.HTML, req.URL)
-	c.JSON(http.StatusOK, response)
-}
-
-// CompareURL handles POST /compare-url - fetches URL then compares readability extraction
-func (h *Handler) CompareURL(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-		return
-	}
-
-	var req struct {
-		URL string `json:"url"`
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON request"})
-		return
-	}
-
-	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
-		return
-	}
-
-	resp, err := http.Get(req.URL)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch URL: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-
-	html, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to read body: %v", err)})
-		return
-	}
-
-	response := compareHTMLReadability(string(html), req.URL)
-	c.JSON(http.StatusOK, response)
-}
-
-func compareHTMLReadability(html, pageURL string) ComparisonResponse {
-	results := make([]ComparisonResult, 0, 2)
-
-	start := time.Now()
-	extracted := extractor.ExtractHTML(html)
-	ourDuration := time.Since(start)
-
-	if extracted.Content != "" {
-		results = append(results, ComparisonResult{
-			Library:    "Our Readability",
-			Title:      extracted.Title,
-			Byline:     "",
-			Excerpt:    extracted.Excerpt,
-			SiteName:   "",
-			Content:    extracted.Content,
-			Text:       stripHTMLTags(extracted.Content),
-			ContentLen: len(extracted.Content),
-			TextLen:    len(stripHTMLTags(extracted.Content)),
-			Duration:   fmt.Sprintf("%.2fms", float64(ourDuration.Microseconds())/1000.0),
-		})
-	}
-
-	start = time.Now()
-	article2, err := readability.Parse(strings.NewReader(html), pageURL)
-	extDuration := time.Since(start)
-
-	if err == nil && article2 != nil {
-		results = append(results, ComparisonResult{
-			Library:    "External Readability",
-			Title:      article2.Title,
-			Byline:     article2.Byline,
-			Excerpt:    article2.Excerpt,
-			SiteName:   article2.SiteName,
-			Content:    article2.Content,
-			Text:       article2.TextContent,
-			ContentLen: len(article2.Content),
-			TextLen:    len(article2.TextContent),
-			Duration:   fmt.Sprintf("%.2fms", float64(extDuration.Microseconds())/1000.0),
-		})
-	}
-
-	return ComparisonResponse{
-		Results:    results,
-		SourceURL:  pageURL,
-		SourceType: "html",
-	}
-}
-
-var stripTagsRe = regexp.MustCompile(`<[^>]*>`)
-
-func stripHTMLTags(html string) string {
-	return stripTagsRe.ReplaceAllString(html, "")
 }
