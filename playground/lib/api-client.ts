@@ -98,7 +98,12 @@ export async function search(
     headers: createHeaders(),
     body: JSON.stringify(request),
   });
-  return response.json();
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    return { success: false, error: `HTTP ${response.status}: ${text}` };
+  }
+  const data: SearchResponse = await response.json();
+  return { success: true, data };
 }
 
 export function generateCurlCommand(
