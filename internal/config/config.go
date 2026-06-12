@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -84,8 +85,19 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envInt("RENDERER__POOL_SIZE"); v != nil {
 		cfg.Renderer.PoolSize = *v
 	}
+	if v := envString("RENDERER__RENDER_MODE"); v != "" {
+		cfg.Renderer.RenderMode = v
+	}
+	if v := envString("RENDERER__BROWSER"); v != "" {
+		cfg.Renderer.Browser = v
+	}
 	if v := envString("RENDERER__CHROME__WS_URL"); v != "" {
 		cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: v}
+	}
+	if cfg.Renderer.Chrome != nil {
+		if v := envStringSlice("RENDERER__CHROME__CHROME_ARGS"); v != nil {
+			cfg.Renderer.Chrome.ChromeArgs = *v
+		}
 	}
 
 	// Crawler configuration
@@ -121,6 +133,9 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	}
 	if v := envString("CRAWLER__STEALTH__STRATEGY"); v != "" {
 		cfg.Crawler.Stealth.Strategy = v
+	}
+	if v := envInt64("CRAWLER__STEALTH__NAV_BUDGET_MS"); v != nil {
+		cfg.Crawler.Stealth.NavBudgetMs = *v
 	}
 
 	// Extraction configuration
@@ -164,11 +179,39 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envString("REDIS_URL"); v != "" {
 		_ = cfg.Cache.ParseRedisURL(v)
 	}
+	if v := envBool("CACHE__ENABLED"); v != nil {
+		cfg.Cache.Enabled = *v
+	}
+	if v := envInt64("CACHE__TTL_DEFAULT_SECS"); v != nil {
+		cfg.Cache.TTLDefaultSecs = *v
+	}
 }
 
 // envString reads an environment variable and trims whitespace.
 func envString(key string) string {
 	return strings.TrimSpace(os.Getenv(key))
+}
+
+// envStringSlice parses an environment variable as a []string. Accepts
+// either a JSON array (e.g. `["a","b"]`) or a comma-separated list
+// (e.g. `a,b`). Returns nil when the variable is unset or empty.
+func envStringSlice(key string) *[]string {
+	v := envString(key)
+	if v == "" {
+		return nil
+	}
+	if strings.HasPrefix(v, "[") {
+		var out []string
+		if err := json.Unmarshal([]byte(v), &out); err != nil {
+			return nil
+		}
+		return &out
+	}
+	parts := strings.Split(v, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return &parts
 }
 
 // envBool parses a boolean environment variable.
