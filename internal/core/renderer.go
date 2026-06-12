@@ -604,7 +604,7 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 		// the Page.addScriptToEvaluateOnNewDocument CDP call is skipped,
 		// saving ~30-50ms per request. See internal/core/stealth.go.
 		stealthInjectionAction(renderer.cfg.StealthEnabled),
-		navigateIgnoringHTTPStatus(rawURL, nil),
+		navigateIgnoringHTTPStatus(rawURL),
 		// No-op action that captures the navigate time. We can't time
 		// navigateIgnoringHTTPStatus from inside because it's a custom
 		// Action, not an ActionFunc — so we let stageStart keep ticking
@@ -716,9 +716,9 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// into view, and the loop would just hit the stagnant
 	// termination after a few steps.
 	if !blockDetected {
-		// actions = append(actions, AutoScrollAction(AutoScrollOptions{
-		// 	MaxSteps: 20,
-		// }))
+		actions = append(actions, AutoScrollAction(AutoScrollOptions{
+			MaxSteps: 5,
+		}))
 	}
 	// Combined extraction: read the final URL, head HTML, and body
 	// HTML in a single JavaScript round-trip. The previous code used
