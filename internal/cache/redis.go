@@ -41,6 +41,10 @@ func NewRedisCache(cfg types.CacheConfig) (*RedisCache, error) {
 		return &RedisCache{cfg: cfg}, nil
 	}
 
+	if cfg.RedisURL == "" {
+		return &RedisCache{cfg: cfg}, nil
+	}
+
 	client := redis.NewClient(&redis.Options{
 		Addr:         cfg.RedisURL,
 		Password:     cfg.Password,
