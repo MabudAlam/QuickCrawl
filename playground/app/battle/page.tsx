@@ -757,12 +757,12 @@ export default function BattlePage() {
                   Playground
                 </Button>
               </a>
-              <a href="/battle-articles">
+              {/* <a href="/battle-articles">
                 <Button variant="noShadow">
                   <BarChart3 className="h-4 w-4" />
                   Battle Articles
                 </Button>
-              </a>
+              </a> */}
               {mounted && (
                 <Button
                   variant="noShadow"
