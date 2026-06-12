@@ -21,14 +21,14 @@ type Config struct {
 }
 
 type BrowserConfig struct {
-	Mode BrowserMode
-	BrowserType     string       // "browserless", "cloak", "lightpanda"
-	WSURL           string
-	NumBrowsers     int
-	PageTimeout     time.Duration
-	PoolSize        int
-	StealthEnabled  bool     // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
-	ChromeArgs      []string // Chrome launch flags for browserless
+	Mode           BrowserMode
+	BrowserType    string // "browserless", "cloak", "lightpanda"
+	WSURL          string
+	NumBrowsers    int
+	PageTimeout    time.Duration
+	PoolSize       int
+	StealthEnabled bool     // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
+	ChromeArgs     []string // Chrome launch flags for browserless
 }
 
 type BrowserMode string
@@ -119,12 +119,12 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 }
 
 type VersionResponse struct {
-	Browser                 string `json:"Browser"`
-	ProtocolVersion         string `json:"Protocol-Version"`
-	UserAgent               string `json:"User-Agent"`
-	V8Version                string `json:"V8-Version"`
-	WebKitVersion           string `json:"WebKit-Version"`
-	WebSocketDebuggerURL    string `json:"webSocketDebuggerUrl"`
+	Browser              string `json:"Browser"`
+	ProtocolVersion      string `json:"Protocol-Version"`
+	UserAgent            string `json:"User-Agent"`
+	V8Version            string `json:"V8-Version"`
+	WebKitVersion        string `json:"WebKit-Version"`
+	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
 }
 
 func GetCDPURL(baseURL string) (string, error) {
@@ -132,7 +132,6 @@ func GetCDPURL(baseURL string) (string, error) {
 
 	// Browserless v2 / commercial CDP endpoints serve a WebSocket directly
 	// and don't expose /json/version. Detect these and use the URL as-is.
-	// Mirrors 's is_browserless_direct_ws() check at cdp.rs:665-670.
 	if isBrowserlessDirectWS(baseURL) {
 		return baseURL, nil
 	}
@@ -251,7 +250,8 @@ func wsURLToHTTPBase(wsURL string) (string, bool) {
 // wss://host/chromium?token=TOKEN&launch=<url_encoded_json>
 //
 // The launch JSON format:
-//   {"args":["--flag1","--flag2",...]}
+//
+//	{"args":["--flag1","--flag2",...]}
 func encodeChromeArgsToURL(wsURL string, args []string) string {
 	if len(args) == 0 {
 		return wsURL
