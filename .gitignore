@@ -61,3 +61,4 @@ preview/
 
 .browser_configs/
 browser_configs/
+docker-compose.cloakbrowser.yml

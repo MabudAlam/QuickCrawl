@@ -336,8 +336,8 @@ type CapturedNetworkResponse struct {
 
 // CdpEndpoint defines a Chrome DevTools Protocol endpoint.
 type CdpEndpoint struct {
-	WSURL          string   `toml:"ws_url" json:"wsUrl"`           // WebSocket URL
-	ChromeArgs    []string `toml:"chrome_args" json:"chromeArgs"` // Chrome launch flags
+	WSURL      string   `toml:"ws_url" json:"wsUrl"`           // WebSocket URL
+	ChromeArgs []string `toml:"chrome_args" json:"chromeArgs"` // Chrome launch flags
 }
 
 // BrowserInfo contains information about a running browser instance.
@@ -354,10 +354,11 @@ type BrowserInfo struct {
 
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
-	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
-	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
-	Browser      string       `toml:"browser" json:"browser"`              // Browser: cloak, browserless, lightpanda
-	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
+	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`  // Page load timeout
+	PoolSize      int          `toml:"pool_size" json:"poolSize"`             // Browser pool size
+	RenderMode    string       `toml:"render_mode" json:"renderMode"`         // Render mode: auto, http, browser
+	Browser       string       `toml:"browser" json:"browser"`                // Browser: cloak, browserless, lightpanda
+	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                  // Chrome config
 }
 
 // Defaults sets default values for unset fields.
@@ -376,6 +377,7 @@ type StealthConfig struct {
 	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
 	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
 	Strategy      string  `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
+	NavBudgetMs   int64   `toml:"nav_budget_ms" json:"navBudgetMs"`    // Per-page navigation budget in ms
 }
 
 // Defaults sets default values for unset fields.
