@@ -67,14 +67,25 @@ export function AppSidebar({
   onEndpointChange,
   health,
 }: AppSidebarProps) {
-  const { resolvedTheme, setTheme, mounted } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const logoSrc = !mounted
+    ? "/qc.svg"
+    : resolvedTheme === "dark"
+      ? "/qc-dark.svg"
+      : "/qc.svg"
 
   return (
     <SidebarPrimitive collapsible="icon" className="border-r-2 border-border">
       <SidebarHeader className="border-b-2 border-border bg-secondary-background">
         <div className="flex items-center gap-3 px-3 py-3">
           <img
-            src={mounted && resolvedTheme === "dark" ? "/qc-dark.svg" : "/qc.svg"}
+            src={logoSrc}
             alt="QuickCrawl"
             className="h-10 w-auto object-contain"
           />
