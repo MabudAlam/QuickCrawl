@@ -1062,6 +1062,8 @@ func (r *Readability) grabArticle() *html.Node {
 			}
 		}
 
+		r.collectNestedStoryContent(articleContent, parentOfTopCandidate)
+
 		r.prepArticle(articleContent)
 
 		if neededToCreateTopCandidate {
@@ -1520,6 +1522,146 @@ func (r *Readability) cleanHeaders(e *html.Node) {
 	}
 }
 
+func (r *Readability) collectNestedStoryContent(articleContent *html.Node, parentOfTopCandidate *html.Node) {
+	if parentOfTopCandidate == nil {
+		return
+	}
+
+	storyContentNodes := r.findStoryContentNodes(parentOfTopCandidate)
+
+	if len(storyContentNodes) <= 1 {
+		return
+	}
+
+	existingContent := r.getInnerText(articleContent, true)
+
+	for _, node := range storyContentNodes {
+		nodeText := r.getInnerText(node, true)
+		if len(nodeText) > 100 && !strings.Contains(existingContent, nodeText[:min(len(nodeText), 100)]) {
+			if indexOf(alterToDivExceptions, tagName(node)) == -1 {
+				r.setNodeTag(node, "div")
+			}
+			appendChild(articleContent, node)
+			existingContent += "\x20" + nodeText
+		}
+	}
+}
+
+// findStoryContentNodes collects descendant text-bearing nodes that look like
+// article body fragments, then expands the search to siblings and sibling
+// subtrees of parentOfTopCandidate that share a common ancestor. This
+// recovers text blocks that were split apart by ad/promo widgets in modern
+// CMS layouts (e.g. NewIndianExpress, where two arr--story-page-card-wrapper
+// siblings are separated by an in-read ad and would otherwise be dropped).
+func (r *Readability) findStoryContentNodes(parentOfTopCandidate *html.Node) []*html.Node {
+	seen := make(map[*html.Node]struct{})
+	var storyContentNodes []*html.Node
+
+	var collect func(node *html.Node) bool
+	collect = func(node *html.Node) bool {
+		if node == nil {
+			return false
+		}
+		if _, ok := seen[node]; ok {
+			return false
+		}
+		seen[node] = struct{}{}
+
+		classAttr := className(node)
+		idAttr := id(node)
+		combined := classAttr + "\x20" + idAttr
+
+		matched := false
+		if r.isStoryContentNode(node, combined) {
+			innerText := r.getInnerText(node, true)
+			if len(innerText) > 100 {
+				storyContentNodes = append(storyContentNodes, node)
+				matched = true
+			}
+		}
+
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if child.Type == html.ElementNode {
+				if collect(child) {
+					matched = true
+				}
+			}
+		}
+		return matched
+	}
+
+	collect(parentOfTopCandidate)
+
+	visitedAncestors := make(map[*html.Node]struct{})
+	for ancestor := parentOfTopCandidate.Parent; ancestor != nil; ancestor = ancestor.Parent {
+		if tagName(ancestor) == "body" {
+			break
+		}
+		if _, ok := visitedAncestors[ancestor]; ok {
+			continue
+		}
+		visitedAncestors[ancestor] = struct{}{}
+
+		childMatched := false
+		for sibling := ancestor.FirstChild; sibling != nil; sibling = sibling.NextSibling {
+			if sibling.Type != html.ElementNode {
+				continue
+			}
+			if collect(sibling) {
+				childMatched = true
+			}
+		}
+		if !childMatched {
+			break
+		}
+	}
+
+	return storyContentNodes
+}
+
+// isStoryContentNode reports whether a node looks like a container of article
+// body text. The marker set covers the original Readability markers
+// (story-content, text-story, article-body, story-body) plus the modern
+// CMS-style wrappers used by NewIndianExpress, Washington Post, and similar
+// outlets (arr--story-page-card-wrapper, story-element-card-*, etc.) and
+// data-test-id="text" ancestors, so that text blocks separated by ad widgets
+// are still collected.
+func (r *Readability) isStoryContentNode(node *html.Node, combined string) bool {
+	if strings.Contains(combined, "story-content") ||
+		strings.Contains(combined, "text-story") ||
+		strings.Contains(combined, "article-body") ||
+		strings.Contains(combined, "story-body") ||
+		strings.Contains(combined, "article-content") ||
+		strings.Contains(combined, "story-page-card") ||
+		strings.Contains(combined, "story-element-card") {
+		return true
+	}
+
+	if getAttribute(node, "data-test-id") == "text" {
+		return true
+	}
+
+	if getAttribute(node, "itemprop") == "articleBody" {
+		return true
+	}
+
+	return false
+}
+
+func (r *Readability) isDescendantOf(parent *html.Node, target *html.Node) bool {
+	if parent == nil || target == nil {
+		return false
+	}
+	current := target.Parent
+	for current != nil {
+		if current == parent {
+			return true
+		}
+		current = current.Parent
+	}
+	return false
+}
+
 func (r *Readability) isProbablyVisible(node *html.Node) bool {
 	nodeStyle := getAttribute(node, "style")
 	nodeAriaHidden := getAttribute(node, "aria-hidden")
@@ -1755,7 +1897,7 @@ func (r *Readability) IsReadable(input io.Reader) bool {
 
 // ─── Noise Pattern Data ─────────────────────────────────────────────────────
 
-var noisePatterns = []string{
+var noiseTags = []string{
 	"sidebar", "table-of-contents", "tableofcontents", "infobox", "navbox",
 	"nav-box", "navigation", "breadcrumb", "cookie", "consent", "banner",
 	"disqus", "advert", "popup", "modal", "subscribe",
@@ -1788,35 +1930,35 @@ var noisePatterns = []string{
 	"column-content",
 }
 
-var noiseExactTokens = []string{
+var noiseExactTokenList = []string{
 	"toc", "share", "social", "related", "recommended",
 }
 
-var noisePrefixes = []string{"ad-", "ads-"}
+var noisePrefixesTags = []string{"ad-", "ads-"}
 
 // ─── Regex Patterns ─────────────────────────────────────────────────────────
 
 var (
-	scriptRe            = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
-	styleRe             = regexp.MustCompile(`(?i)<style[^>]*>.*?</style>`)
-	noScriptRe          = regexp.MustCompile(`(?i)<noscript[^>]*>.*?</noscript>`)
-	iframeRe            = regexp.MustCompile(`(?i)<iframe[^>]*>.*?</iframe>`)
-	svgRe               = regexp.MustCompile(`(?i)<svg[^>]*>.*?</svg>`)
-	dataImgRe           = regexp.MustCompile(`(?i)<img[^>]*src=["']data:[^"']*["'][^>]*>`)
-	urlTextRe           = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s<>"']+\.[a-z]{2,}[^\s<>"']*`)
-	buttonRe            = regexp.MustCompile(`(?si)<button[^>]*>.*?</button>`)
-	whitespaceRe        = regexp.MustCompile(`[ \t]{2,}`)
-	newlineRe           = regexp.MustCompile(`\n\s*\n\s*\n+`)
-	emptyDivRe          = regexp.MustCompile(`(?si)<div[^>]*>\s*</div>`)
-	emptySpanRe         = regexp.MustCompile(`(?si)<span[^>]*>\s*</span>`)
-	imgRe               = regexp.MustCompile(`(?i)<img[^>]*>`)
-	anchorRe            = regexp.MustCompile(`(?i)<a[^>]*>.*?</a>`)
+	scriptRegex         = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
+	styleRegex          = regexp.MustCompile(`(?i)<style[^>]*>.*?</style>`)
+	noScriptRegex       = regexp.MustCompile(`(?i)<noscript[^>]*>.*?</noscript>`)
+	iframeRegex         = regexp.MustCompile(`(?i)<iframe[^>]*>.*?</iframe>`)
+	svgRegex            = regexp.MustCompile(`(?i)<svg[^>]*>.*?</svg>`)
+	dataImgRegex        = regexp.MustCompile(`(?i)<img[^>]*src=["']data:[^"']*["'][^>]*>`)
+	urlTextRegex        = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s<>"']+\.[a-z]{2,}[^\s<>"']*`)
+	buttonRegex         = regexp.MustCompile(`(?si)<button[^>]*>.*?</button>`)
+	whitespaceRegex     = regexp.MustCompile(`[ \t]{2,}`)
+	newlineRegex        = regexp.MustCompile(`\n\s*\n\s*\n+`)
+	emptyDivRegex       = regexp.MustCompile(`(?si)<div[^>]*>\s*</div>`)
+	emptySpanRegex      = regexp.MustCompile(`(?si)<span[^>]*>\s*</span>`)
+	imgRegex            = regexp.MustCompile(`(?i)<img[^>]*>`)
+	anchorRegex         = regexp.MustCompile(`(?i)<a[^>]*>(.*?)</a>`)
 	anchorSelfClosingRe = regexp.MustCompile(`(?i)<a[^>]*>`)
 )
 
 // ─── HTMLPreprocessOptions ─────────────────────────────────────────────────
 
-type HTMLPreprocessOptions struct {
+type HTMLPreprocessOptionInterface struct {
 	IncludeTags       []string
 	ExcludeTags       []string
 	CSSSelector       *string
@@ -1828,9 +1970,9 @@ type HTMLPreprocessOptions struct {
 
 // ExtractHTML extracts the main article content along with title and excerpt.
 func ExtractHTML(html string) ExtractedHTML {
-	cleaned := cleanNoise(html)
+	cleaned := cleanNoiseMethid(html)
 	extracted := extractWithReadability(cleaned)
-	post := postprocessHTML(extracted.Content)
+	post := postprocessRawHTML(extracted.Content)
 	combined := formatHTMLWithMetadata(extracted.Title, extracted.Excerpt, post)
 
 	return ExtractedHTML{
@@ -1840,48 +1982,136 @@ func ExtractHTML(html string) ExtractedHTML {
 	}
 }
 
-// ExtractMainContent extracts just the article content HTML.
-func ExtractMainContent(html string) string {
-	cleaned := cleanNoise(html)
+// ExtractMainContentFromHtml extracts just the article content HTML.
+// The returned HTML is a body fragment (no <html>, <head>, or <body> wrapper,
+// no title heading). It is the right primitive for markdown pipelines where
+// the title is rendered separately. Use ExtractArticleHTML when you need a
+// complete, self-contained HTML document.
+func ExtractMainContentFromHtml(html string) string {
+	cleaned := cleanNoiseMethid(html)
 	extracted := extractWithReadability(cleaned)
-	post := postprocessHTML(extracted.Content)
+	post := postprocessRawHTML(extracted.Content)
 	return post
 }
 
-func preprocessHTML(rawHTML string, opts HTMLPreprocessOptions) string {
-	bodyHTML := stripDocumentHead(rawHTML)
-	cleaned := cleanNoise(bodyHTML)
+// ExtractArticleMetadata is the return type of ExtractArticleWithMetadata: the
+// cleaned article body, the discovered title, and the lede/excerpt. Callers
+// that want a fully-titled, document-wrapped HTML output can pass these to
+// FormatDocument. Callers that only need the body (e.g. markdown pipelines)
+// can ignore Title and Excerpt.
+type ExtractArticleMetadata struct {
+	Title   string
+	Excerpt string
+	Content string
+}
+
+// ExtractArticleWithMetadata extracts the article body along with the
+// discovered title and excerpt. Unlike ExtractMainContentFromHtml, the
+// returned content is not wrapped in any document scaffolding — only the
+// readability body fragment. The caller is responsible for any wrapping.
+func ExtractArticleWithMetadata(html string) ExtractArticleMetadata {
+	cleaned := cleanNoiseMethid(html)
+	extracted := extractWithReadability(cleaned)
+	post := postprocessRawHTML(extracted.Content)
+	return ExtractArticleMetadata{
+		Title:   extracted.Title,
+		Excerpt: extracted.Excerpt,
+		Content: post,
+	}
+}
+
+// ExtractArticleHTML extracts the main article content and returns a complete
+// HTML document: <!doctype html><html><head>...</head><body><h1>title</h1>
+// [excerpt] <article>...body...</article></body></html>. The title comes from
+// the page's <title> / og:title metadata and the excerpt from
+// og:description / meta description.
+func ExtractArticleHTML(html string) string {
+	article := ExtractArticleWithMetadata(html)
+	return FormatDocument(article.Title, article.Excerpt, article.Content)
+}
+
+// FormatDocument wraps a body fragment into a complete HTML document with a
+// <head> (title, meta description, charset) and a <body> containing an
+// <h1> for the title, a <p class="excerpt"> for the lede, and an <article>
+// wrapping the body content.
+func FormatDocument(title, excerpt, content string) string {
+	var b strings.Builder
+
+	b.WriteString("<!doctype html>\n")
+	b.WriteString("<html lang=\"en\">\n")
+	b.WriteString("  <head>\n")
+	b.WriteString("    <meta charset=\"utf-8\">\n")
+	if title != "" {
+		b.WriteString("    <title>")
+		b.WriteString(escapeHTML(strings.TrimSpace(title)))
+		b.WriteString("</title>\n")
+	}
+	if excerpt != "" {
+		b.WriteString("    <meta name=\"description\" content=\"")
+		b.WriteString(escapeHTML(strings.TrimSpace(excerpt)))
+		b.WriteString("\">\n")
+	}
+	b.WriteString("  </head>\n")
+	b.WriteString("  <body>\n")
+
+	if title != "" {
+		b.WriteString("    <h1>")
+		b.WriteString(escapeHTML(strings.TrimSpace(title)))
+		b.WriteString("</h1>\n")
+	}
+
+	if excerpt != "" {
+		b.WriteString("    <p class=\"excerpt\">")
+		b.WriteString(escapeHTML(strings.TrimSpace(excerpt)))
+		b.WriteString("</p>\n")
+	}
+
+	if content != "" {
+		b.WriteString("    <article>\n")
+		b.WriteString(indentLines(content, "      "))
+		b.WriteString("\n    </article>\n")
+	}
+
+	b.WriteString("  </body>\n")
+	b.WriteString("</html>\n")
+
+	return b.String()
+}
+
+func preprocessRawHTML(rawHTML string, opts HTMLPreprocessOptionInterface) string {
+	bodyHTML := stripDocumentHeadMethod(rawHTML)
+	cleaned := cleanNoiseMethid(bodyHTML)
 
 	if opts.BypassFilters {
 		return cleaned
 	}
 
 	if len(opts.IncludeTags) > 0 {
-		cleaned = filterBySelectors(cleaned, opts.IncludeTags)
+		cleaned = filterBySelectorsMethod(cleaned, opts.IncludeTags)
 	}
 	if len(opts.ExcludeTags) > 0 {
-		cleaned = removeElementsBySelectors(cleaned, opts.ExcludeTags)
+		cleaned = removeElementsBySelectorsMethod(cleaned, opts.ExcludeTags)
 	}
 
 	if opts.CSSSelector != nil && *opts.CSSSelector != "" {
-		cleaned = applyCSSSelector(cleaned, *opts.CSSSelector)
+		cleaned = applyCSSSelectorMethod(cleaned, *opts.CSSSelector)
 	}
 
 	if !opts.SkipNoisePatterns {
-		cleaned = applyNoisePatterns(cleaned)
+		cleaned = applyNoisePattern(cleaned)
 	}
 
 	return cleaned
 }
 
-func postprocessHTML(html string) string {
+func postprocessRawHTML(html string) string {
 	if html == "" {
 		return html
 	}
 
 	result := html
-	result = imgRe.ReplaceAllString(result, "")
-	result = anchorRe.ReplaceAllString(result, "")
+	result = imgRegex.ReplaceAllString(result, "")
+	result = anchorRegex.ReplaceAllString(result, "$1")
 	result = anchorSelfClosingRe.ReplaceAllString(result, "")
 
 	for {
@@ -1899,7 +2129,7 @@ func postprocessHTML(html string) string {
 	return strings.TrimSpace(result)
 }
 
-func applyNoisePatterns(html string) string {
+func applyNoisePattern(html string) string {
 	if html == "" {
 		return html
 	}
@@ -1911,7 +2141,7 @@ func applyNoisePatterns(html string) string {
 
 	doc.Find("*").Each(func(_ int, s *goquery.Selection) {
 		tagName := goquery.NodeName(s)
-		if semanticTags[tagName] {
+		if semanticTagsList[tagName] {
 			return
 		}
 
@@ -1920,7 +2150,7 @@ func applyNoisePatterns(html string) string {
 		roleAttr, _ := s.Attr("role")
 		combined := strings.ToLower(classAttr + " " + idAttr)
 
-		if isNoiseWrapper(combined, roleAttr) {
+		if isNoiseWrapperMethod(combined, roleAttr) {
 			s.Remove()
 		}
 	})
@@ -1929,14 +2159,14 @@ func applyNoisePatterns(html string) string {
 	return result
 }
 
-func cleanNoise(html string) string {
+func cleanNoiseMethid(html string) string {
 	if html == "" {
 		return html
 	}
 
 	result := html
-	result = scriptRe.ReplaceAllString(result, "")
-	result = styleRe.ReplaceAllString(result, "")
+	result = scriptRegex.ReplaceAllString(result, "")
+	result = styleRegex.ReplaceAllString(result, "")
 	result = noScriptRe.ReplaceAllString(result, "")
 	result = iframeRe.ReplaceAllString(result, "")
 	result = svgRe.ReplaceAllString(result, "")
@@ -1949,7 +2179,7 @@ func cleanNoise(html string) string {
 
 // ─── Internal Helpers ───────────────────────────────────────────────────────
 
-var semanticTags = map[string]bool{
+var semanticTagsList = map[string]bool{
 	"article": true, "section": true, "main": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
 	"ul": true, "ol": true, "li": true, "dl": true, "dt": true, "dd": true,
@@ -1960,7 +2190,7 @@ var semanticTags = map[string]bool{
 	"label": true, "form": true, "input": true,
 }
 
-func stripDocumentHead(html string) string {
+func stripDocumentHeadMethod(html string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return html
@@ -1975,8 +2205,8 @@ func stripDocumentHead(html string) string {
 	return result
 }
 
-func isNoiseWrapper(attributes, role string) bool {
-	for _, phrase := range noisePatterns {
+func isNoiseWrapperMethod(attributes, role string) bool {
+	for _, phrase := range noiseTags {
 		if strings.Contains(attributes, phrase) {
 			return true
 		}
@@ -1984,12 +2214,12 @@ func isNoiseWrapper(attributes, role string) bool {
 
 	tokens := strings.Fields(attributes)
 	for _, token := range tokens {
-		for _, exact := range noiseExactTokens {
+		for _, exact := range noiseExactTokenList {
 			if token == exact {
 				return true
 			}
 		}
-		for _, prefix := range noisePrefixes {
+		for _, prefix := range noisePrefixesTags {
 			if strings.HasPrefix(token, prefix) {
 				return true
 			}
@@ -2019,7 +2249,7 @@ func extractWithReadability(html string) ExtractedHTML {
 	}
 }
 
-func filterBySelectors(html string, selectors []string) string {
+func filterBySelectorsMethod(html string, selectors []string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return html
@@ -2038,7 +2268,7 @@ func filterBySelectors(html string, selectors []string) string {
 	return strings.Join(parts, "\n")
 }
 
-func removeElementsBySelectors(html string, selectors []string) string {
+func removeElementsBySelectorsMethod(html string, selectors []string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return html
@@ -2054,7 +2284,7 @@ func removeElementsBySelectors(html string, selectors []string) string {
 	return result
 }
 
-func applyCSSSelector(html, selector string) string {
+func applyCSSSelectorMethod(html, selector string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return ""
@@ -2093,4 +2323,25 @@ func formatHTMLWithMetadata(title, excerpt, content string) string {
 	b.WriteString("  </body>\n</html>")
 
 	return b.String()
+}
+
+func escapeHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
+}
+
+func indentLines(s, indent string) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		lines[i] = indent + line
+	}
+	return strings.Join(lines, "\n")
 }
