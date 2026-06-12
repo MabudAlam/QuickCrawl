@@ -58,3 +58,6 @@ preview/
 
 *.json
 *.csv
+
+.browser_configs/
+browser_configs/

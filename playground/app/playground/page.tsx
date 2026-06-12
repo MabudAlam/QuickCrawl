@@ -192,6 +192,8 @@ export default function PlaygroundPage({
   const [searchFormats, setSearchFormats] = useState<Format[]>(["markdown"])
   const [searchRenderJs, setSearchRenderJs] = useState<boolean | null>(false)
   const [searchScrape, setSearchScrape] = useState(false)
+  const [searchUseBM25, setSearchUseBM25] = useState(false)
+  const [searchPage, setSearchPage] = useState(0)
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -411,6 +413,8 @@ export default function PlaygroundPage({
         query: searchQuery,
         region: searchRegion,
         timelimit: searchTimeLimit || undefined,
+        page: searchPage,
+        use_bm25: searchUseBM25,
         renderJs: searchRenderJs,
         formats: searchFormats,
         scrape: searchScrape,
@@ -459,6 +463,8 @@ export default function PlaygroundPage({
     setSearchFormats(["markdown"])
     setSearchRenderJs(false)
     setSearchScrape(false)
+    setSearchUseBM25(false)
+    setSearchPage(0)
     setAdvancedExpanded(false)
     setSchemaBuilderOpen(false)
     setSchemaFields([{ name: "title", type: "string", description: "" }])
@@ -1328,6 +1334,51 @@ export default function PlaygroundPage({
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="search-page">Page</Label>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="h-10 w-10 shrink-0 p-0"
+            disabled={searchPage <= 0}
+            onClick={() => setSearchPage(Math.max(0, searchPage - 1))}
+          >
+            −
+          </Button>
+          <Input
+            id="search-page"
+            type="number"
+            min={0}
+            max={10}
+            value={searchPage}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10)
+              if (Number.isNaN(v) || v < 0) {
+                setSearchPage(0)
+              } else {
+                setSearchPage(Math.min(10, v))
+              }
+            }}
+            className="h-10 text-center"
+          />
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="h-10 w-10 shrink-0 p-0"
+            disabled={searchPage >= 10}
+            onClick={() => setSearchPage(Math.min(10, searchPage + 1))}
+          >
+            +
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            (0-indexed)
+          </span>
+        </div>
+      </div>
+
       <div className="flex items-center gap-2">
         <Switch
           id="search-scrape"
@@ -1336,6 +1387,17 @@ export default function PlaygroundPage({
         />
         <Label htmlFor="search-scrape" className="text-sm">
           Scrape each result
+        </Label>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Switch
+          id="search-bm25"
+          checked={searchUseBM25}
+          onCheckedChange={(checked) => setSearchUseBM25(checked)}
+        />
+        <Label htmlFor="search-bm25" className="text-sm">
+          Use BM25 scoring
         </Label>
       </div>
 
@@ -1495,7 +1557,7 @@ export default function PlaygroundPage({
                 Compare QuickCrawl and TinyFish scrape results side by side
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
+            {/* <Tooltip>
               <TooltipTrigger asChild>
                 <a href="/battle-articles">
                   <Button variant="noShadow" size="sm">
@@ -1506,7 +1568,7 @@ export default function PlaygroundPage({
               <TooltipContent side="bottom">
                 Compare across 15 news articles
               </TooltipContent>
-            </Tooltip>
+            </Tooltip> */}
           </div>
         </header>
 

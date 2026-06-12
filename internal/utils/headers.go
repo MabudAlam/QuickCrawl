@@ -152,18 +152,69 @@ var botFriendlyProfiles = []HeaderProfile{
 	},
 }
 
+var acceptLanguagePool = []string{
+	"en-US,en;q=0.9",
+	"en-GB,en;q=0.9",
+	"en-AU,en;q=0.9",
+	"en-CA,en;q=0.9",
+	"de-DE,de;q=0.9,en;q=0.8",
+	"de-AT,de;q=0.9,en;q=0.8",
+	"de-CH,de;q=0.9,en;q=0.8",
+	"fr-FR,fr;q=0.9,en;q=0.8",
+	"fr-CA,fr;q=0.9,en;q=0.8",
+	"fr-BE,fr;q=0.9,en;q=0.8",
+	"es-ES,es;q=0.9,en;q=0.8",
+	"es-MX,es;q=0.9,en;q=0.8",
+	"es-AR,es;q=0.9,en;q=0.8",
+	"pt-BR,pt;q=0.9,en;q=0.8",
+	"pt-PT,pt;q=0.9,en;q=0.8",
+	"it-IT,it;q=0.9,en;q=0.8",
+	"nl-NL,nl;q=0.9,en;q=0.8",
+	"nl-BE,nl;q=0.9,en;q=0.8",
+	"pl-PL,pl;q=0.9,en;q=0.8",
+	"ru-RU,ru;q=0.9,en;q=0.8",
+	"ja-JP,ja;q=0.9,en;q=0.8",
+	"zh-CN,zh;q=0.9,en;q=0.8",
+	"zh-TW,zh;q=0.9,en;q=0.8",
+	"ko-KR,ko;q=0.9,en;q=0.8",
+	"ar-SA,ar;q=0.9,en;q=0.8",
+	"ar-AE,ar;q=0.9,en;q=0.8",
+	"tr-TR,tr;q=0.9,en;q=0.8",
+	"sv-SE,sv;q=0.9,en;q=0.8",
+	"nb-NO,nb;q=0.9,en;q=0.8",
+	"da-DK,da;q=0.9,en;q=0.8",
+	"fi-FI,fi;q=0.9,en;q=0.8",
+	"zh-HK,zh;q=0.9,en;q=0.8",
+	"en-IN,en;q=0.9",
+	"en-SG,en;q=0.9",
+	"en-NZ,en;q=0.9",
+	"en-IE,en;q=0.9",
+	"en-ZA,en;q=0.9",
+}
+
+func randomAcceptLanguage() string {
+	return acceptLanguagePool[rand.Intn(len(acceptLanguagePool))]
+}
+
+func rotateLanguages(profile HeaderProfile) HeaderProfile {
+	profile.AcceptLanguage = randomAcceptLanguage()
+	return profile
+}
+
 // GetHeaderProfile returns a random header profile for the given strategy
 func GetHeaderProfile(strategy HeaderStrategy) HeaderProfile {
+	var profile HeaderProfile
 	switch strategy {
 	case StrategyModernBrowser:
-		return modernBrowserProfiles[rand.Intn(len(modernBrowserProfiles))]
+		profile = modernBrowserProfiles[rand.Intn(len(modernBrowserProfiles))]
 	case StrategyMobileDevice:
-		return mobileDeviceProfiles[rand.Intn(len(mobileDeviceProfiles))]
+		profile = mobileDeviceProfiles[rand.Intn(len(mobileDeviceProfiles))]
 	case StrategyBotFriendly:
-		return botFriendlyProfiles[rand.Intn(len(botFriendlyProfiles))]
+		profile = botFriendlyProfiles[rand.Intn(len(botFriendlyProfiles))]
 	default:
-		return modernBrowserProfiles[0]
+		profile = modernBrowserProfiles[0]
 	}
+	return rotateLanguages(profile)
 }
 
 // GetAllStrategies returns all available strategies in order of preference

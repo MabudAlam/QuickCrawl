@@ -189,8 +189,11 @@ class QuickCrawlClient:
         safesearch: str = "moderate",
         scrape: bool = False,
         render_mode: str = "auto",
+        page: int = 0,
+        timelimit: str | None = None,
+        use_bm25: bool = False,
         **kwargs: Any,
-    ) -> list[dict]:
+    ) -> dict:
         """Search the web and optionally scrape results.
 
         Args:
@@ -200,10 +203,19 @@ class QuickCrawlClient:
             safesearch: SafeSearch mode: "moderate", "strict", "off".
             scrape: Whether to scrape content from each result URL.
             render_mode: Renderer mode for scraping - "auto" (default), "http", or "browser".
+            page: 0-indexed page number to fetch. Default: 0.
+            timelimit: Time-range filter ("d"=day, "w"=week, "m"=month, "y"=year). Default: None.
+            use_bm25: If True, re-rank results with BM25 and add a `bm25_score` field.
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
-            List of search result dicts with title, url, description, and optional scraped content.
+            A dict with the full search response:
+              {
+                "query": str,
+                "results": [{"position", "score", "bm25_score", "title", "url", "site_name", "snippet", ...}],
+                "total_results": int,
+                "page": int,
+              }
         """
         args = ["search", query]
 
@@ -217,6 +229,12 @@ class QuickCrawlClient:
             args.append("--scrape")
         if render_mode != "auto":
             args.extend(["--render", render_mode])
+        if page:
+            args.extend(["--page", str(page)])
+        if timelimit:
+            args.extend(["--timelimit", timelimit])
+        if use_bm25:
+            args.append("--use-bm25")
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
@@ -228,16 +246,26 @@ class QuickCrawlClient:
                 args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            data = self._http_post("/v1/search", {
+            body = {
                 "query": query,
                 "formats": formats or ["markdown"],
                 "region": region,
                 "safesearch": safesearch,
-            })
-            return data.get("results", [])
+                "page": page,
+            }
+            if timelimit:
+                body["timelimit"] = timelimit
+            if use_bm25:
+                body["use_bm25"] = True
+            data = self._http_post("/v1/search", body)
+            return {
+                "query": data.get("query", query),
+                "results": data.get("results", []),
+                "total_results": data.get("total_results", len(data.get("results", []))),
+                "page": data.get("page", page),
+            }
 
-        result = self._cli_call(args)
-        return result.get("results", [])
+        return self._cli_call(args)
 
     def close(self) -> None:
         """No-op for CLI mode. Kept for API compatibility with MCP mode."""

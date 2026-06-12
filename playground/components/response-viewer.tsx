@@ -779,9 +779,9 @@ export function SearchResponseViewer({
                       >
                         {result.title}
                       </a>
-                      {result.description && (
+                      {result.snippet && (
                         <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
-                          {result.description}
+                          {result.snippet}
                         </p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-2">
