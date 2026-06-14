@@ -6,11 +6,10 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
+	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
@@ -23,23 +22,6 @@ type Scraper struct {
 	cfg       Config
 }
 
-type ScrapeRequest struct {
-	URL                 string
-	Formats             []string
-	RenderJS            *bool
-	WaitFor             *int64
-	IncludeTags         []string
-	ExcludeTags         []string
-	JSONSchema          *json.RawMessage
-	Headers             map[string]string
-	CSSSelector         *string
-	Extract             *types.ExtractOptions
-	LLMExtractionPrompt *string
-	LLMResponseFormat   *string
-	TTL                 *int64
-	Browser             *string
-}
-
 // NewScraper builds a Scraper that delegates HTTP fetching to the shared
 // *renderer.HTTPFetcher (so /v1/scrape and /v1/scrape-core share the same
 // HTTP path) and uses chromedp for browser rendering.
@@ -47,7 +29,7 @@ type ScrapeRequest struct {
 // llmConfig is optional. When non-nil, requests that include "json" in their
 // formats list and a jsonSchema (or extract.schema) will trigger LLM-based
 // structured extraction and the result will be placed in data.JSON.
-func NewScraper(cfg Config, httpFetcher *renderer.HTTPFetcher, llmConfig *types.LLMConfig) (*Scraper, *QuickCrawlError) {
+func NewScraper(cfg Config, httpFetcher *HTTPFetcher, llmConfig *types.LLMConfig) (*Scraper, *QuickCrawlError) {
 	r, err := NewRenderer(cfg, httpFetcher)
 	if err != nil {
 		return nil, err
@@ -62,7 +44,7 @@ func NewScraper(cfg Config, httpFetcher *renderer.HTTPFetcher, llmConfig *types.
 	}, nil
 }
 
-func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, *QuickCrawlError) {
+func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.ScrapeData, *QuickCrawlError) {
 	start := time.Now()
 
 	if err := validateRequest(req); err != nil {
@@ -92,17 +74,21 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 		}
 	}
 
-	formats := resolveFormats(req.Formats)
-	extractOpts := ExtractOptions{
-		RawHTML:      result.HTML,
-		RawBytes:     result.RawBytes,
-		SourceURL:    result.URL,
-		StatusCode:   int(result.StatusCode),
-		RenderedMode: &result.RenderedWith,
-		Formats:      formats,
-		IncludeTags:  req.IncludeTags,
-		ExcludeTags:  req.ExcludeTags,
-		CSSSelector:  req.CSSSelector,
+	formats := req.Formats
+	if len(formats) == 0 {
+		formats = []types.OutputFormat{types.FormatMarkdown}
+	}
+	extractOpts := extractor.ExtractOptions{
+		RawHTML:       result.HTML,
+		RawBytes:      result.RawBytes,
+		SourceURL:     result.URL,
+		StatusCode:    int(result.StatusCode),
+		RenderedMode:  &result.RenderedWith,
+		Formats:       formats,
+		IncludeTags:   req.IncludeTags,
+		ExcludeTags:   req.ExcludeTags,
+		CSSSelector:   req.CSSSelector,
+		ExtractorType: extractor.ExtractorTrafilatura,
 	}
 
 	data := s.extractor.Extract(extractOpts)
@@ -131,7 +117,7 @@ func (s *Scraper) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeData, 
 // extractor, and stores the result in data.JSON. It returns an error only
 // when a schema is provided without a configured LLM, or when the LLM call
 // itself fails.
-func (s *Scraper) runLLMExtraction(_ context.Context, req *ScrapeRequest, data *ScrapeData) *QuickCrawlError {
+func (s *Scraper) runLLMExtraction(_ context.Context, req *types.ScrapeRequest, data *types.ScrapeData) *QuickCrawlError {
 	schema, effectiveLLM := resolveLLMInputs(req, s.llmCfg)
 
 	if len(schema) == 0 {
@@ -155,7 +141,7 @@ func (s *Scraper) runLLMExtraction(_ context.Context, req *ScrapeRequest, data *
 	return nil
 }
 
-func validateRequest(req *ScrapeRequest) *QuickCrawlError {
+func validateRequest(req *types.ScrapeRequest) *QuickCrawlError {
 	if req.URL == "" {
 		return ErrInvalidRequest.New("url is required")
 	}

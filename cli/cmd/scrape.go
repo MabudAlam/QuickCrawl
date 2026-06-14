@@ -135,9 +135,9 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	}
 	defer scraper.Close()
 
-	coreReq := &core.ScrapeRequest{
+	coreReq := &types.ScrapeRequest{
 		URL:          targetURL,
-		Formats:      formatsToStrings(formats),
+		Formats:      formats,
 		RenderJS:     renderJS,
 		WaitFor:      waitFor,
 		IncludeTags:  includeTags,
@@ -210,7 +210,7 @@ func formatsToStrings(formats []types.OutputFormat) []string {
 // map and emits it as an indented JSON string. Mirrors the legacy
 // types.ScrapeData formatter so existing CLI consumers see the same
 // output shape.
-func formatCoreScrapeData(data *core.ScrapeData) string {
+func formatCoreScrapeData(data *types.ScrapeData) string {
 	if data == nil {
 		return `{"error": "no data returned"}`
 	}
