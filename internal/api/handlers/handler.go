@@ -67,7 +67,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		return
 	}
 
-	var req core.ScrapeRequest
+	var req types.ScrapeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("invalid JSON request"))
 		return
@@ -83,7 +83,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 	}
 
 	if len(req.Formats) == 0 {
-		req.Formats = []string{"markdown"}
+		req.Formats = []types.OutputFormat{types.FormatMarkdown}
 	}
 
 	//if the config says be polite with robots.txt then follow it
@@ -114,15 +114,15 @@ func (h *Handler) Scrape(c *gin.Context) {
 	if ttl != nil && *ttl == 0 {
 		// TTL=0 means bypass cache, do fresh fetch
 	} else if h.State.Cache != nil && h.State.Cache.Enabled() {
-		normalizedFormats := cache.NormalizeFormats(req.Formats)
+		normalizedFormats := cache.NormalizeFormats(formatsToStrings(req.Formats))
 		effectiveTTL := h.State.Config.Cache.TTLDefaultSecs
 		if ttl != nil && *ttl > 0 {
 			effectiveTTL = *ttl
 		}
 		if cachedData, found, _ := h.State.Cache.Get(ctx, req.URL, normalizedFormats, req.RenderJS, effectiveTTL); found {
-			var data core.ScrapeData
+			var data types.ScrapeData
 			if err := json.Unmarshal(cachedData, &data); err == nil {
-				c.JSON(http.StatusOK, types.APIResponse[core.ScrapeData]{
+				c.JSON(http.StatusOK, types.APIResponse[types.ScrapeData]{
 					Success: true,
 					Data:    &data,
 					Warning: stringPtr("cache hit"),
@@ -148,7 +148,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		return
 	}
 
-	resp := types.APIResponse[core.ScrapeData]{
+	resp := types.APIResponse[types.ScrapeData]{
 		Success: true,
 		Data:    data,
 		Warning: data.Warning,
@@ -179,7 +179,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 
 	if resp.Success && h.State.Cache != nil && h.State.Cache.Enabled() {
 		if ttl == nil || *ttl > 0 {
-			normalizedFormats := cache.NormalizeFormats(req.Formats)
+			normalizedFormats := cache.NormalizeFormats(formatsToStrings(req.Formats))
 			if dataBytes, err := json.Marshal(data); err == nil {
 				_ = h.State.Cache.Set(ctx, req.URL, normalizedFormats, req.RenderJS, dataBytes)
 			}
@@ -559,4 +559,15 @@ func scrapeFormatsToStrings(formats []types.OutputFormat) []string {
 // stringPtr is a helper to create a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
+}
+
+func formatsToStrings(formats []types.OutputFormat) []string {
+	if len(formats) == 0 {
+		return nil
+	}
+	out := make([]string, len(formats))
+	for i, f := range formats {
+		out[i] = string(f)
+	}
+	return out
 }
