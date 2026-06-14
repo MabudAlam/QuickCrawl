@@ -326,7 +326,7 @@ func WaitForSPAReady(parentCtx context.Context, opts SPAReadinessOptions) (SPARe
 	selectorCheckEnabled := len(eff.Selectors) > 0
 	predicateCheckEnabled := eff.Predicate != ""
 	if !selectorCheckEnabled && !predicateCheckEnabled && eff.MinBodyText <= 0 {
-		// Default selector set — mirrors internal/renderer/browser_fetcher.go.
+		// Default selector set covering the most common SPA root patterns.
 		eff.Selectors = []string{"main", "article", "[role=main]", "#content", "#root > *", "#app > *"}
 		selectorCheckEnabled = true
 		// A 0 MinBodyText is upgraded to the original's 800-char

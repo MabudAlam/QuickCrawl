@@ -9,7 +9,7 @@
 // to drop unwanted sub-requests at the Fetch domain level — see
 // fetchWithCDPBrowser and the fetchFetchBlockAction helper below.
 //
-// Pattern syntax (delegated to pkg/pattern):
+// Pattern syntax (delegated to internal/pattern):
 //
 //   - Exact (no prefix): case-insensitive substring match
 //   - Wildcard (*...*): case-insensitive wildcard match
@@ -28,7 +28,7 @@ package core
 import (
 	"strings"
 
-	"github.com/MabudAlam/quickcrawl/pkg/pattern"
+	"github.com/MabudAlam/quickcrawl/internal/pattern"
 )
 
 // globalBlockedPatterns is the hardcoded list of patterns to block across

@@ -211,8 +211,7 @@ func dismissCookieBanners(ctx context.Context) CookieDismissalResult {
 //
 // The action swallows all errors from the dismiss pass so a banner
 // problem never aborts the surrounding chromedp.Run sequence. This
-// matches the original renderer's behavior at
-// internal/renderer/browser_fetcher.go:296 (where both the result and
+// matches the previous renderer's behavior (where both the result and
 // any error from SendRecv are discarded with `_, _ =`).
 func dismissCookieBannersAction() chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
