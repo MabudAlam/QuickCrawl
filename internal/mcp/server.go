@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
-	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -54,6 +53,17 @@ type SearchArgs struct {
 	Scrape     bool     `json:"scrape,omitempty"`
 }
 
+func convertFormats(formats []string) []types.OutputFormat {
+	if len(formats) == 0 {
+		return nil
+	}
+	out := make([]types.OutputFormat, len(formats))
+	for i, f := range formats {
+		out[i] = types.OutputFormat(f)
+	}
+	return out
+}
+
 func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, any, error) {
 	if args.URL == "" {
 		return errorResult("url is required"), nil, nil
@@ -74,9 +84,9 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		return errorResult("scraper is not initialized"), nil, nil
 	}
 
-	coreReq := &core.ScrapeRequest{
+	coreReq := &types.ScrapeRequest{
 		URL:          args.URL,
-		Formats:      args.Formats,
+		Formats:      convertFormats(args.Formats),
 		RenderJS:     args.RenderJS,
 		WaitFor:      args.WaitFor,
 		IncludeTags:  args.IncludeTags,
@@ -88,7 +98,7 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		coreReq.WaitFor = &defaultWait
 	}
 	if coreReq.Formats == nil {
-		coreReq.Formats = []string{"markdown"}
+		coreReq.Formats = []types.OutputFormat{types.FormatMarkdown}
 	}
 
 	// Check robots.txt if respect_robots_txt is enabled
@@ -412,7 +422,7 @@ func jsonString(s string) string {
 // suitable for the MCP text content. Field selection mirrors the
 // legacy formatScrapeData helper so existing MCP clients see the same
 // payload shape.
-func formatCoreScrapeData(data *core.ScrapeData) string {
+func formatCoreScrapeData(data *types.ScrapeData) string {
 	if data == nil {
 		return `{"error": "no data"}`
 	}
