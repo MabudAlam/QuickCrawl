@@ -475,14 +475,13 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// of sleeping for a fixed duration. The budget is the SPA poll
 	// timeout; it is bounded by the overall PageTimeout above.
 	//
-	// In default mode (waitMs == 0) we give the poll the same 15s the
-	// original renderer uses for SPA readiness (see
-	// internal/renderer/browser_fetcher.go:spaSelectorMaxMs).
+	// In default mode (waitMs == 0) we give the poll the same 15s
+	// the previous renderer uses for SPA readiness.
 	//
 	// In explicit mode (waitMs > 0) the caller has asked for a fixed
 	// wait duration. We honor that as a single Sleep rather than the
-	// poll, mirroring the original's `else { time.Sleep(wait) }`
-	// branch at internal/renderer/browser_fetcher.go:321.
+	// poll, matching the previous renderer's `else { time.Sleep(wait) }`
+	// behavior.
 	spaTimeout := 15 * time.Second
 	if waitMs > 0 {
 		spaTimeout = time.Duration(waitMs) * time.Millisecond
@@ -523,9 +522,8 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 
 	// Stage timing — collects per-action millisecond costs so we can
 	// attribute residual gaps between /scrape and /scrape-core to a
-	// specific stage. Logged at the end of the chromedp.Run, in the
-	// same map[k:v k:v] format as the original renderer's
-	// browser_fetcher.go log line.
+	// specific stage. Logged at the end of the chromedp.Run in
+	// map[k:v k:v] format.
 	stageTimes := map[string]int64{}
 	stageStart := time.Now()
 
@@ -560,10 +558,9 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	// internal/core/network.go for the full design rationale.
 	//
 	// dismissCookieBannersAction is conditionally inserted after Navigate,
-	// only in default mode (waitMs == 0). It mirrors the original renderer's
-	// behavior at internal/renderer/browser_fetcher.go:296 — explicit
-	// waitForMs implies the caller is managing timing themselves, so we
-	// skip auto-dismiss to avoid surprising them with hidden clicks. The
+	// only in default mode (waitMs == 0). Explicit waitForMs implies the
+	// caller is managing timing themselves, so we skip auto-dismiss to
+	// avoid surprising them with hidden clicks. The
 	// dismiss step itself is best-effort and never aborts the run.
 	//
 	// The next action is either the SPA readiness poll (default mode) or
@@ -786,10 +783,8 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	runStart := time.Now()
 	err := chromedp.Run(runCtx, actions...)
 	stageTimes["chromedpRun"] = time.Since(runStart).Milliseconds()
-	// Per-stage timing log. Format mirrors the original /scrape
-	// path's browser_fetcher.go log so the two are easy to compare
-	// side by side. Useful for attributing residual gaps to a
-	// specific stage (anti-bot check, banner dismiss, SPA poll,
+	// Per-stage timing log. Useful for attributing residual gaps to
+	// a specific stage (anti-bot check, banner dismiss, SPA poll,
 	// extraction). Only shown at debug level (LOG_LEVEL=debug).
 	utils.Log.Debug("browser timing",
 		"url", rawURL,
