@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/common"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // =============================================================================
@@ -610,57 +610,57 @@ type HTTPClientConfig struct {
 
 // Error codes (alias from common).
 const (
-	CodeHttp              = common.CodeHttp
-	CodeTargetUnreachable = common.CodeTargetUnreachable
-	CodeInvalidURL        = common.CodeInvalidURL
-	CodeInvalidRequest    = common.CodeInvalidRequest
-	CodeRendererError     = common.CodeRendererError
-	CodeExtractionErr     = common.CodeExtractionErr
-	CodeCrawlError        = common.CodeCrawlError
-	CodeTimeout           = common.CodeTimeout
-	CodeConfigError       = common.CodeConfigError
-	CodeNotFound          = common.CodeNotFound
-	CodeRateLimited       = common.CodeRateLimited
-	CodeInternalErr       = common.CodeInternalErr
-	CodeForbidden         = common.CodeForbidden
+	CodeHttp              = utils.CodeHttp
+	CodeTargetUnreachable = utils.CodeTargetUnreachable
+	CodeInvalidURL        = utils.CodeInvalidURL
+	CodeInvalidRequest    = utils.CodeInvalidRequest
+	CodeRendererError     = utils.CodeRendererError
+	CodeExtractionErr     = utils.CodeExtractionErr
+	CodeCrawlError        = utils.CodeCrawlError
+	CodeTimeout           = utils.CodeTimeout
+	CodeConfigError       = utils.CodeConfigError
+	CodeNotFound          = utils.CodeNotFound
+	CodeRateLimited       = utils.CodeRateLimited
+	CodeInternalErr       = utils.CodeInternalErr
+	CodeForbidden         = utils.CodeForbidden
 )
 
 // Error factories (alias from common).
 var (
-	ErrHttp              = common.ErrHttp
-	ErrTargetUnreachable = common.ErrTargetUnreachable
-	ErrInvalidURL        = common.ErrInvalidURL
-	ErrInvalidRequest    = common.ErrInvalidRequest
-	ErrRendererError     = common.ErrRendererError
-	ErrExtraction        = common.ErrExtraction
-	ErrCrawl             = common.ErrCrawl
-	ErrTimeout           = common.ErrTimeout
-	ErrConfig            = common.ErrConfig
-	ErrNotFound          = common.ErrNotFound
-	ErrRateLimited       = common.ErrRateLimited
-	ErrInternal          = common.ErrInternal
-	ErrForbidden         = common.ErrForbidden
+	ErrHttp              = utils.ErrHttp
+	ErrTargetUnreachable = utils.ErrTargetUnreachable
+	ErrInvalidURL        = utils.ErrInvalidURL
+	ErrInvalidRequest    = utils.ErrInvalidRequest
+	ErrRendererError     = utils.ErrRendererError
+	ErrExtraction        = utils.ErrExtraction
+	ErrCrawl             = utils.ErrCrawl
+	ErrTimeout           = utils.ErrTimeout
+	ErrConfig            = utils.ErrConfig
+	ErrNotFound          = utils.ErrNotFound
+	ErrRateLimited       = utils.ErrRateLimited
+	ErrInternal          = utils.ErrInternal
+	ErrForbidden         = utils.ErrForbidden
 )
 
-// Type aliases for common types.
+// Type aliases for utils types.
 type (
-	QuickCrawlError        = common.QuickcrawlError
-	QuickCrawlErrorFactory = common.QuickcrawlErrorFactory
-	ErrorCode              = common.ErrorCode
+	QuickCrawlError        = utils.QuickCrawlError
+	QuickCrawlErrorFactory = utils.QuickCrawlErrorFactory
+	ErrorCode              = utils.ErrorCode
 )
 
 // ValidateSafeURL checks if a URL is safe for crawling.
 func ValidateSafeURL(u *url.URL) error {
-	return common.ValidateSafeURL(u)
+	return utils.ValidateSafeURL(u)
 }
 
 // ValidateURL parses and validates a URL string.
 func ValidateURL(urlStr string) (*url.URL, error) {
-	return common.ValidateURL(urlStr)
+	return utils.ValidateURL(urlStr)
 }
 
 // BuiltinUAPool is a pool of real browser user agents.
-var BuiltinUAPool = common.BuiltinUAPool
+var BuiltinUAPool = utils.BuiltinUAPool
 
 // GetBuiltinUAPool returns a copy of the built-in UA pool.
-var GetBuiltinUAPool = common.GetBuiltinUAPool
+var GetBuiltinUAPool = utils.GetBuiltinUAPool
