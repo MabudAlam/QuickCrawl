@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# CloakBrowser image with the "Bypass Paywalls Clean" extension preinstalled
+# and a runtime-configurable SOCKS5 proxy. Designed to be deployed on Railway
+# (or any container host) without host-volume mounts.
+#
+# Build context: this Dockerfile lives in infra/cloakbrowser/. The build
+# context is the repo root, but the extension is downloaded at build time
+# (not committed to the repo).
+# =============================================================================
+
+FROM cloakhq/cloakbrowser
+
+# Bundle the bypass-paywalls extension. The zip is fetched from the upstream
+# gitflic mirror at build time; if the download fails, the build fails loudly
+# rather than silently shipping an extension-less image.
+ARG BYPASS_EXTENSION_URL=https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass-paywalls-chrome-clean-master.zip
+ARG BYPASS_EXTENSION_SHA256=
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl unzip ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -fsSL "${BYPASS_EXTENSION_URL}" -o /tmp/bypass.zip; \
+    if [ -n "${BYPASS_EXTENSION_SHA256}" ]; then \
+        echo "${BYPASS_EXTENSION_SHA256}  /tmp/bypass.zip" | sha256sum -c -; \
+    fi; \
+    mkdir -p /app/extensions; \
+    unzip -q /tmp/bypass.zip -d /app/extensions/; \
+    # The zip typically extracts to bypass-paywalls-chrome-clean-master/;
+    # rename it to the well-known path the cloakserve flags expect.
+    mv /app/extensions/bypass-paywalls-chrome-clean-master /app/extensions/bypass-content; \
+    rm -f /tmp/bypass.zip; \
+    # Smoke-check the install: a valid Chrome extension MUST have a manifest.json.
+    test -f /app/extensions/bypass-content/manifest.json
+
+# Run as the default user cloakbrowser ships with. cloakserve exposes CDP on
+# 9222 by default; we expose it explicitly for clarity.
+EXPOSE 9222
+
+# ---- Runtime configuration via environment variables -----------------------
+# Set any of these in Railway (or docker run -e) without rebuilding the image:
+#
+#   PROXY_ENABLED        "true" to route browser traffic through a SOCKS5 proxy.
+#   PROXY_SERVER         SOCKS5 URL, e.g. socks5://user:pass@host:1080
+#                        (omit user:pass@ for unauthenticated proxies)
+#   EXTENSION_PATH       Absolute path to an unpacked extension. Defaults to
+#                        the bypass-paywalls extension baked at build time.
+#                        Set to "" to disable extension loading.
+#   EXTRA_CHROME_FLAGS   Space-separated Chrome flags appended to the
+#                        cloakserve launch (advanced / escape hatch).
+# ----------------------------------------------------------------------------
+
+ENV PROXY_ENABLED="false" \
+    PROXY_SERVER="" \
+    EXTENSION_PATH="/app/extensions/bypass-content" \
+    # Headless container defaults — these are required when running Chrome
+    # inside a Docker container with no X server, no D-Bus, and no GPU.
+    # Users typically don't need to override EXTRA_CHROME_FLAGS.
+    EXTRA_CHROME_FLAGS="--no-sandbox --headless=new --disable-dev-shm-usage --disable-gpu"
+
+# Entry point assembles the cloakserve command line from the env vars above.
+ENTRYPOINT ["sh", "-c", "\
+    set -eux; \
+    FLAGS=\"\"; \
+    if [ -n \"${EXTENSION_PATH}\" ]; then \
+        FLAGS=\"--load-extension=${EXTENSION_PATH} --disable-extensions-except=${EXTENSION_PATH}\"; \
+    fi; \
+    if [ \"${PROXY_ENABLED}\" = \"true\" ] && [ -n \"${PROXY_SERVER}\" ]; then \
+        FLAGS=\"${FLAGS} --proxy-server=${PROXY_SERVER}\"; \
+    fi; \
+    if [ -n \"${EXTRA_CHROME_FLAGS}\" ]; then \
+        FLAGS=\"${FLAGS} ${EXTRA_CHROME_FLAGS}\"; \
+    fi; \
+    echo \"Starting cloakserve with flags: ${FLAGS}\"; \
+    exec cloakserve ${FLAGS} \
+"]
