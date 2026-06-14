@@ -1,0 +1,71 @@
+# =============================================================================
+# Repo-wide .dockerignore.
+#
+# The CloakBrowser Dockerfile (infra/cloakbrowser/Dockerfile) does not COPY
+# anything from the build context — the bypass-paywalls extension is downloaded
+# at build time via curl. So the build context can be empty / ignored.
+#
+# The other Dockerfiles in this repo (Dockerfile.server, Dockerfile.playground)
+# only COPY Go source / package.json. Each of those builds is gated by their
+# own multi-stage setup and will work with the same root context.
+# =============================================================================
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# CI / editor / OS
+.github
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Build artifacts (each Dockerfile rebuilds inside its own stage)
+node_modules
+.next
+dist
+build
+out
+tmp
+bin
+*.log
+
+# Go build cache and vendor
+vendor
+**/*.test
+**/*.out
+
+# Python (we have a Python SDK + a few tools)
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Playground artifacts
+playground/.next
+playground/node_modules
+playground/out
+
+# Docs / planning
+*.md
+!infra/**/*.md
+internal.md
+
+# Infra files that are not build inputs
+infra/**/*.md
+browser_configs
+
+# Quickcrawl runtime config that shouldn't be baked into any image
+quickcrawl.toml
+.env
+.env.*
+
+# Worktrees, benches, scratch
+tmp
+bench
