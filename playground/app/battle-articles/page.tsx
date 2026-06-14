@@ -180,6 +180,7 @@ interface ArticleResult {
     charCount: number
     timeMs: number
     markdown?: string
+    html?: string
     error?: string
   }
 }
@@ -219,7 +220,7 @@ async function scrapeWithQuickCrawl(url: string, renderJs: boolean = true, ttl: 
   }
 }
 
-async function scrapeWithTinyFish(url: string): Promise<{ charCount: number; timeMs: number; success: boolean; markdown?: string; error?: string }> {
+async function scrapeWithTinyFish(url: string): Promise<{ charCount: number; timeMs: number; success: boolean; markdown?: string; html?: string; error?: string }> {
   const apiKey = process.env.NEXT_PUBLIC_TINY_FISH_API_KEY
   const startTime = Date.now()
 
@@ -227,26 +228,51 @@ async function scrapeWithTinyFish(url: string): Promise<{ charCount: number; tim
     return { charCount: 0, timeMs: Date.now() - startTime, success: false, error: "TINY_FISH_API_KEY not configured" }
   }
 
+  const fetchOptions = {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKey,
+      "Content-Type": "application/json",
+    },
+  }
+
   try {
-    const response = await fetch("https://api.fetch.tinyfish.ai", {
-      method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-        "Content-Type": "application/json",
-      },
+    let markdown = ""
+    let html = ""
+
+    const mdResponse = await fetch("https://api.fetch.tinyfish.ai", {
+      ...fetchOptions,
       body: JSON.stringify({ urls: [url], format: "markdown", ttl: 0 }),
     })
 
-    const timeMs = Date.now() - startTime
-    const data = await response.json()
-    const result = data.results?.[0]
-
-    if (!response.ok || !result || result.error) {
-      return { charCount: 0, timeMs, success: false, error: result?.error || "No content" }
+    if (mdResponse.ok) {
+      const mdData = await mdResponse.json()
+      const mdResult = mdData.results?.[0]
+      if (mdResult && !mdResult.error) {
+        markdown = mdResult.text || ""
+      }
     }
 
-    const markdown = result.text || ""
-    return { charCount: markdown.length, timeMs, success: true, markdown }
+    const htmlResponse = await fetch("https://api.fetch.tinyfish.ai", {
+      ...fetchOptions,
+      body: JSON.stringify({ urls: [url], format: "html", ttl: 0 }),
+    })
+
+    if (htmlResponse.ok) {
+      const htmlData = await htmlResponse.json()
+      const htmlResult = htmlData.results?.[0]
+      if (htmlResult && !htmlResult.error) {
+        html = htmlResult.text || ""
+      }
+    }
+
+    const timeMs = Date.now() - startTime
+
+    if (!markdown && !html) {
+      return { charCount: 0, timeMs, success: false, error: "No content returned from TinyFish" }
+    }
+
+    return { charCount: markdown.length, timeMs, success: true, markdown, html }
   } catch (error) {
     return {
       charCount: 0,
@@ -797,7 +823,7 @@ export default function BattleArticlesPage() {
                           charCount={selectedResult.tinyfish.charCount}
                           success={selectedResult.tinyfish.success}
                           timeMs={selectedResult.tinyfish.timeMs}
-                          html={undefined}
+                          html={selectedResult.tinyfish.html}
                           markdown={selectedResult.tinyfish.markdown}
                         />
                       </div>
@@ -823,7 +849,7 @@ export default function BattleArticlesPage() {
                           charCount={selectedResult.tinyfish.charCount}
                           success={selectedResult.tinyfish.success}
                           timeMs={selectedResult.tinyfish.timeMs}
-                          html={undefined}
+                          html={selectedResult.tinyfish.html}
                           markdown={selectedResult.tinyfish.markdown}
                         />
                       </div>
