@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"strings"
 
 	"github.com/MabudAlam/quickcrawl/internal/extractor"
@@ -14,67 +13,31 @@ func NewExtractor() *Extractor {
 	return &Extractor{}
 }
 
-type ExtractOptions struct {
-	RawHTML      string
-	RawBytes     []byte
-	SourceURL    string
-	StatusCode   int
-	RenderedMode *string
-	Formats      []types.OutputFormat
-	IncludeTags  []string
-	ExcludeTags  []string
-	CSSSelector  *string
-}
-
-type ScrapeData struct {
-	Markdown   *string         `json:"markdown,omitempty"`
-	HTML       *string         `json:"html,omitempty"`
-	RawHTML    *string         `json:"rawHtml,omitempty"`
-	PlainText  *string         `json:"plainText,omitempty"`
-	Links      []string        `json:"links,omitempty"`
-	ImageLinks []string        `json:"imageLinks,omitempty"`
-	JSON       json.RawMessage `json:"json,omitempty"`
-	Warning    *string         `json:"warning,omitempty"`
-	Metadata   PageMetadata    `json:"metadata"`
-}
-
-type PageMetadata struct {
-	Title         *string `json:"title,omitempty"`
-	Description   *string `json:"description,omitempty"`
-	OGTitle       *string `json:"ogpTitle,omitempty"`
-	OGDescription *string `json:"ogpDescription,omitempty"`
-	OGImage       *string `json:"ogpImage,omitempty"`
-	CanonicalURL  *string `json:"canonicalUrl,omitempty"`
-	SourceURL     string  `json:"sourceURL"`
-	Language      *string `json:"language,omitempty"`
-	StatusCode    uint16  `json:"statusCode"`
-	RenderedMode  *string `json:"renderedMode,omitempty"`
-}
-
-func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
+func (e *Extractor) Extract(opts extractor.ExtractOptions) *types.ScrapeData {
 	internalOpts := extractor.ExtractOptions{
-		RawHTML:      opts.RawHTML,
-		RawBytes:     opts.RawBytes,
-		SourceURL:    opts.SourceURL,
-		StatusCode:   opts.StatusCode,
-		RenderedMode: opts.RenderedMode,
-		Formats:      opts.Formats,
-		IncludeTags:  opts.IncludeTags,
-		ExcludeTags:  opts.ExcludeTags,
-		CSSSelector:  opts.CSSSelector,
+		RawHTML:       opts.RawHTML,
+		RawBytes:      opts.RawBytes,
+		SourceURL:     opts.SourceURL,
+		StatusCode:    opts.StatusCode,
+		RenderedMode:  opts.RenderedMode,
+		Formats:       opts.Formats,
+		IncludeTags:   opts.IncludeTags,
+		ExcludeTags:   opts.ExcludeTags,
+		CSSSelector:   opts.CSSSelector,
+		ExtractorType: extractor.ExtractorTrafilatura,
 	}
 
 	data := extractor.Extract(internalOpts)
 	if data == nil {
-		return &ScrapeData{
-			Metadata: PageMetadata{
+		return &types.ScrapeData{
+			Metadata: types.PageMetadata{
 				SourceURL:  opts.SourceURL,
 				StatusCode: uint16(opts.StatusCode),
 			},
 		}
 	}
 
-	return &ScrapeData{
+	return &types.ScrapeData{
 		Markdown:   data.Markdown,
 		HTML:       data.HTML,
 		RawHTML:    data.RawHTML,
@@ -83,7 +46,7 @@ func (e *Extractor) Extract(opts ExtractOptions) *ScrapeData {
 		ImageLinks: data.ImageLinks,
 		JSON:       data.JSON,
 		Warning:    data.Warning,
-		Metadata: PageMetadata{
+		Metadata: types.PageMetadata{
 			Title:         data.Metadata.Title,
 			Description:   data.Metadata.Description,
 			OGTitle:       data.Metadata.OGTitle,
