@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/common"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -46,7 +45,7 @@ func RunCrawl(opts CrawlOptions) {
 		}
 	}
 
-	parsed, err := common.ValidateURL(opts.Req.URL)
+	parsed, err := utils.ValidateURL(opts.Req.URL)
 	if err != nil || parsed == nil {
 		emitCrawlFailure(opts.ID, opts.StateCh, "Only http/https URLs are allowed")
 		return
@@ -95,7 +94,7 @@ func RunCrawl(opts CrawlOptions) {
 				break
 			}
 
-			parsedItem, parseErr := common.ValidateURL(item.url)
+			parsedItem, parseErr := utils.ValidateURL(item.url)
 			if parseErr != nil || parsedItem == nil {
 				continue
 			}
@@ -138,15 +137,16 @@ func RunCrawl(opts CrawlOptions) {
 				}
 
 				data := extractor.Extract(extractor.ExtractOptions{
-					RawHTML:        fetchResult.HTML,
-					RawBytes:       fetchResult.RawBytes,
-					SourceURL:      fetchResult.URL,
-					StatusCode:     int(fetchResult.StatusCode),
-					RenderedMode:   fetchResult.RenderedWith,
-					Formats:        opts.Req.Formats,
-					IncludeTags:    []string{},
-					ExcludeTags:    []string{},
-					CSSSelector:    nil,
+					RawHTML:       fetchResult.HTML,
+					RawBytes:      fetchResult.RawBytes,
+					SourceURL:     fetchResult.URL,
+					StatusCode:    int(fetchResult.StatusCode),
+					RenderedMode:  fetchResult.RenderedWith,
+					Formats:       opts.Req.Formats,
+					IncludeTags:   []string{},
+					ExcludeTags:   []string{},
+					CSSSelector:   nil,
+					ExtractorType: extractor.ExtractorTrafilatura,
 				})
 
 				var links []string
@@ -197,7 +197,7 @@ func RunCrawl(opts CrawlOptions) {
 				if !isSafeURL(link) {
 					continue
 				}
-				linkParsed, linkErr := common.ValidateURL(link)
+				linkParsed, linkErr := utils.ValidateURL(link)
 				if linkErr != nil || linkParsed == nil {
 					continue
 				}
@@ -269,7 +269,7 @@ func convertCoreCrawlError(e *core.QuickCrawlError) *types.QuickCrawlError {
 // It does NOT scrape content - only collects URLs for later crawling.
 // If ctx is provided and has a deadline, the operation will respect that timeout.
 func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *types.QuickCrawlError) {
-	parsed, err := common.ValidateURL(baseURL)
+	parsed, err := utils.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
 		return nil, types.ErrInvalidRequest.New("Only http/https URLs are allowed")
 	}
@@ -362,7 +362,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 
 				// Check robots.txt before fetching
 				if respectRobots && robots != nil {
-					parsedLink, parseErr := common.ValidateURL(item.url)
+					parsedLink, parseErr := utils.ValidateURL(item.url)
 					if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
 						resultsCh <- nil
 						return
@@ -399,7 +399,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 				if !isSafeURL(link) {
 					continue
 				}
-				linkParsed, linkErr := common.ValidateURL(link)
+				linkParsed, linkErr := utils.ValidateURL(link)
 				if linkErr != nil || linkParsed == nil {
 					continue
 				}

@@ -351,7 +351,7 @@ func truncate(s string, n int) string {
 // /v1/scrape precedence (extract.* is preferred, then top-level fallbacks).
 // It also mutates llm.ExtractionPrompt / llm.ResponseFormat when an override
 // is provided, so callers can pass the result straight to the extractor.
-func resolveLLMInputs(req *ScrapeRequest, llm *types.LLMConfig) (json.RawMessage, *types.LLMConfig) {
+func resolveLLMInputs(req *types.ScrapeRequest, llm *types.LLMConfig) (json.RawMessage, *types.LLMConfig) {
 	schema := req.JSONSchema
 	if schema == nil && req.Extract != nil {
 		s := req.Extract.Schema
