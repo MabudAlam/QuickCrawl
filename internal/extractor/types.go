@@ -7,6 +7,15 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
+// ExtractorType defines which content extraction algorithm to use.
+type ExtractorType string
+
+const (
+	ExtractorTrafilatura ExtractorType = "trafilatura" // trafilatura with readability fallback (default)
+	ExtractorReadability ExtractorType = "readability" // readability only
+	ExtractorLegacy      ExtractorType = "legacy"      // goquery-based heuristics
+)
+
 // ExtractOptions contains all parameters for content extraction.
 // All fields are optional except RawHTML or RawBytes must be provided.
 type ExtractOptions struct {
@@ -37,10 +46,11 @@ type ExtractOptions struct {
 	// CSSSelector extracts content from elements matching this selector
 	CSSSelector *string
 
-	// ExtractorVersion selects which extraction pipeline to use.
-	// "legacy" uses the goquery-based extraction from html_legacy.go.
-	// "default" or empty uses the readability-based extraction from html.go.
-	ExtractorVersion string
+	// ExtractorType selects which extraction pipeline to use.
+	// trafilatura (default) - trafilatura with readability fallback
+	// readability - readability only
+	// legacy - goquery-based heuristics
+	ExtractorType ExtractorType
 }
 
 // ExtractedMetadata contains page metadata extracted from HTML.
