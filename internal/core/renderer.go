@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/chromedp/chromedp"
@@ -21,7 +20,7 @@ import (
 // HTTP fetching is delegated to the shared *renderer.HTTPFetcher to avoid
 // duplicating the same logic. Browser (chromedp) code lives in this package.
 type Renderer struct {
-	http        *renderer.HTTPFetcher // Shared HTTP fetcher from internal/renderer
+	http        *HTTPFetcher // Shared HTTP fetcher
 	cfg         BrowserConfig         // Browser configuration (timeout, WS URL, etc.)
 	pool        *hostPool             // Per-host concurrency limiter
 	allocCtx    context.Context       // Parent context for the RemoteAllocator
@@ -97,9 +96,9 @@ func (p *hostPool) Acquire(host string) func() {
 // WebSocket endpoint using chromedp's RemoteAllocator. This allows
 // reusing a persistent Chrome instance rather than spawning one per request.
 //
-// The caller passes in a shared *renderer.HTTPFetcher so the HTTP code path
+// The caller passes in a shared *HTTPFetcher so the HTTP code path
 // is identical to /v1/scrape — no duplicated logic.
-func NewRenderer(cfg Config, httpFetcher *renderer.HTTPFetcher) (*Renderer, *QuickCrawlError) {
+func NewRenderer(cfg Config, httpFetcher *HTTPFetcher) (*Renderer, *QuickCrawlError) {
 	var allocCtx context.Context
 	var allocCancel context.CancelFunc
 
