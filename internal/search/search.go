@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
 // Request is the unified input for the search pipeline used by the
@@ -191,6 +192,17 @@ func sortByBM25(results []Result) {
 	}
 }
 
+func convertFormats(formats []string) []types.OutputFormat {
+	if len(formats) == 0 {
+		return nil
+	}
+	out := make([]types.OutputFormat, len(formats))
+	for i, f := range formats {
+		out[i] = types.OutputFormat(f)
+	}
+	return out
+}
+
 // scrapeAll fetches each result URL in parallel.
 // On error the result still appears in the output, just without scraped content.
 func scrapeAll(
@@ -227,9 +239,9 @@ func scrapeAll(
 			reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
 
-			data, err := scraper.Scrape(reqCtx, &core.ScrapeRequest{
+			data, err := scraper.Scrape(reqCtx, &types.ScrapeRequest{
 				URL:      results[idx].URL,
-				Formats:  formats,
+				Formats:  convertFormats(formats),
 				RenderJS: renderJS,
 			})
 			if err != nil || data == nil {
