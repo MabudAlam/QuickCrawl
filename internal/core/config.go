@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/renderer"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
@@ -114,7 +113,7 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*Scraper,
 		stealthProfile = &profile
 	}
 
-	httpFetcher := renderer.NewHTTPFetcher(cfg.Crawler.UserAgent, stealthProfile)
+	httpFetcher := NewHTTPFetcher(cfg.Crawler.UserAgent, stealthProfile)
 	return NewScraper(coreCfg, httpFetcher, llm)
 }
 
