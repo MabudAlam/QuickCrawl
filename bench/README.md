@@ -1,6 +1,6 @@
 # QuickCrawl Scrape-Evals Benchmark
 
-Tests QuickCrawl against Firecrawl's [scrape-content-dataset-v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1) — 1000 real URLs with ground-truth content and noise annotations.
+Evaluates QuickCrawl's scrape quality against a dataset of real URLs with ground-truth content and noise annotations.
 
 ## What It Measures
 
@@ -9,7 +9,7 @@ Tests QuickCrawl against Firecrawl's [scrape-content-dataset-v1](https://hugging
 | **Coverage** | Success rate of scrape calls (HTTP 2xx with markdown) |
 | **Latency** | avg / P50 / P95 / P99 for successful requests |
 | **Truth recall** | % of expected content phrases (≥20 chars) found in the output |
-| **Noise rejection** | % of successful scrapes that do NOT leak the annotated "lie" text |
+| **Noise rejection** | % of successful scrapes that do NOT leak annotated "lie" text |
 
 ## Setup
 
@@ -26,7 +26,7 @@ uv sync                    # creates .venv and installs deps
 
 ## Dataset Caching
 
-The HuggingFace dataset is downloaded once and cached in `bench/dataset_cache/`. Subsequent runs reuse the cache — no network round-trip.
+The dataset is downloaded once and cached in `bench/dataset_cache/`. Subsequent runs reuse the cache.
 
 - First run: `Downloading dataset to .../bench/dataset_cache (one-time, ~ a few MB)...`
 - Later runs: `Loading dataset from local cache: .../bench/dataset_cache`
@@ -85,9 +85,9 @@ Both files include a `date_time_ist` field with the full ISO-8601 timestamp incl
 The filename timestamp uses `-` instead of `:` to keep the file portable across filesystems (Windows, FAT, etc.).
 
 ```
-================================================================
+================================
 RESULTS
-================================================================
+================================
 
 📊 Coverage:
   Total URLs:      1000
