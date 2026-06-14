@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	htmldec "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/JohannesKaufmann/html-to-markdown/v2"
 )
 
 // Post-processing regexes for markdown artifact cleanup.
@@ -37,8 +37,7 @@ var (
 // data URI images, and all markdown images (since images are extracted
 // separately via ExtractImageURLs).
 func HTMLToMarkdown(html string) string {
-	converter := htmldec.NewConverter("", true, nil)
-	md, err := converter.ConvertString(html)
+	md, err := htmltomarkdown.ConvertString(html)
 	if err != nil {
 		return ""
 	}
