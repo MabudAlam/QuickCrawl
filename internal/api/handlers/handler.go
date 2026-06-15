@@ -119,7 +119,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		if ttl != nil && *ttl > 0 {
 			effectiveTTL = *ttl
 		}
-		if cachedData, found, _ := h.State.Cache.Get(ctx, req.URL, normalizedFormats, req.RenderJS, effectiveTTL); found {
+		if cachedData, found, _ := h.State.Cache.Get(ctx, req.URL, normalizedFormats, req.RenderMode, effectiveTTL); found {
 			var data types.ScrapeData
 			if err := json.Unmarshal(cachedData, &data); err == nil {
 				c.JSON(http.StatusOK, types.APIResponse[types.ScrapeData]{
@@ -181,7 +181,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		if ttl == nil || *ttl > 0 {
 			normalizedFormats := cache.NormalizeFormats(formatsToStrings(req.Formats))
 			if dataBytes, err := json.Marshal(data); err == nil {
-				_ = h.State.Cache.Set(ctx, req.URL, normalizedFormats, req.RenderJS, dataBytes)
+				_ = h.State.Cache.Set(ctx, req.URL, normalizedFormats, req.RenderMode, dataBytes)
 			}
 		}
 	}
@@ -449,9 +449,9 @@ func (h *Handler) Search(c *gin.Context) {
 			Title:   h.State.Config.Search.BM25FTitleWeight,
 			Snippet: h.State.Config.Search.BM25FSnippetWeight,
 		},
-		Scrape:   req.Scrape,
-		Formats:  formats,
-		RenderJS: req.RenderJS,
+		Scrape:     req.Scrape,
+		Formats:    formats,
+		RenderMode: req.RenderMode,
 	})
 	if err != nil {
 		utils.Log.Error("search service failed", "error", err)

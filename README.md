@@ -109,10 +109,12 @@ Add Quickcrawl to your OpenCode configuration:
 
 ### Configuration
 
-Renderer selection in MCP:
-- Set `renderJs: true` to use the configured Chrome browser (chromedp) for the request
-- Set `renderJs: false` (default) to use the plain HTTP fetcher
-- When `[renderer.chrome].ws_url` is unset in `quickcrawl.toml`, MCP auto-launches a local LightPanda and uses its CDP endpoint. The launched process is killed on MCP shutdown.
+Renderer selection in MCP (per-request override of the server default):
+- `"renderMode": "browser"` — force the configured Chrome browser (chromedp) for the request
+- `"renderMode": "http"` — use the plain HTTP fetcher only
+- `"renderMode": "auto"` — HTTP first, escalate to browser on anti-bot / SPA signals
+- Omit `renderMode` to inherit the server-wide `render_mode` from `quickcrawl.toml` (default: `auto`)
+- When `[renderer.chrome].ws_url` is unset in `quickcrawl.toml` and the effective mode needs a browser, MCP auto-launches a local LightPanda and uses its CDP endpoint. The launched process is killed on MCP shutdown.
 
 Example MCP tool arguments:
 
@@ -120,7 +122,7 @@ Example MCP tool arguments:
 {
   "url": "https://www.notion.so/",
   "formats": ["markdown"],
-  "renderJs": true
+  "renderMode": "browser"
 }
 ```
 
@@ -261,10 +263,10 @@ Request
      ↓
 *core.Scraper  (single render path; chromedp + shared HTTPFetcher)
      ↓
-     ├── renderJs=false → renderer.HTTPFetcher  (plain HTTP GET, no JS)
+     ├── renderMode=http/auto (HTTP) → renderer.HTTPFetcher  (plain HTTP GET, no JS)
      │
-     └── renderJs=true  → chromedp RemoteAllocator → persistent Chrome
-                          (JS rendered, anti-bot stealth, SPA readiness poll)
+     └── renderMode=browser           → chromedp RemoteAllocator → persistent Chrome
+                                       (JS rendered, anti-bot stealth, SPA readiness poll)
 ```
 
 Both `cli` and `mcp` entry points auto-launch a local LightPanda when no
@@ -287,21 +289,21 @@ handlers.Scrape()                       [internal/api/handlers/handler.go:64]
     │
     ▼
 core.Scraper.Scrape()                  [internal/core/scraper.go:69]
-    │  • resolveRenderJS()   — request override, defaults to false
+    │  • resolveRenderMode()   — request override, defaults to inheriting server render_mode
     │  • resolveWaitMs()     — request override, defaults to 0
     │  • resolveFormats()    — string→types.OutputFormat conversion
     │
     ▼
 core.Renderer.FetchOrchestrator()      [internal/core/renderer.go:213]
     │
-    ├── (renderJs=false) ── HTTP path ──────────────────┐
+    ├── (renderMode=auto/http) ── HTTP path ────────────┐
     │                                                    │
     │                                     renderer.HTTPFetcher.Fetch()
     │                                     [internal/renderer/http.go]
     │                                     • HTTP GET with stealth headers
     │                                     • Returns FetchResult{HTML, StatusCode}
     │
-    └── (renderJs=true)  ── CDP path ───────────────────┐
+    └── (renderMode=browser) ── CDP path ───────────────┐
                                                       ▼
 core.Renderer.fetchWithCDPBrowser()   [internal/core/renderer.go:334]
     │  • Acquire per-host concurrency slot
@@ -399,7 +401,7 @@ content filters, and LLM-based structured extraction.
 |-------|------|----------|-------------|
 | `url` | string | yes | Absolute `http://` or `https://` URL to scrape |
 | `formats` | string[] | no | Output formats. One or more of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json`. Defaults to `["markdown"]` |
-| `renderJs` | bool | no | When `true`, fetch the page through a headless Chrome (chromedp). When `false` (default), use plain HTTP via the shared `*renderer.HTTPFetcher` |
+| `renderMode` | string | no | Per-request override. One of `"auto"`, `"browser"`, `"http"`. Omit to inherit the server-wide `render_mode` from `quickcrawl.toml` (default: `auto`). |
 | `waitFor` | int | no | Milliseconds to wait after navigation for late content / XHRs. `0` = use the SPA-readiness poll (default) |
 | `headers` | object | no | Custom HTTP headers sent on the fetch |
 | `includeTags` | string[] | no | CSS selectors to keep (e.g. `["article", "h1"]`) — applied during `preprocessHTML` |
@@ -425,7 +427,7 @@ content filters, and LLM-based structured extraction.
 {
   "url": "https://example.com/article",
   "formats": ["markdown", "html", "links"],
-  "renderJs": true,
+  "renderMode": "browser",
   "waitFor": 2000,
   "headers": { "Cookie": "session=abc" },
   "includeTags": ["article", "h1", "h2", "p"],
@@ -513,7 +515,7 @@ a job ID immediately, and you poll `GET /v1/crawl/:id` for progress and results.
 | `maxDepth` | int | no | Maximum link depth to follow. `0-10`. Defaults to `crawler.default_max_depth` (TOML) |
 | `maxPages` | int | no | Maximum pages to scrape. `1-1000`. Defaults to `crawler.default_max_pages` (TOML) |
 | `formats` | string[] | no | Output formats per page. Any subset of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`. **Note:** `"json"` is rejected with 400 — use `/v1/scrape` for LLM extraction |
-| `renderJs` | bool | no | Force JS rendering on every page (chromedp path) |
+| `renderMode` | string | no | Per-request override. One of `"auto"`, `"browser"`, `"http"`. Omit to inherit the server-wide `render_mode` from `quickcrawl.toml` (default: `auto`). |
 | `waitFor` | int | no | Milliseconds to wait after each navigation |
 | `browser` | string | no | **Deprecated.** Accepted for backward-compat; ignored. |
 
@@ -525,7 +527,7 @@ a job ID immediately, and you poll `GET /v1/crawl/:id` for progress and results.
   "maxDepth": 2,
   "maxPages": 50,
   "formats": ["markdown", "links"],
-  "renderJs": false
+  "renderMode": "http"
 }
 ```
 

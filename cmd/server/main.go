@@ -12,7 +12,7 @@ import (
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
-	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
@@ -30,7 +30,7 @@ func main() {
 	// This is the single bootstrap that wires together the HTTP fetcher,
 	// the chromedp-based renderer, and the LLM extractor — and is the
 	// single render path used by /v1/scrape, /v1/crawl, /v1/map, and /v1/search.
-	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	scraper, scrapeErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if scrapeErr != nil {
 		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
 		os.Exit(1)

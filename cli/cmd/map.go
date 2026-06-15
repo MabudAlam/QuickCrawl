@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
@@ -70,7 +70,7 @@ func runMap(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	scraper, qErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if qErr != nil {
 		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}

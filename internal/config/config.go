@@ -1,16 +1,26 @@
-// Package config handles application configuration from files and environment variables.
+// Package config is the single source of truth for application
+// configuration. It loads the operator-facing *types.AppConfig from
+// TOML files and environment variables, and it builds the internal
+// *core.Config / *core.Scraper from that AppConfig. Anything that
+// needs "given a server config, give me a working scraper" calls
+// NewScraperFromConfig here rather than re-implementing the
+// translation in a separate package.
 package config
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // LoadAppConfig loads the application configuration.
@@ -39,7 +49,9 @@ func LoadAppConfigFromPath(configFile string) (*types.AppConfig, error) {
 		return nil, err
 	}
 
-	applyEnvOverrides(cfg)
+	if err := applyEnvOverrides(cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -62,8 +74,10 @@ func decodeConfigFile(cfg *types.AppConfig, path string, required bool) error {
 }
 
 // applyEnvOverrides applies environment variable overrides to the config.
-// Uses the format: <SECTION>__<KEY> (double underscore).
-func applyEnvOverrides(cfg *types.AppConfig) {
+// Uses the format: <SECTION>__<KEY> (double underscore). Returns an
+// error if any env value is present but unparseable (e.g. an invalid
+// RENDERER__RENDER_MODE) so the process fails fast at startup.
+func applyEnvOverrides(cfg *types.AppConfig) error {
 	// Server configuration
 	if v := envString("SERVER__HOST"); v != "" {
 		cfg.Server.Host = v
@@ -86,7 +100,11 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 		cfg.Renderer.PoolSize = *v
 	}
 	if v := envString("RENDERER__RENDER_MODE"); v != "" {
-		cfg.Renderer.RenderMode = v
+		mode, parseErr := types.ParseRenderMode(v)
+		if parseErr != nil {
+			return fmt.Errorf("RENDERER__RENDER_MODE: %w", parseErr)
+		}
+		cfg.Renderer.RenderMode = mode
 	}
 	if v := envString("RENDERER__BROWSER"); v != "" {
 		cfg.Renderer.Browser = v
@@ -134,9 +152,7 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envString("CRAWLER__STEALTH__STRATEGY"); v != "" {
 		cfg.Crawler.Stealth.Strategy = v
 	}
-	if v := envInt64("CRAWLER__STEALTH__NAV_BUDGET_MS"); v != nil {
-		cfg.Crawler.Stealth.NavBudgetMs = *v
-	}
+	
 
 	// Extraction configuration
 	if cfg.Extraction.LLM == nil {
@@ -185,6 +201,8 @@ func applyEnvOverrides(cfg *types.AppConfig) {
 	if v := envInt64("CACHE__TTL_DEFAULT_SECS"); v != nil {
 		cfg.Cache.TTLDefaultSecs = *v
 	}
+
+	return nil
 }
 
 // envString reads an environment variable and trims whitespace.
@@ -310,4 +328,139 @@ func envFloat64(key string) *float64 {
 // ptr returns a pointer to a value.
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// =============================================================================
+// Scraper configuration
+//
+// The types Config, BrowserConfig, PoolConfig live in internal/types
+// (alongside the operator-facing AppConfig they are projected from)
+// to avoid an import cycle: internal/core imports internal/config to
+// build its scraper, and internal/config imports internal/core for
+// the scraper primitives it needs (NewScraper, GetCDPURL, etc.).
+// Putting the types in a third package both can import breaks the
+// cycle. The constructor NewScraperFromConfig lives here — it is the
+// "given a server config, give me a working scraper" entry point and
+// is the only place the AppConfig → types.Config projection happens.
+//
+// CDP URL helpers — GetCDPURL, wsURLToHTTPBase, isBrowserlessDirectWS,
+// discoverCloakBrowserWSURL, VersionResponse — remain in internal/core
+// (file: cdp.go) because they are pure URL manipulation utilities,
+// not configuration.
+// =============================================================================
+
+// NewScraperFromConfig is the single source of truth for "given a
+// server config, give me a working scraper". It is used by the HTTP
+// server, the MCP server, and the CLI.
+//
+// The translation is:
+//   - cfg.Renderer.Chrome.WSURL is honoured (auto-discovered via
+//     core.GetCDPURL when possible).
+//   - cfg.Renderer.RenderMode becomes types.BrowserConfig.Mode. Empty
+//     string preserves the default (RenderModeAuto). Invalid values
+//     fail fast.
+//   - cfg.Renderer.Browser ("cloak", "browserless", "lightpanda")
+//     becomes types.BrowserConfig.BrowserType.
+//   - cfg.Renderer.PoolSize / PageTimeoutMs override the defaults.
+//   - cfg.Crawler.Stealth.Enabled / InjectHeaders / Strategy feed
+//     into the HTTP fetcher's stealth header profile.
+//   - cfg.Renderer.Chrome.ChromeArgs are appended to the WSURL only
+//     when Browser == "browserless" (other backends don't need the
+//     ?launch= encoding).
+func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*core.Scraper, *core.QuickCrawlError) {
+	if cfg == nil {
+		cfg = &types.AppConfig{}
+	}
+	cfg.Defaults()
+
+	scraperCfg := types.DefaultScraperConfig()
+	switch {
+	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "":
+		configuredWS := strings.TrimSpace(cfg.Renderer.Chrome.WSURL)
+		wsURL, err := core.GetCDPURL(configuredWS)
+		if err != nil {
+			scraperCfg.Browser.WSURL = configuredWS
+		} else {
+			scraperCfg.Browser.WSURL = wsURL
+		}
+	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) == "":
+		scraperCfg.Browser.WSURL = ""
+	}
+	if cfg.Renderer.PoolSize > 0 {
+		scraperCfg.Browser.PoolSize = cfg.Renderer.PoolSize
+	}
+	if cfg.Renderer.PageTimeoutMs > 0 {
+		scraperCfg.Browser.PageTimeout = time.Duration(cfg.Renderer.PageTimeoutMs) * time.Millisecond
+	}
+	scraperCfg.Browser.StealthEnabled = cfg.Crawler.Stealth.Enabled
+	scraperCfg.Browser.BrowserType = cfg.Renderer.Browser
+
+	// render_mode is the source of truth for fetch strategy:
+	//   "auto"    → HTTP first, escalate to browser on anti-bot/SPA signals (default)
+	//   "browser" → always go through the browser, never HTTP-only
+	//   "http"    → HTTP only, never touch the browser
+	// An empty string (TOML not set, no env override) preserves the
+	// default (RenderModeAuto). Invalid values fail fast.
+	if cfg.Renderer.RenderMode == "" {
+		// keep scraperCfg.Browser.Mode = types.RenderModeAuto (from DefaultScraperConfig)
+	} else if cfg.Renderer.RenderMode.IsValid() {
+		scraperCfg.Browser.Mode = cfg.Renderer.RenderMode
+	} else {
+		return nil, core.ErrInvalidRequest.New(fmt.Sprintf("invalid render_mode %q: must be one of auto, browser, http", cfg.Renderer.RenderMode))
+	}
+
+	// Handle Chrome launch args for browserless.
+	// Chrome flags are passed via the launch JSON object, URL-encoded.
+	// Example: ?launch=%7B%22args%22%3A%5B...%5D%7D
+	// Only encode for browserless; cloak and lightpanda don't need this encoding.
+	if cfg.Renderer.Chrome != nil && len(cfg.Renderer.Chrome.ChromeArgs) > 0 {
+		scraperCfg.Browser.ChromeArgs = cfg.Renderer.Chrome.ChromeArgs
+		// Only encode chrome args for browserless
+		if cfg.Renderer.Browser == "browserless" {
+			scraperCfg.Browser.WSURL = encodeChromeArgsForBrowserless(scraperCfg.Browser.WSURL, cfg.Renderer.Chrome.ChromeArgs)
+		}
+	}
+
+	var stealthProfile *utils.HeaderProfile
+	if cfg.Crawler.Stealth.Enabled && cfg.Crawler.Stealth.InjectHeaders {
+		profile := utils.GetHeaderProfile(utils.HeaderStrategy(cfg.Crawler.Stealth.Strategy))
+		stealthProfile = &profile
+	}
+
+	httpFetcher := core.NewHTTPFetcher(cfg.Crawler.UserAgent, stealthProfile)
+	return core.NewScraper(scraperCfg, httpFetcher, llm)
+}
+
+// encodeChromeArgsForBrowserless encodes Chrome launch args into the
+// browserless WebSocket URL. browserless v2 accepts Chrome flags via
+// the launch JSON object:
+//
+//	wss://host/chromium?token=TOKEN&launch=<url_encoded_json>
+//
+// The launch JSON format: {"args":["--flag1","--flag2",...]}.
+//
+// This is a small, pure URL helper — it lives here next to the only
+// caller. The other CDP URL helpers (GetCDPURL, wsURLToHTTPBase,
+// isBrowserlessDirectWS, discoverCloakBrowserWSURL, VersionResponse)
+// remain in internal/core because they are general-purpose URL
+// utilities, not configuration-translation logic.
+func encodeChromeArgsForBrowserless(wsURL string, args []string) string {
+	if len(args) == 0 {
+		return wsURL
+	}
+	launchJSON, err := json.Marshal(map[string]any{"args": args})
+	if err != nil {
+		return wsURL
+	}
+	encoded := url.QueryEscape(string(launchJSON))
+	parsed, err := url.Parse(wsURL)
+	if err != nil {
+		return wsURL
+	}
+	newQuery := parsed.RawQuery
+	if newQuery != "" {
+		newQuery += "&"
+	}
+	newQuery += "launch=" + encoded
+	return parsed.Scheme + "://" + parsed.Host + parsed.Path + "?" + newQuery
 }

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
@@ -79,18 +79,14 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		maxPages = 1000
 	}
 
-	var renderJS *bool
-	switch crawlFlags.renderMode {
-	case "auto":
-		renderJS = nil
-	case "http":
-		renderJSValue := false
-		renderJS = &renderJSValue
-	case "browser":
-		renderJSValue := true
-		renderJS = &renderJSValue
-	default:
-		return fmt.Errorf("invalid render mode: %s (must be auto, http, or browser)", crawlFlags.renderMode)
+	mode, err := types.ParseRenderMode(crawlFlags.renderMode)
+	if err != nil {
+		return fmt.Errorf("invalid --render-mode: %w", err)
+	}
+	var modePtr *types.RenderMode
+	if mode != "" {
+		m := mode
+		modePtr = &m
 	}
 
 	var waitFor *int64
@@ -99,12 +95,12 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	}
 
 	crawlReq := &types.CrawlRequest{
-		URL:      targetURL,
-		MaxDepth: &maxDepth,
-		MaxPages: &maxPages,
-		Formats:  formats,
-		RenderJS: renderJS,
-		WaitFor:  waitFor,
+		URL:        targetURL,
+		MaxDepth:   &maxDepth,
+		MaxPages:   &maxPages,
+		Formats:    formats,
+		RenderMode: modePtr,
+		WaitFor:    waitFor,
 	}
 	crawlReq.Defaults()
 
@@ -116,7 +112,7 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		defer teardown()
 	}
 
-	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	scraper, qErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if qErr != nil {
 		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}

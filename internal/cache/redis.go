@@ -20,7 +20,7 @@ import (
 
 const (
 	keyPrefix    = "qc:"
-	cacheVersion = "v2"
+	cacheVersion = "v3" // bumped: switched from renderMode *bool to renderMode *RenderMode
 )
 
 type RedisCache struct {
@@ -29,11 +29,11 @@ type RedisCache struct {
 }
 
 type cachedEntry struct {
-	CachedAt int64           `json:"cached_at"`
-	URL      string          `json:"url"`
-	Formats  string          `json:"formats"`
-	RenderJS string          `json:"render_js"`
-	Data     json.RawMessage `json:"data"`
+	CachedAt   int64           `json:"cached_at"`
+	URL        string          `json:"url"`
+	Formats    string          `json:"formats"`
+	RenderMode string          `json:"render_mode"`
+	Data       json.RawMessage `json:"data"`
 }
 
 func NewRedisCache(cfg types.CacheConfig) (*RedisCache, error) {
@@ -81,18 +81,14 @@ func (c *RedisCache) Enabled() bool {
 	return c.cfg.Enabled && c.client != nil
 }
 
-func (c *RedisCache) generateKey(url string, formats []string, renderJS *bool) string {
+func (c *RedisCache) generateKey(url string, formats []string, mode *types.RenderMode) string {
 	formatsStr := strings.Join(formats, ",")
-	renderJSStr := "nil"
-	if renderJS != nil {
-		if *renderJS {
-			renderJSStr = "true"
-		} else {
-			renderJSStr = "false"
-		}
+	modeStr := "unset"
+	if mode != nil && *mode != "" {
+		modeStr = string(*mode)
 	}
 
-	data := fmt.Sprintf("%s|%s|%s|%s", url, formatsStr, renderJSStr, cacheVersion)
+	data := fmt.Sprintf("%s|%s|%s|%s", url, formatsStr, modeStr, cacheVersion)
 	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%sscrape:%s", keyPrefix, hex.EncodeToString(hash[:]))
 }
@@ -122,12 +118,12 @@ func (c *RedisCache) decompress(data []byte) ([]byte, error) {
 	return io.ReadAll(decoder)
 }
 
-func (c *RedisCache) Get(ctx context.Context, url string, formats []string, renderJS *bool, ttl int64) (json.RawMessage, bool, error) {
+func (c *RedisCache) Get(ctx context.Context, url string, formats []string, mode *types.RenderMode, ttl int64) (json.RawMessage, bool, error) {
 	if !c.Enabled() {
 		return nil, false, nil
 	}
 
-	key := c.generateKey(url, formats, renderJS)
+	key := c.generateKey(url, formats, mode)
 
 	data, err := c.client.Get(ctx, key).Bytes()
 	if err == redis.Nil {
@@ -165,29 +161,25 @@ func (c *RedisCache) Get(ctx context.Context, url string, formats []string, rend
 	return entry.Data, true, nil
 }
 
-func (c *RedisCache) Set(ctx context.Context, url string, formats []string, renderJS *bool, data json.RawMessage) error {
+func (c *RedisCache) Set(ctx context.Context, url string, formats []string, mode *types.RenderMode, data json.RawMessage) error {
 	if !c.Enabled() {
 		return nil
 	}
 
-	key := c.generateKey(url, formats, renderJS)
+	key := c.generateKey(url, formats, mode)
 
 	formatsStr := strings.Join(formats, ",")
-	renderJSStr := "nil"
-	if renderJS != nil {
-		if *renderJS {
-			renderJSStr = "true"
-		} else {
-			renderJSStr = "false"
-		}
+	modeStr := "unset"
+	if mode != nil && *mode != "" {
+		modeStr = string(*mode)
 	}
 
 	entry := cachedEntry{
-		CachedAt:  time.Now().Unix(),
-		URL:       url,
-		Formats:   formatsStr,
-		RenderJS:  renderJSStr,
-		Data:      data,
+		CachedAt:   time.Now().Unix(),
+		URL:        url,
+		Formats:    formatsStr,
+		RenderMode: modeStr,
+		Data:       data,
 	}
 
 	encoded, err := json.Marshal(entry)
@@ -214,12 +206,12 @@ func (c *RedisCache) Set(ctx context.Context, url string, formats []string, rend
 	return nil
 }
 
-func (c *RedisCache) Delete(ctx context.Context, url string, formats []string, renderJS *bool) error {
+func (c *RedisCache) Delete(ctx context.Context, url string, formats []string, mode *types.RenderMode) error {
 	if !c.Enabled() {
 		return nil
 	}
 
-	key := c.generateKey(url, formats, renderJS)
+	key := c.generateKey(url, formats, mode)
 	return c.client.Del(ctx, key).Err()
 }
 

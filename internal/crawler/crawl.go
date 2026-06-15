@@ -122,14 +122,14 @@ func RunCrawl(opts CrawlOptions) {
 					headers = profile.ToMap()
 				}
 
-				renderJS := opts.Req.RenderJS
+				mode := opts.Req.RenderMode
 				waitMs := int64(0)
 				if opts.Req.WaitFor != nil {
 					waitMs = *opts.Req.WaitFor
 				}
 
 				fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, renderJS, waitMs, opts.Req.Browser)
+				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs, opts.Req.Browser)
 				cancel()
 				if fetchErr != nil {
 					resultsCh <- crawlPageResult{item: item, err: convertCoreCrawlError(fetchErr)}

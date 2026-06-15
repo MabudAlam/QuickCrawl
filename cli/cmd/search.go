@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/search"
+	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +39,7 @@ var searchFlags = struct {
 	region     string
 	safesearch string
 	timelimit  string
-	renderJS   bool
+	renderMode string
 	scrape     bool
 	useBM25    bool
 	workers    int
@@ -55,8 +57,8 @@ func init() {
 		"SafeSearch mode: moderate, strict, off")
 	searchCmd.Flags().StringVar(&searchFlags.timelimit, "timelimit", "",
 		"Time limit filter (d=day, w=week, m=month, y=year)")
-	searchCmd.Flags().BoolVar(&searchFlags.renderJS, "render-js", false,
-		"Render JavaScript when scraping result pages")
+	searchCmd.Flags().StringVar(&searchFlags.renderMode, "render-mode", "auto",
+		"Render mode for scraping each result: auto, browser, http")
 	searchCmd.Flags().BoolVar(&searchFlags.scrape, "scrape", false,
 		"Also scrape content from each result URL")
 	searchCmd.Flags().BoolVar(&searchFlags.useBM25, "use-bm25", false,
@@ -99,7 +101,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		if teardown != nil {
 			defer teardown()
 		}
-		s, err := core.NewScraperFromConfig(scraperCfg, scraperCfg.Extraction.LLM)
+		s, err := config.NewScraperFromConfig(scraperCfg, scraperCfg.Extraction.LLM)
 		if err != nil {
 			return fmt.Errorf("failed to initialize scraper: %w", err)
 		}
@@ -111,6 +113,16 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	formatStrs := formatsToStrings(formats)
 	if searchFlags.scrape && len(formatStrs) == 0 {
 		formatStrs = []string{"markdown"}
+	}
+
+	mode, modeErr := types.ParseRenderMode(searchFlags.renderMode)
+	if modeErr != nil {
+		return fmt.Errorf("invalid --render-mode: %w", modeErr)
+	}
+	var renderModePtr *types.RenderMode
+	if mode != "" {
+		m := mode
+		renderModePtr = &m
 	}
 
 	resp, err := search.Search(context.Background(), searxng, scraper, search.Request{
@@ -125,7 +137,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		},
 		Scrape:     searchFlags.scrape,
 		Formats:    formatStrs,
-		RenderJS:   &searchFlags.renderJS,
+		RenderMode: renderModePtr,
 		MaxWorkers: searchFlags.workers,
 	})
 	if err != nil {

@@ -1,7 +1,7 @@
 export interface ScrapeRequest {
   url: string;
   formats?: Format[];
-  renderJs?: boolean | null;
+  renderMode?: RenderMode | null;
   waitFor?: number;
   headers?: Record<string, string>;
   cssSelector?: string;
@@ -21,7 +21,7 @@ export interface CrawlRequest {
   maxDepth?: number;
   maxPages?: number;
   formats?: Format[];
-  renderJs?: boolean | null;
+  renderMode?: RenderMode | null;
   waitFor?: number;
   includeTags?: string[];
   excludeTags?: string[];
@@ -45,7 +45,7 @@ export interface SearchRequest {
   page?: number;
   timelimit?: string;
   use_bm25?: boolean;
-  renderJs?: boolean | null;
+  renderMode?: RenderMode | null;
   formats?: Format[];
   scrape?: boolean;
 }
@@ -78,6 +78,8 @@ export interface SearchResponse {
 }
 
 export type Format = "markdown" | "html" | "rawHtml" | "plainText" | "links" | "json" | "imageLinks";
+
+export type RenderMode = "auto" | "browser" | "http";
 
 export interface ScrapeData {
   markdown?: string;
@@ -150,7 +152,7 @@ export interface PlaygroundState {
 
 export interface ScrapeOptions {
   formats: Format[];
-  renderJs: boolean | null; // null = auto, true = always browser, false = always http
+  renderMode: RenderMode | null; // null = inherit server default, "auto"/"browser"/"http" override it
   waitFor: number;
   headers: string;
   cssSelector: string;
@@ -167,7 +169,7 @@ export interface CrawlOptions {
   maxDepth: number;
   maxPages: number;
   formats: Format[];
-  renderJs: boolean | null;
+  renderMode: RenderMode | null;
   waitFor: number;
   includeTags: string;
   excludeTags: string;

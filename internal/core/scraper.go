@@ -1,5 +1,5 @@
 //Scrape Joins the API /scrape
-//It validates and applies the waitMs and renderJs and
+//It validates and applies the waitMs and renderMode and
 //then calls the renderer
 
 package core
@@ -19,7 +19,7 @@ type Scraper struct {
 	extractor *Extractor
 	llm       *llmExtractor
 	llmCfg    *types.LLMConfig
-	cfg       Config
+	cfg       types.ScraperConfig
 }
 
 // NewScraper builds a Scraper that delegates HTTP fetching to the shared
@@ -29,7 +29,7 @@ type Scraper struct {
 // llmConfig is optional. When non-nil, requests that include "json" in their
 // formats list and a jsonSchema (or extract.schema) will trigger LLM-based
 // structured extraction and the result will be placed in data.JSON.
-func NewScraper(cfg Config, httpFetcher *HTTPFetcher, llmConfig *types.LLMConfig) (*Scraper, *QuickCrawlError) {
+func NewScraper(cfg types.ScraperConfig, httpFetcher *HTTPFetcher, llmConfig *types.LLMConfig) (*Scraper, *QuickCrawlError) {
 	r, err := NewRenderer(cfg, httpFetcher)
 	if err != nil {
 		return nil, err
@@ -44,6 +44,14 @@ func NewScraper(cfg Config, httpFetcher *HTTPFetcher, llmConfig *types.LLMConfig
 	}, nil
 }
 
+// Config returns the scraper's resolved configuration. Exposed so
+// callers (and tests in other packages, e.g. internal/config) can
+// inspect the values the constructor set without poking unexported
+// fields.
+func (s *Scraper) Config() types.ScraperConfig {
+	return s.cfg
+}
+
 func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.ScrapeData, *QuickCrawlError) {
 	start := time.Now()
 
@@ -51,16 +59,16 @@ func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.
 		return nil, err
 	}
 
-	//If the renderJS field is not specified in the request, default to nil (auto mode).
-	//In auto mode, the renderer first tries HTTP and escalates to browser if needed.
-	//If waitFor is not specified, default to 0 (no extra wait beyond what the load event signals).
-	renderJS := req.RenderJS
+	//If the renderMode field is not specified in the request, leave it nil
+	//so the orchestrator inherits the server-wide default. If it is set,
+	//the orchestrator honors it as the per-request override.
+	mode := req.RenderMode
 
 	//If the wait is not specified, default to 0 (no extra wait). The page is considered ready as soon as the browser's load event fires, which the renderer already waits for. Callers who want extra hydration time should pass an explicit waitFor.
 	waitMs := resolveWaitMs(req.WaitFor, 0)
 
 	//Call the fetcher
-	result, err := s.renderer.FetchOrchestrator(ctx, req.URL, req.Headers, renderJS, waitMs)
+	result, err := s.renderer.FetchOrchestrator(ctx, req.URL, req.Headers, mode, waitMs)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +159,8 @@ func validateRequest(req *types.ScrapeRequest) *QuickCrawlError {
 	return nil
 }
 
-// this method  checks if the renderJS is enabled if not then just do http
-// REMOVED: resolveRenderJS is no longer used — renderJS is passed as *bool directly
+// this method  checks if the renderMode is set, if not then just do http
+// REMOVED: resolveRenderMode is no longer used — renderMode is passed as *types.RenderMode directly
 
 func resolveWaitMs(waitFor *int64, defaultVal int64) int64 {
 	if waitFor != nil && *waitFor > 0 {
@@ -225,9 +233,10 @@ func (s *Scraper) BrowsersInfo() []types.BrowserInfo {
 // a *types.FetchResult. It is used by the crawl and map pipelines which
 // need a types.FetchResult shape to feed into the shared extractor.
 //
-// renderJS=nil  (auto) → HTTP first, then check and escalate to browser if needed
-// renderJS=true → chromedp-based browser fetch (full JavaScript).
-// renderJS=false → HTTP-only fetch via the shared *renderer.HTTPFetcher.
+// mode=nil      → inherit server default
+// mode=auto     → HTTP first, then check and escalate to browser if needed
+// mode=browser  → chromedp-based browser fetch (full JavaScript).
+// mode=http     → HTTP-only fetch via the shared *renderer.HTTPFetcher.
 //
 // The preferredBrowser parameter is accepted for backwards compatibility
 // with the legacy FallbackRenderer.Fetch signature. The new model has a
@@ -236,11 +245,11 @@ func (s *Scraper) FetchHTML(
 	ctx context.Context,
 	rawURL string,
 	headers map[string]string,
-	renderJS *bool,
+	mode *types.RenderMode,
 	waitMs int64,
 	preferredBrowser *string,
 ) (*types.FetchResult, *QuickCrawlError) {
-	result, err := s.renderer.FetchOrchestrator(ctx, rawURL, headers, renderJS, waitMs)
+	result, err := s.renderer.FetchOrchestrator(ctx, rawURL, headers, mode, waitMs)
 	if err != nil {
 		return nil, err
 	}

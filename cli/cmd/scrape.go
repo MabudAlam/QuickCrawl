@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
@@ -78,18 +78,14 @@ func runScrape(cmd *cobra.Command, args []string) error {
 
 	formats := parseFormats(scrapeFlags.formats)
 
-	var renderJS *bool
-	switch scrapeFlags.renderMode {
-	case "auto":
-		renderJS = nil
-	case "http":
-		renderJSValue := false
-		renderJS = &renderJSValue
-	case "browser":
-		renderJSValue := true
-		renderJS = &renderJSValue
-	default:
-		return fmt.Errorf("invalid render mode: %s (must be auto, http, or browser)", scrapeFlags.renderMode)
+	mode, err := types.ParseRenderMode(scrapeFlags.renderMode)
+	if err != nil {
+		return fmt.Errorf("invalid --render-mode: %w", err)
+	}
+	var modePtr *types.RenderMode
+	if mode != "" {
+		m := mode
+		modePtr = &m
 	}
 
 	var waitFor *int64
@@ -129,19 +125,19 @@ func runScrape(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	scraper, qErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	scraper, qErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if qErr != nil {
 		return fmt.Errorf("failed to initialize scraper: %w", qErr)
 	}
 	defer scraper.Close()
 
 	coreReq := &types.ScrapeRequest{
-		URL:          targetURL,
-		Formats:      formats,
-		RenderJS:     renderJS,
-		WaitFor:      waitFor,
-		IncludeTags:  includeTags,
-		ExcludeTags:  excludeTags,
+		URL:         targetURL,
+		Formats:     formats,
+		RenderMode:  modePtr,
+		WaitFor:     waitFor,
+		IncludeTags: includeTags,
+		ExcludeTags: excludeTags,
 		CSSSelector:  cssSelector,
 	}
 

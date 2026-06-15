@@ -135,8 +135,8 @@ ok "Server is up."
 #
 # Tests are deliberately run in this order so the report reads:
 #   F1 baseline HTTP       (fastest path, should be near-instant)
-#   F2 renderJs=true       (forces chromedp, the path the user is benchmarking)
-#   F3 renderJs+waitFor    (user-supplied wait budget)
+#   F2 renderMode=browser  (forces chromedp, the path the user is benchmarking)
+#   F3 renderMode+waitFor  (user-supplied wait budget)
 #   F4 multi-format        (markdown + html + links + imageLinks)
 #   F5 cssSelector         (targeted extraction)
 #   F6 include/excludeTags (sanitization path)
@@ -144,12 +144,12 @@ ok "Server is up."
 #
 FEATURE_BODIES=(
   "F1_http_baseline|{\"url\":\"__URL__\",\"formats\":[\"markdown\"]}"
-  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\"}"
-  "F3_renderJs_wait2s|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"waitFor\":2000}"
-  "F4_multi_format|{\"url\":\"__URL__\",\"formats\":[\"markdown\",\"html\",\"links\",\"imageLinks\"],\"renderJs\":true,\"browser\":\"chrome\"}"
-  "F5_css_selector|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"cssSelector\":\"body\"}"
-  "F6_tag_filter|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\",\"includeTags\":[\"h1\",\"h2\",\"p\"],\"excludeTags\":[\"script\",\"style\",\"nav\"]}"
-  "F7_browser_chrome_pin|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true,\"browser\":\"chrome\"}"
+  "F2_renderMode|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\",\"browser\":\"chrome\"}"
+  "F3_renderMode_wait2s|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\",\"browser\":\"chrome\",\"waitFor\":2000}"
+  "F4_multi_format|{\"url\":\"__URL__\",\"formats\":[\"markdown\",\"html\",\"links\",\"imageLinks\"],\"renderMode\":\"browser\",\"browser\":\"chrome\"}"
+  "F5_css_selector|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\",\"browser\":\"chrome\",\"cssSelector\":\"body\"}"
+  "F6_tag_filter|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\",\"browser\":\"chrome\",\"includeTags\":[\"h1\",\"h2\",\"p\"],\"excludeTags\":[\"script\",\"style\",\"nav\"]}"
+  "F7_browser_chrome_pin|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\",\"browser\":\"chrome\"}"
 )
 
 # ---------------------------------------------------------------------------
@@ -190,13 +190,13 @@ tail -n +2 "$RESULTS_CSV" | awk -F, '{
 hr
 
 # Compute per-site speedup.
-hdr "Per-site comparison (renderJs feature F2)"
+hdr "Per-site comparison (renderMode=browser feature F2)"
 log ""
 printf "${BOLD}%-45s %12s %12s %10s${NC}\n" "SITE" "SCRAPE(ms)" "CORE(ms)" "DELTA"
 hr
 tail -n +2 "$RESULTS_CSV" | awk -F, '
-  $1=="scrape"      && $3=="F2_renderJs" { s[$2]=$5 }
-  $1=="scrape-core" && $3=="F2_renderJs" { c[$2]=$5 }
+  $1=="scrape"      && $3=="F2_renderMode" { s[$2]=$5 }
+  $1=="scrape-core" && $3=="F2_renderMode" { c[$2]=$5 }
   END {
     for (k in s) {
       sc = s[k] + 0

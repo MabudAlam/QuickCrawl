@@ -7,13 +7,20 @@ rate_limit_rps = 10
 [renderer]
 page_timeout_ms = 45000
 pool_size = 4
+# render_mode is the server-wide default for fetch strategy. The
+# per-request "renderMode" field on ScrapeRequest, CrawlRequest, and
+# MapRequest (and the matching MCP tool argument) overrides this
+# default when set.
+#   "auto"    → HTTP first, escalate to browser on anti-bot / SPA signals (default)
+#   "browser" → always go through the browser, never HTTP-only
+#   "http"    → HTTP only, never touch the browser
 render_mode = "auto"
 browser = "cloak"
 
 [renderer.chrome]
 # Cloak browser config - CloakBrowser creates dynamic Chrome instances
 # Use just the base URL without browser ID path
-ws_url = "ws://localhost:9222"
+ws_url = ""
 # Cloak doesn't need chrome args encoding
 chrome_args = []
 
@@ -31,7 +38,6 @@ enabled = true
 strategy = "modern_browser"
 jitter_factor = 0.2
 inject_headers = true
-nav_budget_ms = 12000
 
 [extraction.llm]
 api_key = ""

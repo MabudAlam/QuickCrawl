@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
 func TestGetCDPURL_Success(t *testing.T) {
@@ -69,37 +67,5 @@ func TestGetCDPURL_MissingField(t *testing.T) {
 	_, err := GetCDPURL(srv.URL)
 	if err == nil {
 		t.Errorf("expected error when field is missing")
-	}
-}
-
-func TestNewScraperFromConfig_EmptyWSURLDisablesBrowser(t *testing.T) {
-	cfg := &types.AppConfig{}
-	cfg.Defaults()
-	cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: ""}
-
-	scraper, qErr := NewScraperFromConfig(cfg, nil)
-	if qErr != nil {
-		t.Fatalf("NewScraperFromConfig: %v", qErr.Message)
-	}
-	defer scraper.Close()
-
-	if scraper.cfg.Browser.WSURL != "" {
-		t.Errorf("expected empty WSURL when [renderer.chrome] ws_url is empty, got %q", scraper.cfg.Browser.WSURL)
-	}
-}
-
-func TestNewScraperFromConfig_ConfiguredWSURLPropagates(t *testing.T) {
-	cfg := &types.AppConfig{}
-	cfg.Defaults()
-	cfg.Renderer.Chrome = &types.CdpEndpoint{WSURL: "ws://127.0.0.1:1/devtools/browser/xyz"}
-
-	scraper, qErr := NewScraperFromConfig(cfg, nil)
-	if qErr != nil {
-		t.Fatalf("NewScraperFromConfig: %v", qErr.Message)
-	}
-	defer scraper.Close()
-
-	if scraper.cfg.Browser.WSURL != "ws://127.0.0.1:1/devtools/browser/xyz" {
-		t.Errorf("expected configured WSURL to be used (or auto-discovered), got %q", scraper.cfg.Browser.WSURL)
 	}
 }

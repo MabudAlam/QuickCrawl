@@ -37,9 +37,9 @@ type Request struct {
 	// Formats is the list of output formats when Scrape is true.
 	Formats []string
 
-	// RenderJS is passed to the scraper for each result URL.
-	// nil = auto, true = force, false = HTTP only.
-	RenderJS *bool
+	// RenderMode is passed to the scraper for each result URL.
+	// nil = inherit server default.
+	RenderMode *types.RenderMode
 
 	// MaxWorkers controls concurrency when Scrape is true.
 	// 0 means default (10).
@@ -136,7 +136,7 @@ func Search(
 	}
 
 	if req.Scrape {
-		scrapeAll(ctx, scraper, results, req.Formats, req.RenderJS, req.MaxWorkers)
+		scrapeAll(ctx, scraper, results, req.Formats, req.RenderMode, req.MaxWorkers)
 	}
 
 	return &Response{
@@ -210,7 +210,7 @@ func scrapeAll(
 	scraper *core.Scraper,
 	results []Result,
 	formats []string,
-	renderJS *bool,
+	mode *types.RenderMode,
 	maxWorkers int,
 ) {
 	if maxWorkers <= 0 {
@@ -240,9 +240,9 @@ func scrapeAll(
 			defer cancel()
 
 			data, err := scraper.Scrape(reqCtx, &types.ScrapeRequest{
-				URL:      results[idx].URL,
-				Formats:  convertFormats(formats),
-				RenderJS: renderJS,
+				URL:        results[idx].URL,
+				Formats:    convertFormats(formats),
+				RenderMode: mode,
 			})
 			if err != nil || data == nil {
 				return

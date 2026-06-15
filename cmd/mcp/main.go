@@ -9,7 +9,7 @@ import (
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
 	"github.com/MabudAlam/quickcrawl/internal/browser"
-	"github.com/MabudAlam/quickcrawl/internal/core"
+	"github.com/MabudAlam/quickcrawl/internal/config"
 	quickcrawl "github.com/MabudAlam/quickcrawl/internal/mcp"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -33,7 +33,9 @@ func main() {
 	// auto-launching a local LightPanda. The HTTP server path does not
 	// do this — it requires an explicit WS URL — but the MCP path is
 	// expected to be self-contained, so we provide a default browser
-	// here. The launched process is killed on shutdown.
+	// here. The launched process is killed on shutdown. This runs
+	// before the scraper is built so the scraper picks up the patched
+	// WSURL.
 	teardown, ensureErr := browser.EnsureRenderer(cfg)
 	if ensureErr != nil {
 		utils.Log.Error(fmt.Sprintf("%s", ensureErr.Error()))
@@ -49,8 +51,11 @@ func main() {
 
 	// Build the shared *core.Scraper. This is the single render path
 	// used by every MCP tool — the same code path as the HTTP API.
-	scraper, scrapeErr := core.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
+	scraper, scrapeErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if scrapeErr != nil {
+		if teardown != nil {
+			teardown()
+		}
 		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
 		os.Exit(1)
 	}

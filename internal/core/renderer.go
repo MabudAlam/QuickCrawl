@@ -21,7 +21,7 @@ import (
 // duplicating the same logic. Browser (chromedp) code lives in this package.
 type Renderer struct {
 	http        *HTTPFetcher // Shared HTTP fetcher
-	cfg         BrowserConfig         // Browser configuration (timeout, WS URL, etc.)
+	cfg         types.BrowserConfig   // Browser configuration (timeout, WS URL, etc.)
 	pool        *hostPool             // Per-host concurrency limiter
 	allocCtx    context.Context       // Parent context for the RemoteAllocator
 	allocCancel context.CancelFunc    // Cancel function to shut down the allocator
@@ -98,7 +98,7 @@ func (p *hostPool) Acquire(host string) func() {
 //
 // The caller passes in a shared *HTTPFetcher so the HTTP code path
 // is identical to /v1/scrape — no duplicated logic.
-func NewRenderer(cfg Config, httpFetcher *HTTPFetcher) (*Renderer, *QuickCrawlError) {
+func NewRenderer(cfg types.ScraperConfig, httpFetcher *HTTPFetcher) (*Renderer, *QuickCrawlError) {
 	var allocCtx context.Context
 	var allocCancel context.CancelFunc
 
@@ -209,9 +209,10 @@ func (renderer *Renderer) Close() error {
 // FetchOrchestrator decides whether to use HTTP fetching or browser rendering.
 // It is the main entry point for fetching a URL.
 //
-//   - renderJS=nil  (auto) → HTTP first, then check and escalate to browser if needed
-//   - renderJS=true → uses fetchWithCDPBrowser (full browser, JavaScript rendered)
-//   - renderJS=false → uses shared *renderer.HTTPFetcher (no JavaScript)
+//   - mode=nil              → inherit server default (cfg.Mode)
+//   - mode=auto             → HTTP first, then check and escalate to browser if needed
+//   - mode=browser          → uses fetchWithCDPBrowser (full browser, JavaScript rendered)
+//   - mode=http             → uses shared *renderer.HTTPFetcher (no JavaScript)
 //
 // In auto mode, the escalation decision is based on:
 //   - HTTP failure + browser available → escalate
@@ -220,16 +221,25 @@ func (renderer *Renderer) Close() error {
 //   - Cloudflare/anti-bot challenge page detected
 //   - Soft-block status code (401, 403, 404, 405, 406, 410, 412, 429, 451, 500, 503)
 //   - Thin HTML response (body text < 200 chars)
-func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, headers map[string]string, renderJS *bool, waitMs int64) (*FetchResult, *QuickCrawlError) {
-	// Determine effective renderJS value
+func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, headers map[string]string, mode *types.RenderMode, waitMs int64) (*FetchResult, *QuickCrawlError) {
+	// Precedence: per-request mode (non-nil) > server-wide cfg.Mode > RenderModeAuto.
+	// The server config ([renderer] render_mode in quickcrawl.toml, or
+	// RENDERER__RENDER_MODE env var) is the *default* for every request.
+	// A caller that passes mode explicitly always wins — there is no
+	// policy gate. This is intentional: render_mode is a default, not a
+	// restriction, and the per-request knob exists precisely to opt out
+	// of that default.
 	forceBrowser := false
 	forceHTTP := false
-	if renderJS != nil {
-		if *renderJS {
-			forceBrowser = true
-		} else {
-			forceHTTP = true
-		}
+	effective := renderer.cfg.Mode
+	if mode != nil {
+		effective = *mode
+	}
+	switch effective {
+	case types.RenderModeBrowser:
+		forceBrowser = true
+	case types.RenderModeHTTP:
+		forceHTTP = true
 	}
 
 	if forceHTTP {
