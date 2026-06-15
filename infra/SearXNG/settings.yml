@@ -1,0 +1,23 @@
+use_default_settings: true
+
+general:
+  instance_name: "SearXNG - QC"
+  privacypolicy_url: false
+  contact_url: false
+  donation_url: false
+
+server:
+  secret_key: "changeme"
+  limiter: false
+  image_proxy: true
+
+search:
+  autocomplete: ""
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
