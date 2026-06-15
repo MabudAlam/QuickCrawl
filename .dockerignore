@@ -62,7 +62,6 @@ infra/**/*.md
 browser_configs
 
 # Quickcrawl runtime config that shouldn't be baked into any image
-quickcrawl.toml
 .env
 .env.*
 
