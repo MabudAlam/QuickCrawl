@@ -99,10 +99,8 @@ class QuickCrawlClient:
 
         if self._api_url:
             body = {"url": url, "formats": formats}
-            if render_mode == "http":
-                body["renderJs"] = False
-            elif render_mode == "browser":
-                body["renderJs"] = True
+            if render_mode in ("http", "browser", "auto"):
+                body["renderMode"] = render_mode
             if ttl is not None:
                 body["ttl"] = ttl
             return self._http_post("/v1/scrape", body)

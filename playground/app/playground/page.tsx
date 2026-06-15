@@ -74,6 +74,7 @@ import type {
   CrawlState,
   HealthResponse,
   Format,
+  RenderMode,
   ScrapeData,
   MapResponse,
   SearchResponse,
@@ -119,7 +120,7 @@ export default function PlaygroundPage({
 
   const [scrapeOptions, setScrapeOptions] = useState<ScrapeOptions>({
     formats: ["markdown"] as Format[],
-    renderJs: null,
+    renderMode: null,
     waitFor: 0,
     headers: "",
     cssSelector: "",
@@ -173,7 +174,7 @@ export default function PlaygroundPage({
     maxDepth: 2,
     maxPages: 100,
     formats: ["markdown"] as Format[],
-    renderJs: null,
+    renderMode: null,
     waitFor: 0,
     includeTags: "",
     excludeTags: "",
@@ -190,7 +191,7 @@ export default function PlaygroundPage({
   const [searchRegion, setSearchRegion] = useState("us-en")
   const [searchTimeLimit, setSearchTimeLimit] = useState("")
   const [searchFormats, setSearchFormats] = useState<Format[]>(["markdown"])
-  const [searchRenderJs, setSearchRenderJs] = useState<boolean | null>(false)
+  const [searchRenderMode, setSearchRenderMode] = useState<RenderMode | null>(null)
   const [searchScrape, setSearchScrape] = useState(false)
   const [searchUseBM25, setSearchUseBM25] = useState(false)
   const [searchPage, setSearchPage] = useState(0)
@@ -255,8 +256,8 @@ export default function PlaygroundPage({
           formats: scrapeOptions.formats.length
             ? scrapeOptions.formats
             : ["markdown"],
-          ...(scrapeOptions.renderJs !== null && {
-            renderJs: scrapeOptions.renderJs,
+          ...(scrapeOptions.renderMode !== null && {
+            renderMode: scrapeOptions.renderMode,
           }),
           waitFor: scrapeOptions.waitFor || undefined,
           headers: scrapeOptions.headers || undefined,
@@ -280,8 +281,8 @@ export default function PlaygroundPage({
           formats: crawlOptions.formats.length
             ? crawlOptions.formats
             : ["markdown"],
-          ...(crawlOptions.renderJs !== null && {
-            renderJs: crawlOptions.renderJs,
+          ...(crawlOptions.renderMode !== null && {
+            renderMode: crawlOptions.renderMode,
           }),
           waitFor: crawlOptions.waitFor || undefined,
           maxMarkdownChars: crawlOptions.maxMarkdownChars || undefined,
@@ -299,7 +300,7 @@ export default function PlaygroundPage({
           query: searchQuery,
           region: searchRegion,
           timelimit: searchTimeLimit || undefined,
-          ...(searchRenderJs !== null && { renderJs: searchRenderJs }),
+          ...(searchRenderMode !== null && { renderMode: searchRenderMode }),
           formats: searchFormats,
           scrape: searchScrape,
         } as SearchRequest
@@ -313,7 +314,7 @@ export default function PlaygroundPage({
     searchQuery,
     searchRegion,
     searchTimeLimit,
-    searchRenderJs,
+    searchRenderMode,
     searchFormats,
     searchScrape,
   ])
@@ -415,7 +416,7 @@ export default function PlaygroundPage({
         timelimit: searchTimeLimit || undefined,
         page: searchPage,
         use_bm25: searchUseBM25,
-        renderJs: searchRenderJs,
+        renderMode: searchRenderMode,
         formats: searchFormats,
         scrape: searchScrape,
       }
@@ -461,7 +462,7 @@ export default function PlaygroundPage({
     setSearchRegion("us-en")
     setSearchTimeLimit("")
     setSearchFormats(["markdown"])
-    setSearchRenderJs(false)
+    setSearchRenderMode(null)
     setSearchScrape(false)
     setSearchUseBM25(false)
     setSearchPage(0)
@@ -470,7 +471,7 @@ export default function PlaygroundPage({
     setSchemaFields([{ name: "title", type: "string", description: "" }])
     setScrapeOptions({
       formats: ["markdown"] as Format[],
-      renderJs: null,
+      renderMode: null,
       waitFor: 0,
       headers: "",
       cssSelector: "",
@@ -486,7 +487,7 @@ export default function PlaygroundPage({
       maxDepth: 2,
       maxPages: 100,
       formats: ["markdown"] as Format[],
-      renderJs: null,
+      renderMode: null,
       waitFor: 0,
       includeTags: "",
       excludeTags: "",
@@ -887,30 +888,27 @@ export default function PlaygroundPage({
                 size="sm"
                 className="h-8 w-[140px] justify-start"
               >
-                {scrapeOptions.renderJs === null
-                  ? "Auto"
-                  : scrapeOptions.renderJs
-                    ? "Browser"
-                    : "HTTP"}
+                {scrapeOptions.renderMode === null
+                  ? "Inherit"
+                  : scrapeOptions.renderMode === "auto"
+                    ? "Auto"
+                    : scrapeOptions.renderMode === "browser"
+                      ? "Browser"
+                      : "HTTP"}
                 <ChevronDown className="ml-auto h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={
-                  scrapeOptions.renderJs === null
-                    ? "auto"
-                    : scrapeOptions.renderJs
-                      ? "browser"
-                      : "http"
-                }
+                value={scrapeOptions.renderMode ?? "inherit"}
                 onValueChange={(v) =>
                   setScrapeOptions({
                     ...scrapeOptions,
-                    renderJs: v === "auto" ? null : v === "browser",
+                    renderMode: v === "inherit" ? null : (v as RenderMode),
                   })
                 }
               >
+                <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="browser">
@@ -940,7 +938,7 @@ export default function PlaygroundPage({
         </div>
       </div>
 
-      {scrapeOptions.renderJs !== false && (
+      {scrapeOptions.renderMode !== "http" && (
         <div className="space-y-2">
           <Label>Wait: {scrapeOptions.waitFor}ms</Label>
           <Slider
@@ -1131,30 +1129,27 @@ export default function PlaygroundPage({
                 size="sm"
                 className="h-8 w-[140px] justify-start"
               >
-                {crawlOptions.renderJs === null
-                  ? "Auto"
-                  : crawlOptions.renderJs
-                    ? "Browser"
-                    : "HTTP"}
+                {crawlOptions.renderMode === null
+                  ? "Inherit"
+                  : crawlOptions.renderMode === "auto"
+                    ? "Auto"
+                    : crawlOptions.renderMode === "browser"
+                      ? "Browser"
+                      : "HTTP"}
                 <ChevronDown className="ml-auto h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={
-                  crawlOptions.renderJs === null
-                    ? "auto"
-                    : crawlOptions.renderJs
-                      ? "browser"
-                      : "http"
-                }
+                value={crawlOptions.renderMode ?? "inherit"}
                 onValueChange={(v) =>
                   setCrawlOptions({
                     ...crawlOptions,
-                    renderJs: v === "auto" ? null : v === "browser",
+                    renderMode: v === "inherit" ? null : (v as RenderMode),
                   })
                 }
               >
+                <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="browser">
@@ -1166,7 +1161,7 @@ export default function PlaygroundPage({
         </div>
       </div>
 
-      {crawlOptions.renderJs !== false && (
+      {crawlOptions.renderMode !== "http" && (
         <div className="space-y-2">
           <Label>Wait: {crawlOptions.waitFor}ms</Label>
           <Slider
@@ -1412,27 +1407,26 @@ export default function PlaygroundPage({
                   size="sm"
                   className="h-8 w-[140px] justify-start"
                 >
-                  {searchRenderJs === null
-                    ? "Auto"
-                    : searchRenderJs
-                      ? "Browser"
-                      : "HTTP"}
+                  {searchRenderMode === null
+                    ? "Inherit"
+                    : searchRenderMode === "auto"
+                      ? "Auto"
+                      : searchRenderMode === "browser"
+                        ? "Browser"
+                        : "HTTP"}
                   <ChevronDown className="ml-auto h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuRadioGroup
-                  value={
-                    searchRenderJs === null
-                      ? "auto"
-                      : searchRenderJs
-                        ? "browser"
-                        : "http"
-                  }
+                  value={searchRenderMode ?? "inherit"}
                   onValueChange={(v) =>
-                    setSearchRenderJs(v === "auto" ? null : v === "browser")
+                    setSearchRenderMode(v === "inherit" ? null : (v as RenderMode))
                   }
                 >
+                  <DropdownMenuRadioItem value="inherit">
+                    Inherit (server default)
+                  </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="auto">
                     Auto
                   </DropdownMenuRadioItem>

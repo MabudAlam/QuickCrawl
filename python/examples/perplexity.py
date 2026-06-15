@@ -38,7 +38,7 @@ def create_web_search_tool():
                 query,
                 scrape=True,
                 formats=["markdown"],
-                render_js=True,
+                render_mode="browser",
             )
         except Exception as e:
             return {"error": f"Search failed: {str(e)}", "results": []}
@@ -115,7 +115,7 @@ def create_scrape_tool():
         client = QuickCrawlClient(api_url=api_url)
 
         try:
-            result = client.scrape(url, formats=formats, render_js=True)
+            result = client.scrape(url, formats=formats, render_mode="browser")
         except Exception as e:
             return {
                 "url": url,

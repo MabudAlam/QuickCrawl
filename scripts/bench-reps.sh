@@ -19,7 +19,7 @@ SITES="${SITES:-https://stripe.com/docs/api https://app.slack.com/ https://go.de
 
 FEATURES=(
   "F1_http|{\"url\":\"__URL__\",\"formats\":[\"markdown\"]}"
-  "F2_renderJs|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderJs\":true}"
+  "F2_renderMode|{\"url\":\"__URL__\",\"formats\":[\"markdown\"],\"renderMode\":\"browser\"}"
 )
 
 OUT=$(mktemp -t bench-reps.XXXXXX.csv)
@@ -68,17 +68,17 @@ for r in rows:
     k = (r['site'], r['endpoint'], r['feature'])
     groups.setdefault(k, []).append(int(r['ms']))
 
-# F2 (renderJs) summary table.
+# F2 (renderMode) summary table.
 sites = sorted({k[0] for k in groups})
 print()
-print("F2 (renderJs) median over N=3 reps")
+print("F2 (renderMode=browser) median over N=3 reps")
 print("─" * 78)
 print(f"{'Site':<40} {'/scrape':>12} {'/scrape-core':>14} {'Δ (ms)':>10} {'Δ (%)':>8}")
 print("─" * 78)
 
 for site in sites:
-    s_ms = statistics.median(groups.get((site, 'scrape', 'F2_renderJs'), [0]))
-    c_ms = statistics.median(groups.get((site, 'scrape-core', 'F2_renderJs'), [0]))
+    s_ms = statistics.median(groups.get((site, 'scrape', 'F2_renderMode'), [0]))
+    c_ms = statistics.median(groups.get((site, 'scrape-core', 'F2_renderMode'), [0]))
     delta = c_ms - s_ms
     pct = (delta / s_ms * 100) if s_ms else 0
     sign = "+" if delta >= 0 else ""
@@ -93,9 +93,9 @@ print(f"{'Site':<40} {'/scrape':>12} {'/scrape-core':>14} {'core-savings':>12}")
 print("─" * 78)
 for site in sites:
     s_f1 = statistics.median(groups.get((site, 'scrape', 'F1_http'), [0]))
-    s_f2 = statistics.median(groups.get((site, 'scrape', 'F2_renderJs'), [0]))
+    s_f2 = statistics.median(groups.get((site, 'scrape', 'F2_renderMode'), [0]))
     c_f1 = statistics.median(groups.get((site, 'scrape-core', 'F1_http'), [0]))
-    c_f2 = statistics.median(groups.get((site, 'scrape-core', 'F2_renderJs'), [0]))
+    c_f2 = statistics.median(groups.get((site, 'scrape-core', 'F2_renderMode'), [0]))
     s_js = s_f2 - s_f1
     c_js = c_f2 - c_f1
     savings = s_js - c_js

@@ -13,6 +13,59 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
+// RenderMode describes how a page should be fetched. It is the single
+// 3-state enum used at every layer: the server-wide default
+// ([renderer] render_mode in quickcrawl.toml / RENDERER__RENDER_MODE
+// env var) and the per-request override (the "renderMode" field on
+// ScrapeRequest, CrawlRequest, MapRequest, and the matching MCP tool
+// arguments).
+//
+// Precedence is: per-request (non-nil) > server default > RenderModeAuto.
+//
+// The zero value ("") is the unset/inherit value. RenderModeAuto is
+// the explicit "I want auto" value, which is semantically equivalent
+// to unset for fetching behavior but is preserved as-is in cache keys
+// so callers can see exactly what they asked for.
+type RenderMode string
+
+const (
+	// RenderModeAuto: HTTP first, escalate to browser on anti-bot/SPA signals.
+	RenderModeAuto RenderMode = "auto"
+	// RenderModeBrowser: always go through the browser, never HTTP-only.
+	RenderModeBrowser RenderMode = "browser"
+	// RenderModeHTTP: HTTP only, never touch the browser.
+	RenderModeHTTP RenderMode = "http"
+)
+
+// String returns the canonical lowercase name of the mode.
+func (m RenderMode) String() string { return string(m) }
+
+// IsValid reports whether m is one of the three recognized modes.
+// The empty string is treated as invalid; callers that want to allow
+// "unset" should compare against the zero value directly.
+func (m RenderMode) IsValid() bool {
+	switch m {
+	case RenderModeAuto, RenderModeBrowser, RenderModeHTTP:
+		return true
+	}
+	return false
+}
+
+// ParseRenderMode normalizes a raw string (from toml, env, or JSON)
+// into a RenderMode. It is case-insensitive and trims whitespace.
+// An empty string returns ("", nil) so callers can distinguish
+// "unset" from "invalid". Unknown values return a non-nil error.
+func ParseRenderMode(s string) (RenderMode, error) {
+	m := RenderMode(strings.ToLower(strings.TrimSpace(s)))
+	if m == "" {
+		return "", nil
+	}
+	if !m.IsValid() {
+		return "", fmt.Errorf("invalid render_mode %q: must be one of auto, browser, http", s)
+	}
+	return m, nil
+}
+
 // =============================================================================
 // Output Format Types
 // =============================================================================
@@ -73,7 +126,7 @@ type ExtractOptions struct {
 type ScrapeRequest struct {
 	URL                 string            `json:"url"`                           // URL to scrape
 	Formats             []OutputFormat    `json:"formats"`                       // Desired output formats
-	RenderJS            *bool             `json:"renderJs,omitempty"`            // Force JavaScript rendering
+	RenderMode          *RenderMode       `json:"renderMode,omitempty"`          // Per-request override: "auto" | "browser" | "http". nil = inherit server default.
 	WaitFor             *int64            `json:"waitFor,omitempty"`             // Wait time in ms after page load
 	IncludeTags         []string          `json:"includeTags,omitempty"`         // HTML tags to include
 	ExcludeTags         []string          `json:"excludeTags,omitempty"`         // HTML tags to exclude
@@ -171,8 +224,8 @@ type CrawlRequest struct {
 	MaxPages *uint32        `json:"maxPages,omitempty"` // Maximum pages to crawl
 	Formats  []OutputFormat `json:"formats"`            // Desired output formats
 
-	RenderJS *bool    `json:"renderJs,omitempty"` // Force JS rendering
-	WaitFor  *int64   `json:"waitFor,omitempty"`  // Wait time in ms
+	RenderMode *RenderMode `json:"renderMode,omitempty"` // Per-request override: "auto" | "browser" | "http". nil = inherit server default.
+	WaitFor    *int64      `json:"waitFor,omitempty"`    // Wait time in ms
 	// Deprecated: Browser is accepted for backward compatibility but ignored.
 	// The new scraper uses chromedp only.
 	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
@@ -249,7 +302,7 @@ type SearchRequest struct {
 	Timelimit  string         `json:"timelimit,omitempty"`  // Legacy: time limit filter (e.g., "d" for day)
 	Page       int            `json:"page,omitempty"`       // SearXNG pageno, default 1.
 	UseBM25    bool           `json:"use_bm25,omitempty"`   // Use BM25 scoring algorithm (default: false)
-	RenderJS   *bool          `json:"renderJs,omitempty"`   // Enable JavaScript rendering for the scrape-each-result step.
+	RenderMode *RenderMode    `json:"renderMode,omitempty"` // Per-request override: "auto" | "browser" | "http". nil = inherit server default.
 	Formats    []OutputFormat `json:"formats,omitempty"`    // Desired output formats when scrape=true.
 	Scrape     bool           `json:"scrape,omitempty"`     // Scrape each result URL and include extracted content (default: false).
 }
@@ -356,12 +409,14 @@ type BrowserInfo struct {
 type RendererConfig struct {
 	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`  // Page load timeout
 	PoolSize      int          `toml:"pool_size" json:"poolSize"`             // Browser pool size
-	RenderMode    string       `toml:"render_mode" json:"renderMode"`         // Render mode: auto, http, browser
+	RenderMode    RenderMode   `toml:"render_mode" json:"renderMode"`         // Render mode: auto, http, browser (empty = inherit)
 	Browser       string       `toml:"browser" json:"browser"`                // Browser: cloak, browserless, lightpanda
 	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                  // Chrome config
 }
 
 // Defaults sets default values for unset fields.
+// Also normalizes RenderMode (case + whitespace) so downstream code
+// never has to handle "AUTO" or " browser " as a separate case.
 func (c *RendererConfig) Defaults() {
 	if c.PageTimeoutMs == 0 {
 		c.PageTimeoutMs = 30000
@@ -369,15 +424,17 @@ func (c *RendererConfig) Defaults() {
 	if c.PoolSize == 0 {
 		c.PoolSize = 4
 	}
+	if c.RenderMode != "" {
+		c.RenderMode = RenderMode(strings.ToLower(strings.TrimSpace(string(c.RenderMode))))
+	}
 }
 
 // StealthConfig configures stealth/bot-detection evasion.
 type StealthConfig struct {
 	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
 	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
-	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
-	Strategy      string  `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
-	NavBudgetMs   int64   `toml:"nav_budget_ms" json:"navBudgetMs"`    // Per-page navigation budget in ms
+	InjectHeaders bool   `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string `toml:"strategy" json:"strategy"`             // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
@@ -664,3 +721,65 @@ var BuiltinUAPool = utils.BuiltinUAPool
 
 // GetBuiltinUAPool returns a copy of the built-in UA pool.
 var GetBuiltinUAPool = utils.GetBuiltinUAPool
+
+// =============================================================================
+// Scraper-side configuration
+//
+// These types are the internal "what the scraper actually consumes" view
+// of the operator-facing AppConfig. They live in internal/types (not in
+// internal/core or internal/config) to avoid an import cycle: internal/core
+// imports internal/config to wire up the scraper, and internal/config
+// imports internal/core for the scraper primitives (NewScraper,
+// GetCDPURL, etc.) it needs. Putting the data-only types in a third
+// package that both can import breaks the cycle. The constructor
+// NewScraperFromConfig — the AppConfig → ScraperConfig projection —
+// lives in internal/config and is the only caller of these types.
+// =============================================================================
+
+// ScraperConfig is the scraper-side view of the configuration. It is
+// a strict subset of AppConfig, projected down to the fields the
+// scraper runtime actually uses.
+type ScraperConfig struct {
+	Browser BrowserConfig
+	Pool    PoolConfig
+}
+
+// BrowserConfig is the scraper's view of the renderer subsystem. It
+// carries everything the chromedp allocator and the per-host pool need
+// to know about a browser, plus the render_mode that gates the
+// HTTP-vs-browser branch in FetchOrchestrator.
+type BrowserConfig struct {
+	Mode           RenderMode
+	BrowserType    string // "browserless", "cloak", "lightpanda"
+	WSURL          string
+	NumBrowsers    int
+	PageTimeout    time.Duration
+	PoolSize       int
+	StealthEnabled bool     // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
+	ChromeArgs     []string // Chrome launch flags for browserless
+}
+
+// PoolConfig is the per-host concurrency pool config.
+type PoolConfig struct {
+	Size    int
+	PerHost int
+}
+
+// DefaultScraperConfig is the scraper-side default. Operator overrides
+// come in via config.NewScraperFromConfig (which projects an AppConfig
+// into this shape) or via direct core.NewScraper construction in tests.
+func DefaultScraperConfig() ScraperConfig {
+	return ScraperConfig{
+		Browser: BrowserConfig{
+			Mode:        RenderModeAuto,
+			WSURL:       "",
+			NumBrowsers: 4,
+			PageTimeout: 60 * time.Second,
+			PoolSize:    10,
+		},
+		Pool: PoolConfig{
+			Size:    4,
+			PerHost: 10,
+		},
+	}
+}

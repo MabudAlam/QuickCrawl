@@ -87,7 +87,7 @@ async def fetch_url_with_quickcrawl(session: aiohttp.ClientSession, url: str, tr
             start = time.monotonic()
             async with session.post(
                 f"{QUICKCRAWL_URL}/v1/scrape",
-                json={"url": url, "formats": ["markdown"],"renderJs": True,},
+                json={"url": url, "formats": ["markdown"],"renderMode": "browser",},
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as resp:
                 result.latency_ms = (time.monotonic() - start) * 1000

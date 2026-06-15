@@ -140,13 +140,13 @@ func BenchmarkCacheGet(b *testing.B) {
 
 	testURL := "https://example.com/benchmark-large-payload-" + fmt.Sprintf("%d", time.Now().UnixNano())
 
-	cache.Set(ctx, testURL, []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}, boolPtr(true), dataBytes)
+	cache.Set(ctx, testURL, []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}, modePtr(types.RenderModeBrowser), dataBytes)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, found, err := cache.Get(ctx, testURL, []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}, boolPtr(true), 300)
+		_, found, err := cache.Get(ctx, testURL, []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}, modePtr(types.RenderModeBrowser), 300)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -231,7 +231,7 @@ func BenchmarkCacheGetWithUnmarshal(b *testing.B) {
 	testURL := "https://example.com/benchmark-unmarshal-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	formats := []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}
 
-	cache.Set(ctx, testURL, formats, boolPtr(true), dataBytes)
+	cache.Set(ctx, testURL, formats, modePtr(types.RenderModeBrowser), dataBytes)
 
 	type ScrapeData struct {
 		Markdown   *string `json:"markdown,omitempty"`
@@ -247,7 +247,7 @@ func BenchmarkCacheGetWithUnmarshal(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		cachedData, found, _ := cache.Get(ctx, testURL, formats, boolPtr(true), 300)
+		cachedData, found, _ := cache.Get(ctx, testURL, formats, modePtr(types.RenderModeBrowser), 300)
 		if !found {
 			b.Fatal("cache miss")
 		}
@@ -363,7 +363,7 @@ func BenchmarkCacheLatencyBreakdown(b *testing.B) {
 	testURL := "https://example.com/benchmark-breakdown-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	formats := []string{"markdown", "html", "plainText", "links", "imageLinks", "rawHtml"}
 
-	cache.Set(ctx, testURL, formats, boolPtr(true), dataBytes)
+	cache.Set(ctx, testURL, formats, modePtr(types.RenderModeBrowser), dataBytes)
 
 	type ScrapeData struct {
 		Markdown   *string `json:"markdown,omitempty"`
@@ -379,7 +379,7 @@ func BenchmarkCacheLatencyBreakdown(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
-		cachedData, found, _ := cache.Get(ctx, testURL, formats, boolPtr(true), 300)
+		cachedData, found, _ := cache.Get(ctx, testURL, formats, modePtr(types.RenderModeBrowser), 300)
 		redisTime := time.Since(start)
 
 		if !found {
@@ -406,6 +406,7 @@ func generateLinks(count int) []string {
 	return links
 }
 
-func boolPtr(b bool) *bool {
-	return &b
+// modePtr is a tiny helper for the new RenderMode-based cache API.
+func modePtr(m types.RenderMode) *types.RenderMode {
+	return &m
 }

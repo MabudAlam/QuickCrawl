@@ -90,7 +90,7 @@ test_crawl() {
     # Start crawl
     start_response=$(curl -s -X POST "$BASE_URL/v1/crawl" \
         -H 'Content-Type: application/json' \
-        -d "{\"url\":\"$url\",\"maxDepth\":0,\"maxPages\":$max_pages,\"formats\":[\"markdown\"],\"renderJs\":false}" \
+        -d "{\"url\":\"$url\",\"maxDepth\":0,\"maxPages\":$max_pages,\"formats\":[\"markdown\"],\"renderMode\":\"http\"}" \
         --max-time $TIMEOUT)
 
     if ! echo "$start_response" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then

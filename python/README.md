@@ -141,7 +141,7 @@ Scrape a single URL.
 **Parameters:**
 - `url` (str) — URL to scrape
 - `formats` (list) — Output formats: `["markdown", "html", "links", "json"]`
-- `render_js` (bool) — Force JavaScript rendering
+- `render_mode` (str) — One of `"auto"`, `"browser"`, `"http"`. Omit to inherit server default.
 - `**kwargs` — Additional options
 
 **Returns:** Dict with keys `markdown`, `html`, `links`, `metadata`, etc.

@@ -118,14 +118,18 @@ func StartLightPanda() (*LightPandaLauncher, error) {
 // user has not configured one. If a teardown function is returned,
 // the caller MUST invoke it on shutdown to reap the launched process.
 //
-// Returns (nil, nil) when the user already configured a WS URL —
-// nothing to do, nothing to clean up.
+// Returns (nil, nil) when the user already configured a WS URL, or
+// when render_mode is explicitly "http" (the scraper will never reach
+// the browser) — nothing to do, nothing to clean up.
 //
 // The HTTP server does NOT call this helper. It is for MCP and CLI
 // entry points only.
 func EnsureRenderer(cfg *types.AppConfig) (func(), error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("EnsureRenderer: cfg is nil")
+	}
+	if strings.EqualFold(string(cfg.Renderer.RenderMode), "http") {
+		return nil, nil
 	}
 	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
 		return nil, nil

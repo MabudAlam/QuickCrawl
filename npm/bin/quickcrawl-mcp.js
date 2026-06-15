@@ -19,14 +19,13 @@ const PLATFORMS = {
   "win32-arm64": { binary: "quickcrawl-mcp.exe", ext: ".zip" },
 };
 
-function getArchiveName(version) {
-  const p = PLATFORMS[key];
-  const prefix = `${BINARY_NAME}_${version}_${process.platform === "win32" ? "windows" : process.platform}_${process.arch === "x64" ? "amd64" : "arm64"}`;
-  return p.ext === ".zip" ? `${prefix}.zip` : `${prefix}.tar.gz`;
-}
-
 const key = `${process.platform}-${process.arch}`;
 const platform = PLATFORMS[key];
+
+function getArchiveName(version) {
+  const prefix = `${BINARY_NAME}_${version}_${process.platform === "win32" ? "windows" : process.platform}_${process.arch === "x64" ? "amd64" : "arm64"}`;
+  return platform.ext === ".zip" ? `${prefix}.zip` : `${prefix}.tar.gz`;
+}
 
 if (!platform) {
   console.error(`quickcrawl-mcp: unsupported platform ${key}. Supported: ${Object.keys(PLATFORMS).join(", ")}`);

@@ -90,7 +90,7 @@ async function fetchWithTimeout(
 async function scrapeWithQuickCrawl(
   url: string,
   sharedStartTime: number,
-  renderJs: boolean | null = false,
+  renderMode: "auto" | "browser" | "http" | null = null,
   ttl: number | undefined = undefined,
   formatList: string[] = ["markdown"]
 ): Promise<ScrapeResult> {
@@ -101,8 +101,8 @@ async function scrapeWithQuickCrawl(
       url,
       formats: formatList,
     }
-    if (renderJs !== null) {
-      requestBody.renderJs = renderJs
+    if (renderMode !== null) {
+      requestBody.renderMode = renderMode
     }
     if (ttl !== undefined) {
       requestBody.ttl = ttl
@@ -617,7 +617,7 @@ export default function BattlePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<BattleResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [renderJs, setRenderJs] = useState<boolean | null>(null)
+  const [renderMode, setRenderMode] = useState<"auto" | "browser" | "http" | null>(null)
   const [ttl, setTtl] = useState<number | undefined>(undefined)
   const [formats, setFormats] = useState<{
     markdown: boolean
@@ -679,7 +679,7 @@ export default function BattlePage() {
       const quickcrawlPromise = scrapeWithQuickCrawl(
         normalizedUrl,
         startTime,
-        renderJs,
+        renderMode,
         ttl,
         formatList
       )
@@ -840,27 +840,24 @@ options={[
                         size="sm"
                         className="h-8 w-[140px] justify-start"
                       >
-                        {renderJs === null
-                          ? "Auto"
-                          : renderJs
-                            ? "Browser"
-                            : "HTTP"}
+                        {renderMode === null
+                          ? "Inherit"
+                          : renderMode === "auto"
+                            ? "Auto"
+                            : renderMode === "browser"
+                              ? "Browser"
+                              : "HTTP"}
                         <ChevronDown className="ml-auto h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
                       <DropdownMenuRadioGroup
-                        value={
-                          renderJs === null
-                            ? "auto"
-                            : renderJs
-                              ? "browser"
-                              : "http"
-                        }
+                        value={renderMode ?? "inherit"}
                         onValueChange={(v) =>
-                          setRenderJs(v === "auto" ? null : v === "browser")
+                          setRenderMode(v === "inherit" ? null : (v as "auto" | "browser" | "http"))
                         }
                       >
+                        <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                         <DropdownMenuRadioItem value="auto">
                           Auto
                         </DropdownMenuRadioItem>

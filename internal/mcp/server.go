@@ -28,10 +28,10 @@ func NewServer(state *api.AppState, cfg *types.AppConfig) *Server {
 }
 
 type ScrapeArgs struct {
-	URL         string   `json:"url"`
-	Formats     []string `json:"formats,omitempty"`
-	RenderJS    *bool    `json:"renderJs,omitempty"`
-	WaitFor     *int64   `json:"waitFor,omitempty"`
+	URL         string            `json:"url"`
+	Formats     []string          `json:"formats,omitempty"`
+	RenderMode  *types.RenderMode `json:"renderMode,omitempty"`
+	WaitFor     *int64            `json:"waitFor,omitempty"`
 	IncludeTags []string `json:"includeTags,omitempty"`
 	ExcludeTags []string `json:"excludeTags,omitempty"`
 	CSSSelector *string  `json:"cssSelector,omitempty"`
@@ -42,14 +42,14 @@ type ScrapeArgs struct {
 }
 
 type SearchArgs struct {
-	Query      string   `json:"query"`
-	Region     string   `json:"region,omitempty"`
-	Safesearch string   `json:"safesearch,omitempty"`
-	Timelimit  string   `json:"timelimit,omitempty"`
-	Page       int      `json:"page,omitempty"`
-	UseBM25    bool     `json:"use_bm25,omitempty"`
-	RenderJS   *bool    `json:"renderJs,omitempty"`
-	Formats    []string `json:"formats,omitempty"`
+	Query      string            `json:"query"`
+	Region     string            `json:"region,omitempty"`
+	Safesearch string            `json:"safesearch,omitempty"`
+	Timelimit  string            `json:"timelimit,omitempty"`
+	Page       int               `json:"page,omitempty"`
+	UseBM25    bool              `json:"use_bm25,omitempty"`
+	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
+	Formats    []string          `json:"formats,omitempty"`
 	Scrape     bool     `json:"scrape,omitempty"`
 }
 
@@ -85,15 +85,15 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 	}
 
 	coreReq := &types.ScrapeRequest{
-		URL:          args.URL,
-		Formats:      convertFormats(args.Formats),
-		RenderJS:     args.RenderJS,
-		WaitFor:      args.WaitFor,
-		IncludeTags:  args.IncludeTags,
-		ExcludeTags:  args.ExcludeTags,
-		CSSSelector:  args.CSSSelector,
+		URL:         args.URL,
+		Formats:     convertFormats(args.Formats),
+		RenderMode:  args.RenderMode,
+		WaitFor:     args.WaitFor,
+		IncludeTags: args.IncludeTags,
+		ExcludeTags: args.ExcludeTags,
+		CSSSelector: args.CSSSelector,
 	}
-	if coreReq.RenderJS != nil && *coreReq.RenderJS && coreReq.WaitFor == nil {
+	if coreReq.RenderMode != nil && *coreReq.RenderMode == types.RenderModeBrowser && coreReq.WaitFor == nil {
 		defaultWait := int64(2000)
 		coreReq.WaitFor = &defaultWait
 	}
@@ -121,12 +121,12 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 }
 
 type CrawlArgs struct {
-	URL      string   `json:"url"`
-	MaxDepth *uint32  `json:"maxDepth,omitempty"`
-	MaxPages *uint32  `json:"maxPages,omitempty"`
-	Formats  []string `json:"formats,omitempty"`
-	RenderJS *bool    `json:"renderJs,omitempty"`
-	WaitFor  *int64   `json:"waitFor,omitempty"`
+	URL        string            `json:"url"`
+	MaxDepth   *uint32           `json:"maxDepth,omitempty"`
+	MaxPages   *uint32           `json:"maxPages,omitempty"`
+	Formats    []string          `json:"formats,omitempty"`
+	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
+	WaitFor    *int64            `json:"waitFor,omitempty"`
 	// Renderer/Browser are deprecated: the new scraper uses chromedp only.
 	Renderer *string `json:"renderer,omitempty"`
 	Browser  *string `json:"browser,omitempty"`
@@ -170,12 +170,12 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 	}
 
 	crawlReq := &types.CrawlRequest{
-		URL:      args.URL,
-		MaxDepth: &maxDepth,
-		MaxPages: &maxPages,
-		Formats:  formats,
-		RenderJS: args.RenderJS,
-		WaitFor:  args.WaitFor,
+		URL:        args.URL,
+		MaxDepth:   &maxDepth,
+		MaxPages:   &maxPages,
+		Formats:    formats,
+		RenderMode: args.RenderMode,
+		WaitFor:    args.WaitFor,
 	}
 
 	scraper := s.state.CoreScraper
@@ -340,9 +340,9 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 			Title:   s.config.Search.BM25FTitleWeight,
 			Snippet: s.config.Search.BM25FSnippetWeight,
 		},
-		Scrape:   args.Scrape,
-		Formats:  formats,
-		RenderJS: args.RenderJS,
+		Scrape:     args.Scrape,
+		Formats:    formats,
+		RenderMode: args.RenderMode,
 	})
 	if err != nil {
 		return errorResult(fmt.Sprintf("search failed: %v", err)), nil, nil
@@ -506,9 +506,10 @@ func scrapeInputSchema() map[string]any {
 					"enum": []string{"markdown", "html", "links", "json"},
 				},
 			},
-			"renderJs": map[string]any{
-				"type":        "boolean",
-				"description": "Render JavaScript before extracting (true = force JS, false = HTTP only, omit = auto-detect/default)",
+			"renderMode": map[string]any{
+				"type":        "string",
+				"enum":        []string{"auto", "browser", "http"},
+				"description": "Per-request override for fetch strategy. omit = inherit server default (render_mode in quickcrawl.toml). 'auto' = HTTP first, escalate to browser on anti-bot signals. 'browser' = always use the browser. 'http' = HTTP only, never touch the browser.",
 			},
 			"waitFor": map[string]any{
 				"type":        "integer",
@@ -549,9 +550,10 @@ func crawlInputSchema() map[string]any {
 				"type":        "integer",
 				"description": "Maximum number of pages to crawl",
 			},
-			"renderJs": map[string]any{
-				"type":        "boolean",
-				"description": "Render JavaScript on every crawled page (true = force JS, false = HTTP only, omit = auto-detect/default)",
+			"renderMode": map[string]any{
+				"type":        "string",
+				"enum":        []string{"auto", "browser", "http"},
+				"description": "Per-request override for fetch strategy on every crawled page. omit = inherit server default.",
 			},
 			"waitFor": map[string]any{
 				"type":        "integer",
@@ -598,9 +600,10 @@ func searchInputSchema() map[string]any {
 				"type":        "boolean",
 				"description": "Use BM25 scoring algorithm instead of native score (default: false)",
 			},
-			"renderJs": map[string]any{
-				"type":        "boolean",
-				"description": "Enable JavaScript rendering (true = force JS, false = HTTP only, omit = auto-detect/default)",
+			"renderMode": map[string]any{
+				"type":        "string",
+				"enum":        []string{"auto", "browser", "http"},
+				"description": "Per-request override for fetch strategy when scraping each result. omit = inherit server default.",
 			},
 			"scrape": map[string]any{
 				"type":        "boolean",
