@@ -14,9 +14,12 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/api/routes"
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	utils.InitLogger()
 
 	// Step 1: Load configuration from TOML file + environment variables.
@@ -89,7 +92,7 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		utils.Log.Error(fmt.Sprintf("server forced to shutdown: %s", err.Error()))
+		utils.Log.Error(fmt.Sprintf("forced to shutdown: %s", err.Error()))
 		os.Exit(1)
 	}
 
