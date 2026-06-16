@@ -35,15 +35,15 @@ export interface MapRequest {
   timeout?: number;
 }
 
+export type SearchTimeRange = "" | "day" | "week" | "month" | "year";
+
 export interface SearchRequest {
   query: string;
   region?: string;
-  safesearch?: string;
-  timeRange?: string;
+  timeRange?: SearchTimeRange;
   language?: string;
   categories?: string;
   page?: number;
-  timelimit?: string;
   use_bm25?: boolean;
   renderMode?: RenderMode | null;
   formats?: Format[];
@@ -186,6 +186,6 @@ export interface SearchOptions {
   query: string;
   region: string;
   kResults: number;
-  timelimit: string;
+  timeRange: SearchTimeRange;
   page: number;
 }
