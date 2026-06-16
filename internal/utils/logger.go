@@ -9,8 +9,25 @@ import (
 
 var Log *Logger
 
+var DefaultLevel = "info"
+
 func init() {
 	InitLogger()
+}
+
+func parseLevel(s string) slog.Level {
+	switch strings.ToLower(s) {
+	case "trace":
+		return slog.TraceLevel
+	case "debug":
+		return slog.DebugLevel
+	case "warn":
+		return slog.WarnLevel
+	case "error":
+		return slog.ErrorLevel
+	default:
+		return slog.InfoLevel
+	}
 }
 
 func InitLogger() {
@@ -20,18 +37,9 @@ func InitLogger() {
 			f.EnableColor = true
 		}
 
-		level := slog.InfoLevel
+		level := parseLevel(DefaultLevel)
 		if env := os.Getenv("LOG_LEVEL"); env != "" {
-			switch strings.ToLower(env) {
-			case "trace":
-				level = slog.TraceLevel
-			case "debug":
-				level = slog.DebugLevel
-			case "warn":
-				level = slog.WarnLevel
-			case "error":
-				level = slog.ErrorLevel
-			}
+			level = parseLevel(env)
 		}
 		l.Level = level
 	})
