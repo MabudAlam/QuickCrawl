@@ -1,0 +1,55 @@
+{
+  "schema": "quickcrawl.bench/v3",
+  "timestamp_ist": "2026-06-16T09:57:24.265672+05:30",
+  "scraper": "quickcrawl",
+  "dataset": "firecrawl/scrape-content-dataset-v1",
+  "config": {
+    "endpoint": "http://localhost:3000",
+    "max_concurrent_requests": 5,
+    "request_timeout_seconds": 120,
+    "max_urls_to_test": 1000,
+    "total_urls": 1000
+  },
+  "artifacts": {
+    "output_folder": "/Users/skmabudalam/Desktop/quickcrawl/bench/server-runs/Run_bench_2026-06-16T09-40-31-IST",
+    "summary_file": "/Users/skmabudalam/Desktop/quickcrawl/bench/server-runs/Run_bench_2026-06-16T09-40-31-IST/summary.json",
+    "per_url_details_file": "/Users/skmabudalam/Desktop/quickcrawl/bench/server-runs/Run_bench_2026-06-16T09-40-31-IST/per_url_details.jsonl",
+    "failure_log_file": "/Users/skmabudalam/Desktop/quickcrawl/bench/server-runs/Run_bench_2026-06-16T09-40-31-IST/failure_log.json"
+  },
+  "coverage": {
+    "total_urls": 1000,
+    "successful_scrapes": 864,
+    "failed_scrapes": 136,
+    "success_rate_pct": 86.4
+  },
+  "response_time_ms": {
+    "average_ms": 3776.8,
+    "p50_ms": 2242.6,
+    "p90_ms": 7590.8,
+    "p95_ms": 13000.8,
+    "p99_ms": 21188.8,
+    "successful_request_count": 864
+  },
+  "content_accuracy": {
+    "urls_with_ground_truth": 769,
+    "total_phrases_to_find": 11231,
+    "total_phrases_found": 3660,
+    "urls_with_matched_phrases": 412,
+    "phrase_match_rate_pct": 53.58,
+    "phrase_match_rate_overall_pct": 47.69,
+    "urls_with_leaked_phrases": 83,
+    "clean_content_rate_pct": 90.39
+  },
+  "most_common_failures": {
+    "target returned HTTP Not Found": 59,
+    "target returned HTTP Forbidden": 36,
+    "no markdown": 12,
+    "target returned HTTP Not Acceptable": 3,
+    "target returned HTTP Internal Server Err": 2,
+    "target returned HTTP Bad Request": 1,
+    "target returned HTTP Service Unavailable": 1,
+    "page load timed out for https://www.bgky": 1,
+    "page load timed out for http://fanduel.c": 1,
+    "target returned HTTP Unauthorized": 1
+  }
+}
