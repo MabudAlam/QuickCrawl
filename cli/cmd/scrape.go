@@ -46,9 +46,9 @@ func init() {
 	rootCmd.AddCommand(scrapeCmd)
 
 	scrapeCmd.Flags().StringVarP(&scrapeFlags.formats, "formats", "f", "markdown",
-		"Output formats (comma-separated): markdown,html,links,json")
+		"Output formats (comma-separated): markdown,html,rawHtml,plainText,links,imageLinks,json")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.renderMode, "render", "auto",
-		"Renderer mode: auto (default), http, browser")
+		"Render mode: auto (default), http, browser")
 	scrapeCmd.Flags().Int64Var(&scrapeFlags.waitFor, "wait-for", 0,
 		"Milliseconds to wait after page load for late content")
 	scrapeCmd.Flags().StringVar(&scrapeFlags.includeTags, "include-tags", "",
@@ -68,19 +68,14 @@ func runScrape(cmd *cobra.Command, args []string) error {
 
 	targetURL := args[0]
 
-	parsedURL, urlErr := url.Parse(targetURL)
-	if urlErr != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return fmt.Errorf("invalid URL: %s (must include scheme like https://)", targetURL)
+	formats, err := parseFormats(scrapeFlags.formats)
+	if err != nil {
+		return err
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid URL scheme: %s (only http/https supported)", parsedURL.Scheme)
-	}
-
-	formats := parseFormats(scrapeFlags.formats)
 
 	mode, err := types.ParseRenderMode(scrapeFlags.renderMode)
 	if err != nil {
-		return fmt.Errorf("invalid --render-mode: %w", err)
+		return fmt.Errorf("invalid --render: %w", err)
 	}
 	var modePtr *types.RenderMode
 	if mode != "" {
@@ -104,6 +99,20 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	var cssSelector *string
 	if scrapeFlags.cssSelector != "" {
 		cssSelector = &scrapeFlags.cssSelector
+	}
+
+	coreReq := &types.ScrapeRequest{
+		URL:         targetURL,
+		Formats:     formats,
+		RenderMode:  modePtr,
+		WaitFor:     waitFor,
+		IncludeTags: includeTags,
+		ExcludeTags: excludeTags,
+		CSSSelector: cssSelector,
+	}
+	coreReq.Defaults()
+	if err := coreReq.Validate(); err != nil {
+		return err
 	}
 
 	cfg, teardown, err := loadConfigWithRenderer()
@@ -131,16 +140,6 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	}
 	defer scraper.Close()
 
-	coreReq := &types.ScrapeRequest{
-		URL:         targetURL,
-		Formats:     formats,
-		RenderMode:  modePtr,
-		WaitFor:     waitFor,
-		IncludeTags: includeTags,
-		ExcludeTags: excludeTags,
-		CSSSelector:  cssSelector,
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	data, scrapeErr := scraper.Scrape(ctx, coreReq)
 	cancel()
@@ -155,41 +154,40 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// parseFormats converts a comma-separated format string to a slice of OutputFormat.
-// Valid formats are: markdown, html, rawHtml, links, json, plainText.
-func parseFormats(formats string) []types.OutputFormat {
+// parseFormats converts a comma-separated format string to a slice of
+// OutputFormat. Valid formats are: markdown, html, rawHtml, plainText,
+// links, imageLinks, json. Unknown values return an error so the user
+// is told their --formats flag was wrong.
+func parseFormats(formats string) ([]types.OutputFormat, error) {
 	if formats == "" {
-		return []types.OutputFormat{types.FormatMarkdown}
+		return []types.OutputFormat{types.FormatMarkdown}, nil
 	}
 
 	parts := strings.Split(formats, ",")
 	result := make([]types.OutputFormat, 0, len(parts))
+	seen := map[types.OutputFormat]struct{}{}
 
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		switch strings.ToLower(part) {
-		case "markdown":
-			result = append(result, types.FormatMarkdown)
-		case "html":
-			result = append(result, types.FormatHtml)
-		case "rawhtml", "raw":
-			result = append(result, types.FormatRawHtml)
-		case "links":
-			result = append(result, types.FormatLinks)
-		case "json":
-			result = append(result, types.FormatJson)
-		case "plaintext", "plain":
-			result = append(result, types.FormatPlainText)
-		default:
-			// Ignore unknown formats to allow forward compatibility.
+		if part == "" {
+			continue
 		}
+		var f types.OutputFormat
+		if err := f.UnmarshalJSON([]byte(`"` + part + `"`)); err != nil {
+			return nil, fmt.Errorf("invalid --formats value %q: allowed: markdown, html, rawHtml, plainText, links, imageLinks, json", part)
+		}
+		if _, ok := seen[f]; ok {
+			continue
+		}
+		seen[f] = struct{}{}
+		result = append(result, f)
 	}
 
 	if len(result) == 0 {
 		result = append(result, types.FormatMarkdown)
 	}
 
-	return result
+	return result, nil
 }
 
 // formatsToStrings converts []types.OutputFormat to []string for the
