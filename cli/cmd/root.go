@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/MabudAlam/quickcrawl/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -49,8 +50,8 @@ Examples:
   # Scrape a single URL and output markdown
   quickcrawl scrape https://example.com
 
-  # Crawl a website up to 10 pages
-  quickcrawl crawl https://example.com --max-pages 10
+  # Crawl a website up to 100 pages
+  quickcrawl crawl https://example.com --max-pages 100
 
   # Discover URLs on a site using sitemap
   quickcrawl map https://example.com --max-depth 3
@@ -66,6 +67,10 @@ Examples:
 		// Users typically expect help on stdout, not stderr.
 		cmd.Help()
 	},
+
+	// Version is exposed via --version. Cobra handles the flag
+	// automatically; we just need to tell it the version string.
+	Version: version.String(),
 
 	// PersistentPreRun is executed before any subcommand's Run function.
 	// It sets up the environment (like verbose logging) before
