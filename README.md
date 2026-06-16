@@ -129,6 +129,20 @@ Example MCP tool arguments:
 
 ---
 
+## 🧠 Teach Your Agent to Use QuickCrawl
+
+QuickCrawl ships with SKILL.md files that teach AI coding agents how to use it. Install with one command:
+
+```bash
+npx skills add MabudAlam/QuickCrawl
+```
+
+This discovers both skills in `skills/quickcrawl-cli/` and `skills/quickcrawl-mcp/` and installs them to your agent (Claude Code, OpenCode, Cursor, etc.). After installation, the agent knows how to scrape, crawl, map, and search without any manual instructions.
+
+
+
+---
+
 ## 💻 CLI
 
 The Quickcrawl CLI provides standalone command-line access to all features. No server or Python needed.
