@@ -1,20 +1,24 @@
 #!/bin/sh
-# QuickCrawl installer - downloads the latest release binary for your platform.
+# QuickCrawl CLI installer - downloads the latest release binary for your
+# platform (macOS, Linux, Windows) and installs it to /usr/local/bin.
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
 #   wget -qO- https://raw.githubusercontent.com/MabudAlam/quickcrawl/main/install.sh | sh
 #
-# Options (environment variables):
-#   QUICKCRAWL_VERSION=v0.1.0   Install a specific version instead of latest
-#   QUICKCRAWL_INSTALL_DIR=~/.local/bin   Custom install directory
-#   QUICKCRAWL_BINARY=quickcrawl          Binary to install (quickcrawl, quickcrawl-server, or quickcrawl-mcp)
-#   GITHUB_TOKEN=ghp_...     Avoid GitHub API rate limits
+# Environment variables:
+#   QUICKCRAWL_VERSION=v0.1.0           Install a specific version instead of latest
+#   QUICKCRAWL_INSTALL_DIR=~/.local/bin Custom install directory
+#   GITHUB_TOKEN=ghp_...                Avoid GitHub API rate limits
+#
+# Need the MCP server or HTTP API instead? See:
+#   https://github.com/MabudAlam/quickcrawl/releases
 
 set -eu
 
 REPO="MabudAlam/quickcrawl"
+BINARY="quickcrawl"
 INSTALL_DIR="${QUICKCRAWL_INSTALL_DIR:-/usr/local/bin}"
-BINARY="${QUICKCRAWL_BINARY:-quickcrawl}"
 
 # --- helpers ----------------------------------------------------------------
 
@@ -24,9 +28,9 @@ GREEN="$(tput setaf 2 2>/dev/null || printf '')"
 RED="$(tput setaf 1 2>/dev/null || printf '')"
 RESET="$(tput sgr0 2>/dev/null || printf '')"
 
-info()      { printf '%s==>%s %s\n' "${BLUE}${BOLD}" "${RESET}" "$*"; }
-success()   { printf '%s==>%s %s\n' "${GREEN}${BOLD}" "${RESET}" "$*"; }
-err()       { printf '%serror:%s %s\n' "${RED}${BOLD}" "${RESET}" "$*" >&2; exit 1; }
+info()    { printf '%s==>%s %s\n' "${BLUE}${BOLD}" "${RESET}" "$*"; }
+success() { printf '%s==>%s %s\n' "${GREEN}${BOLD}" "${RESET}" "$*"; }
+err()     { printf '%serror:%s %s\n' "${RED}${BOLD}" "${RESET}" "$*" >&2; exit 1; }
 
 need() {
   command -v "$1" >/dev/null 2>&1 || err "'$1' is required but not found"
@@ -53,9 +57,9 @@ detect_platform() {
   ARCH="$(uname -m)"
 
   case "$OS" in
-    Darwin)  PLATFORM="darwin" ;;
-    Linux)   PLATFORM="linux"  ;;
-    MINGW*|MSYS*|CYGWIN*) PLATFORM="win32" ;;
+    Darwin)  PLATFORM="darwin"; OS_LABEL="darwin" ;;
+    Linux)   PLATFORM="linux";  OS_LABEL="linux"  ;;
+    MINGW*|MSYS*|CYGWIN*) PLATFORM="win32"; OS_LABEL="windows" ;;
     *)       err "Unsupported OS: $OS. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
   esac
 
@@ -67,9 +71,11 @@ detect_platform() {
     fi
   fi
 
+  # goreleaser outputs Arch as "amd64" (not "x64") and Os as "windows"
+  # (not "win32"). Match those exact names in the asset URL.
   case "$ARCH" in
-    x86_64|amd64)  ARCH_LABEL="x64"   ;;
-    aarch64|arm64) ARCH_LABEL="arm64"  ;;
+    x86_64|amd64)  ARCH_LABEL="amd64" ;;
+    aarch64|arm64) ARCH_LABEL="arm64" ;;
     *)             err "Unsupported architecture: $ARCH. Try: go install github.com/MabudAlam/quickcrawl/cli" ;;
   esac
 
@@ -80,10 +86,10 @@ detect_platform() {
     fi
   fi
 
-  if [ "$PLATFORM" = "win32" ]; then
-    ASSET="${BINARY}_${VERSION#v}_${PLATFORM}_${ARCH_LABEL}.zip"
+  if [ "$OS_LABEL" = "windows" ]; then
+    ASSET="${BINARY}_${VERSION#v}_${OS_LABEL}_${ARCH_LABEL}.zip"
   else
-    ASSET="${BINARY}_${VERSION#v}_${PLATFORM}_${ARCH_LABEL}.tar.gz"
+    ASSET="${BINARY}_${VERSION#v}_${OS_LABEL}_${ARCH_LABEL}.tar.gz"
   fi
 }
 
@@ -143,7 +149,7 @@ install() {
     INSTALLED=$("$BINARY" --version 2>/dev/null | head -1 || echo "unknown")
     info "Upgrading from ${INSTALLED} to ${VERSION}..."
   else
-    info "Downloading QuickCrawl ${VERSION} (${PLATFORM}/${ARCH_LABEL})..."
+    info "Downloading QuickCrawl CLI ${VERSION} (${PLATFORM}/${ARCH_LABEL})..."
   fi
 
   download "$URL" "${QUICKCRAWL_TMPDIR}/${ASSET}"
@@ -177,9 +183,17 @@ install() {
     sudo chmod +x "${INSTALL_DIR}/${BINARY}"
   fi
 
-  success "QuickCrawl ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
+  success "QuickCrawl CLI ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
   echo ""
   echo "  Run:  ${BINARY} --help"
+  echo ""
+  echo "  Try:"
+  echo "    ${BINARY} scrape https://example.com"
+  echo "    ${BINARY} crawl  https://docs.example.com --max-pages 50"
+  echo "    ${BINARY} search \"golang web scraping\""
+  echo ""
+  echo "  Need the MCP server or HTTP API? Download from:"
+  echo "    https://github.com/MabudAlam/quickcrawl/releases"
   echo ""
 
   case ":$PATH:" in
