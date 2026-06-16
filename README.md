@@ -16,7 +16,7 @@
 [![LightPanda](https://img.shields.io/badge/LightPanda-DD2777?style=for-the-badge&logo=panda&logoColor=white)](https://github.com/nicholasjackson/lightpanda)
 [![SearXNG](https://img.shields.io/badge/SearXNG-风?style=for-the-badge&logo=search&logoColor=white)](https://searxng.org/)
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/9gVVr1?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/5Dcxsc?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 </div>
 
@@ -45,26 +45,27 @@ Quickcrawl is a powerful Go-based web scraping service that brings intelligence 
 
 ## 📊 Benchmark
 
-> **85.4%** scrape success rate across 1,000 diverse URLs from the [Firecrawl Scrape Content Dataset v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1)
+> **86.4%** scrape success rate across 1,000 diverse URLs from the [Firecrawl Scrape Content Dataset v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1)
 
-Tested against Firecrawl v2.5 on the same dataset:
+### Coverage Metrics
 
-| Feature | Quickcrawl | Firecrawl |
-|---------|------------|-----------|
-| Coverage | 85.4% | 79.4% |
-| Avg Scrape Latency | **1,841.9ms** | 4,048ms |
-| Self-hosting | Single binary | Multi-container (~4GB+) |
-| Cost / 1K scrapes | **$0** (self-hosted) | $9 |
-
+| Metric | Value |
+|--------|-------|
+| Success Rate | 86.4% (864/1000) |
+| Avg Scrape Latency | 3,776.8ms |
+| P50 Latency | 2,242.6ms |
+| P90 Latency | 7,590.8ms |
+| P95 Latency | 13,000.8ms |
+| P99 Latency | 21,188.8ms |
 
 ### Quality Metrics
 
 | Metric | Value |
 |--------|-------|
-| Content Recall | 44.03% |
-| Noise Rejection | 86.65% |
-| Content Matches | 376 |
-| Noise Leaks | 114 |
+| Phrase Match Rate | 47.69% |
+| Clean Content Rate | 90.39% |
+| URLs with Ground Truth | 769 |
+| URLs with Matched Phrases | 412 |
 
 
 
@@ -193,6 +194,8 @@ cd quickcrawl/python
 pip install -e .
 ```
 
+> **Developing locally?** See [CONTRIBUTING.md](CONTRIBUTING.md) for clone instructions, `quickcrawl.toml` and `.env` configuration, override precedence, and build commands for all three binaries.
+
 ### Quick Start
 
 ```python
@@ -218,6 +221,19 @@ See [`python/examples/`](python/examples/):
 - [`05_cloud.py`](python/examples/05_cloud.py) — Connect to deployed server
 - [`06_search.py`](python/examples/06_search.py) — Web search with scraping
 - [`perplexity.py`](python/examples/perplexity.py) — Perplexity-style AI research agent with Google ADK
+
+---
+
+## 🤖 AI Agent Skills
+
+QuickCrawl ships with SKILL.md files for AI coding agents:
+
+| Skill | For | Install |
+|---|---|---|
+| [`skills/quickcrawl-mcp/SKILL.md`](skills/quickcrawl-mcp/SKILL.md) | Claude Code, OpenCode, Cursor (MCP) | Copy to agent skills dir |
+| [`skills/quickcrawl-cli/SKILL.md`](skills/quickcrawl-cli/SKILL.md) | Shell-based agents | `go install .../cli` |
+
+QuickCrawl MCP tools: `scrape`, `crawl`, `check_crawl_status`, `map`, `search`
 
 ---
 
@@ -400,9 +416,9 @@ content filters, and LLM-based structured extraction.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | yes | Absolute `http://` or `https://` URL to scrape |
-| `formats` | string[] | no | Output formats. One or more of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json`. Defaults to `["markdown"]` |
+| `formats` | string[] | no | Output formats. Any subset of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json`. Defaults to `["markdown"]` |
 | `renderMode` | string | no | Per-request override. One of `"auto"`, `"browser"`, `"http"`. Omit to inherit the server-wide `render_mode` from `quickcrawl.toml` (default: `auto`). |
-| `waitFor` | int | no | Milliseconds to wait after navigation for late content / XHRs. `0` = use the SPA-readiness poll (default) |
+| `waitFor` | int | no | Milliseconds to wait after navigation for late content / XHRs. Range: `0-120000`. Default: `0` |
 | `headers` | object | no | Custom HTTP headers sent on the fetch |
 | `includeTags` | string[] | no | CSS selectors to keep (e.g. `["article", "h1"]`) — applied during `preprocessHTML` |
 | `excludeTags` | string[] | no | CSS selectors to drop (e.g. `["nav", "footer", ".ad"]`) |
@@ -411,7 +427,7 @@ content filters, and LLM-based structured extraction.
 | `extract` | object | no | LLM extraction overrides: `{ schema, prompt, responseFormat }` |
 | `llmExtractionPrompt` | string | no | Per-request LLM system prompt override |
 | `llmResponseFormat` | string | no | Per-request LLM `response_format` name override |
-| `browser` | string | no | **Deprecated.** Accepted for backward-compat; ignored. |
+| `ttl` | int | no | Cache TTL in seconds. `0` = bypass cache, `>0` = accept cached if younger than TTL. Must be `>= 0` |
 
 **Minimal request:**
 
@@ -512,12 +528,11 @@ a job ID immediately, and you poll `GET /v1/crawl/:id` for progress and results.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | yes | Starting URL |
-| `maxDepth` | int | no | Maximum link depth to follow. `0-10`. Defaults to `crawler.default_max_depth` (TOML) |
-| `maxPages` | int | no | Maximum pages to scrape. `1-1000`. Defaults to `crawler.default_max_pages` (TOML) |
+| `maxDepth` | int | no | Maximum link depth to follow. `0-100`. Defaults to `crawler.default_max_depth` (TOML) |
+| `maxPages` | int | no | Maximum pages to scrape. `1-100`. Defaults to `crawler.default_max_pages` (TOML) |
 | `formats` | string[] | no | Output formats per page. Any subset of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`. **Note:** `"json"` is rejected with 400 — use `/v1/scrape` for LLM extraction |
 | `renderMode` | string | no | Per-request override. One of `"auto"`, `"browser"`, `"http"`. Omit to inherit the server-wide `render_mode` from `quickcrawl.toml` (default: `auto`). |
 | `waitFor` | int | no | Milliseconds to wait after each navigation |
-| `browser` | string | no | **Deprecated.** Accepted for backward-compat; ignored. |
 
 **Start crawl request:**
 
@@ -593,7 +608,7 @@ success, `404 Not Found` if the job ID is unknown.
 
 | Status | Code | Cause |
 |--------|------|-------|
-| `400` | `invalid_request` | Missing `url`, non-http(s) scheme, malformed JSON, or `formats` contains `"json"` |
+| `400` | `invalid_request` | Missing `url`, non-http(s) scheme, malformed JSON, `formats` contains `"json"`, `maxDepth` or `maxPages` out of range, negative values, invalid `renderMode`, or invalid `waitFor` |
 | `500` | `internal_error` | Scraper not initialized |
 
 ### 🗺️ Mapping — `/v1/map`
@@ -602,7 +617,16 @@ success, `404 Not Found` if the job ID is unknown.
 |--------|------|-------------|
 | `POST` | `/v1/map` | Discover all URLs on a site instantly |
 
-**Request:**
+**Request body** (`types.MapRequest`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Absolute `http://` or `https://` URL to start from |
+| `maxDepth` | int | no | Maximum link depth to follow. `0-100`. Default: `2` |
+| `useSitemap` | bool | no | Seed discovery with sitemap.xml and robots.txt sitemaps. Default: `true` |
+| `timeout` | int | no | Operation timeout in milliseconds. `1-600000`. Default: `30000` |
+
+**Request example:**
 
 ```json
 {
@@ -636,9 +660,27 @@ success, `404 Not Found` if the job ID is unknown.
 
 By default `/v1/search` returns only search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content (markdown/html/etc.) from each result URL — 10 workers in parallel.
 
+**Request body** (`types.SearchRequest`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | yes | Search query string |
+| `region` | string | no | SearXNG language code. Default: `auto` |
+| `timeRange` | string | no | SearXNG `time_range` filter. One of `day`, `week`, `month`, `year`. Omit for no filter |
+| `categories` | string | no | Comma-separated SearXNG categories. Default: `general` |
+| `page` | int | no | 1-based page number. `1-1000`. Default: `1` |
+| `use_bm25` | bool | no | Re-rank results using BM25F scoring. Default: `false` |
+| `scrape` | bool | no | Fetch and extract content from each result URL. Default: `false` |
+| `formats` | string[] | no | Output formats when `scrape=true`. Any subset of `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`. Default: `["markdown"]` |
+| `renderMode` | string | no | Per-request render mode override for scraping each result. One of `auto`, `browser`, `http`. Omit to inherit server default |
+
+**Request example:**
+
 ```json
 {
   "query": "golang web scraping",
+  "timeRange": "month",
+  "page": 1,
   "scrape": true,
   "formats": ["markdown"]
 }
@@ -852,7 +894,7 @@ docker run -p 3000:3000 quickcrawl-playground
 
 ### Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/9gVVr1?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/5Dcxsc?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 1. Click the button above
 2. Connect your GitHub repository
@@ -875,8 +917,3 @@ docker run -p 3000:3000 quickcrawl-playground
 9. Improve the SDK perfomance
 
 
-
-MCP Testing on Inspector
-
-CONFIG=/Users/skmabudalam/Desktop/quickcrawl/quickcrawl.toml \
-npx @modelcontextprotocol/inspector /Users/skmabudalam/Desktop/quickcrawl/bin/quickcrawl-mcp
