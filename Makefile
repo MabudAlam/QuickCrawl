@@ -19,7 +19,7 @@ CLI_PKG=./cli
 
 # Production ldflags: log level "error" suppresses info/warn but keeps errors visible.
 # End users get zero noise; errors still print to stderr for debugging.
-LDFLAGS_PROD=-X github.com/MabudAlam/quickcrawl/internal/utils.DefaultLevel=error
+LDFLAGS_PROD=-s -w -X github.com/MabudAlam/quickcrawl/internal/utils.DefaultLevel=error
 
 # Install dependencies
 install:
