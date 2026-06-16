@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
@@ -73,17 +72,14 @@ func (h *Handler) Scrape(c *gin.Context) {
 		return
 	}
 
-	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("url is required"))
+	req.Defaults()
+	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
+			Success:   false,
+			Error:     stringPtr(err.Error()),
+			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
+		})
 		return
-	}
-	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("url must start with http:// or https://"))
-		return
-	}
-
-	if len(req.Formats) == 0 {
-		req.Formats = []types.OutputFormat{types.FormatMarkdown}
 	}
 
 	//if the config says be polite with robots.txt then follow it
@@ -205,15 +201,11 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		return
 	}
 
-	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("URL is required"))
-		return
-	}
-
-	if _, urlErr := types.ValidateURL(req.URL); urlErr != nil {
+	req.Defaults()
+	if err := req.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
-			Error:     stringPtr(urlErr.Error()),
+			Error:     stringPtr(err.Error()),
 			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
 		})
 		return
@@ -230,17 +222,6 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 
 	if req.Browser != nil && *req.Browser != "" {
 		utils.Log.Warn("deprecated 'browser' field ignored for crawl", "value", *req.Browser)
-	}
-
-	for _, f := range req.Formats {
-		if f == types.FormatJson {
-			c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
-				Success:   false,
-				Error:     stringPtr("'json' format is not supported on /v1/crawl. Use /v1/scrape for LLM-based JSON extraction."),
-				ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
-			})
-			return
-		}
 	}
 
 	id := h.State.StartCrawlJob(&req)
@@ -334,15 +315,11 @@ func (h *Handler) Map(c *gin.Context) {
 		return
 	}
 
-	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("URL is required"))
-		return
-	}
-
-	if _, urlErr := types.ValidateURL(req.URL); urlErr != nil {
+	req.Defaults()
+	if err := req.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
-			Error:     stringPtr(urlErr.Error()),
+			Error:     stringPtr(err.Error()),
 			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
 		})
 		return
@@ -417,12 +394,11 @@ func (h *Handler) Search(c *gin.Context) {
 
 	req, parseErr := parseSearchRequest(body)
 	if parseErr != nil {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Invalid JSON request"))
-		return
-	}
-
-	if strings.TrimSpace(req.Query) == "" {
-		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Query is required"))
+		if _, ok := err.(*json.SyntaxError); ok || parseErr.Error() == "invalid character" {
+			c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("Invalid JSON request"))
+		} else {
+			c.JSON(http.StatusBadRequest, types.APIErr[struct{}](parseErr.Error()))
+		}
 		return
 	}
 
@@ -442,7 +418,6 @@ func (h *Handler) Search(c *gin.Context) {
 		Language: req.Language,
 		TimeRange: req.TimeRange,
 		Categories: req.Categories,
-		Safesearch: req.Safesearch,
 		Page:     req.Page,
 		UseBM25:  req.UseBM25,
 		BM25FWeights: search.BM25FWeights{
@@ -535,13 +510,17 @@ func parseMapRequest(body []byte) (types.MapRequest, error) {
 	return req, nil
 }
 
-// parseSearchRequest deserializes a SearchRequest from JSON and applies defaults.
+// parseSearchRequest deserializes a SearchRequest from JSON, applies defaults
+// and validates every field against the SearXNG contract.
 func parseSearchRequest(body []byte) (types.SearchRequest, error) {
 	var req types.SearchRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return req, err
 	}
 	req.Defaults()
+	if err := req.Validate(); err != nil {
+		return req, err
+	}
 	return req, nil
 }
 
