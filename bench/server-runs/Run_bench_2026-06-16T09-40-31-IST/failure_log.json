@@ -1,0 +1,863 @@
+{
+  "schema": "quickcrawl.bench/v3",
+  "timestamp_ist": "2026-06-16T09:57:24.265672+05:30",
+  "scraper": "quickcrawl",
+  "endpoint": "http://localhost:3000",
+  "config": {
+    "endpoint": "http://localhost:3000",
+    "max_concurrent_requests": 5,
+    "request_timeout_seconds": 120,
+    "max_urls_to_test": 1000,
+    "total_urls": 1000
+  },
+  "total_failures": 136,
+  "failure_summary": {
+    "target returned HTTP Not Found": 59,
+    "target returned HTTP Forbidden": 36,
+    "no markdown": 12,
+    "target returned HTTP Not Acceptable": 3,
+    "target returned HTTP Internal Server Err": 2,
+    "target returned HTTP Bad Request": 1,
+    "target returned HTTP Service Unavailable": 1,
+    "page load timed out for https://www.bgky": 1,
+    "page load timed out for http://fanduel.c": 1,
+    "target returned HTTP Unauthorized": 1,
+    "target returned HTTP ": 1,
+    "page load timed out for https://pascualb": 1,
+    "target returned HTTP Gone": 1,
+    "page load timed out for https://www.zion": 1,
+    "page load timed out for http://calvertjo": 1,
+    "target returned HTTP Bad Gateway": 1,
+    "page load timed out for https://www.okx.": 1,
+    "page load timed out for https://www.harn": 1,
+    "page load timed out for https://baike.ba": 1,
+    "page load timed out for https://sportsbo": 1,
+    "page load timed out for https://www.krak": 1,
+    "page load timed out for https://www.mond": 1,
+    "target returned HTTP Precondition Failed": 1,
+    "page load timed out for http://www.kjdb.": 1,
+    "target returned HTTP Payment Required": 1,
+    "page load timed out for https://www.fdxs": 1,
+    "page load timed out for http://www.360do": 1,
+    "page load timed out for http://moversgui": 1,
+    "page load timed out for https://des.asis": 1
+  },
+  "failed_url_details": [
+    {
+      "url": "https://www.crozerhealth.org/redirect.aspx?id=8740",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 720.0
+    },
+    {
+      "url": "http://vetaeducation.com/events/webinar-aus-ag13",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 7129.5
+    },
+    {
+      "url": "https://www.laportehardware.com/shop/cleaning-supplies/cleaning-tools-and-supplies/window-washers-and-brushes/window-cleaning-kit/128445-unger-window-washing-starter-kit",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Acceptable",
+      "response_time_ms": 2998.1
+    },
+    {
+      "url": "http://investor-relations.snpgroup.com/siteassets/4-governance/en/2024/snp-se_modern_slavery_act_statement_2024_signed.pdf",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 1617.9
+    },
+    {
+      "url": "https://www.amafi.fr/nos-adherents/?letters=K,E,X,H,T",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 3101.1
+    },
+    {
+      "url": "https://www.migros.com.tr/arama?q=Biskrem Kakaolu",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Bad Request",
+      "response_time_ms": 199.4
+    },
+    {
+      "url": "https://www.fbrealestateco.com/blog/category/Vacation%20Home?category=Seller,Vacation%20Home,Vacation%20Home,Vacation%20Home,Vacation%20Home&page=4&offset=1740978109292",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3488.4
+    },
+    {
+      "url": "https://www.rugsusa.com/pages/privacy-policy",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1272.8
+    },
+    {
+      "url": "http://laval.ca/calendrier-activites/club-lecture-oeuvrelue-yves-theriault-biblio-arts-2",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 7402.7
+    },
+    {
+      "url": "https://www.filmtracks.com/comments/titles/gladiator/index.cgi?bemal=438",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 22819.0
+    },
+    {
+      "url": "https://bioreactortech.com/products/two-stage-multi-stage-fermenter-10l-100l",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 5680.8
+    },
+    {
+      "url": "https://bonavitabrand.co/products/hawaiian-coconut-coffee?pr_prod_strat=e5_desc&pr_rec_id=11516fdd4&pr_rec_pid=9825279050013&pr_ref_pid=9825279475997&pr_seq=uniform",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1291.9
+    },
+    {
+      "url": "https://www.haloit.com",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 969.5
+    },
+    {
+      "url": "https://www.curvybras.com/products/panache-rocha-brief-peacock-blue",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1389.1
+    },
+    {
+      "url": "https://www.hanbayinc.com/en/images/Fail-Safe-Actuators-2023.pdf",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Service Unavailable",
+      "response_time_ms": 11350.9
+    },
+    {
+      "url": "https://www.killeenisd.org/site/Default.aspx?PageType=15&SiteID=46&SectionMax=15&DirectoryType=6",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2581.6
+    },
+    {
+      "url": "https://www.bgky.org/bgpr/parks/17",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.bgky.org/bgpr/parks/17",
+      "response_time_ms": 75014.5
+    },
+    {
+      "url": "https://www.beltecno.co.jp/company/equipment/URL3:https://www.beltecno.co.jp/company/base/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3031.9
+    },
+    {
+      "url": "https://docs.cdp.coinbase.com/intx/reference/getportfoliosfeerates/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3211.2
+    },
+    {
+      "url": "https://www.blackberry.com/us/en/company/newsroom/press-releases/2022/blackberry-radar-and-isaacc-team-up-to-help-trucking-companies-improve-asset-utilization-and-fleet-visibility",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1576.0
+    },
+    {
+      "url": "http://fanduel.com/research/nba-mvp-betting-stephen-curry-eyes-a-hat-trick",
+      "status_code": 504,
+      "failure_reason": "page load timed out for http://fanduel.com/research/nba-mvp-betting-stephen-curry-eyes-a-hat-trick",
+      "response_time_ms": 75542.3
+    },
+    {
+      "url": "https://www.denverpost.com/2018/05/21/colorado-buffaloes-football-dimitri-stanley/?share=facebook&nb=1",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 17741.8
+    },
+    {
+      "url": "https://www.loopnet.com/Listing/33-Bloomfield-Hills-Pky-Bloomfield-Hills-MI/35466902/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 16940.2
+    },
+    {
+      "url": "https://iapp.org/resources/article/dpia-template-d-pia-lab/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1834.1
+    },
+    {
+      "url": "https://www.cyberbackgroundchecks.com/phone/662-429-3254",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 456.7
+    },
+    {
+      "url": "https://www.immobilienscout24.de/expose/150498632",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Unauthorized",
+      "response_time_ms": 1352.2
+    },
+    {
+      "url": "https://www.purdue.edu/science/Current_Students/docs/majors/fall2025/geology-geophysics-f25-dpg-science-core1.pdf",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1854.5
+    },
+    {
+      "url": "https://www.unomaha.edu/news/2019/03/maverick-minute-maverick-food-pantry.php",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3149.0
+    },
+    {
+      "url": "https://blog.csdn.net/MOS_JBET/article/details/147292763",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP ",
+      "response_time_ms": 820.3
+    },
+    {
+      "url": "https://cascadehomecenter.com/p/klein-black-oxide-finish-wire-stripper-092644740077",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Acceptable",
+      "response_time_ms": 3910.0
+    },
+    {
+      "url": "https://facebook.com/schlussgang/photos/das-schlussgang-team-gratuliert-dem-nordostschweizer-schwingerk%C3%B6nig-arnold-forre/2255824521157442/",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 5858.2
+    },
+    {
+      "url": "https://www.productboard.com/events/5-26-roadmaps/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1006.7
+    },
+    {
+      "url": "https://pascualbravo.edu.co/mas-de-20-docentes-participan-en-el-seminario-de-planeacion-y-desarrollo-de-los-pep",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://pascualbravo.edu.co/mas-de-20-docentes-participan-en-el-seminario-de-planeacion-y-desarr",
+      "response_time_ms": 75042.0
+    },
+    {
+      "url": "https://www.lomont.com/blog/index.php/2021/07/23/value-of-training-to-prevent-unintended-downtime-2/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 8312.4
+    },
+    {
+      "url": "https://www.merrimackcounty.net/departments/finance/budgets_and_quarterly_reviews.php",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2996.3
+    },
+    {
+      "url": "https://www.fastbackgroundcheck.com/559-627-4044",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 511.4
+    },
+    {
+      "url": "https://www.capovillashop.it/products/tessuto-arredo-jacquard-h-140-cm-foglie-giallo-beige",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1597.0
+    },
+    {
+      "url": "https://www.amazon.jobs/en/jobs/2723129/data-scientist-transportation-network-planning",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2343.0
+    },
+    {
+      "url": "https://www.vzkoo.com/read/202411278d2caccf6ed25d3e757c348c.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2943.5
+    },
+    {
+      "url": "https://www2.hm.com/en_ca/productpage.1232910005.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 16567.1
+    },
+    {
+      "url": "https://www.fluidsecure.com/gallery/fedex-2/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1096.4
+    },
+    {
+      "url": "https://yellowheadrec.com/vehicles/8975863-2025-AODES-WORKCROSS%201000-3%20HVAC",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 4062.8
+    },
+    {
+      "url": "https://www.cinn.cn/zgjxzz/202209/W020220922585709855705.pdf",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 33533.0
+    },
+    {
+      "url": "https://www.portaking.com/mezzanines/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1845.3
+    },
+    {
+      "url": "https://www.sunstudiotan.com/category/tanning",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 5798.5
+    },
+    {
+      "url": "https://www.verywellhealth.com/what-is-stimming-in-autism-260034",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Gone",
+      "response_time_ms": 1414.5
+    },
+    {
+      "url": "https://www.zionlutheranchurchcolbywi.com/about-us/",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.zionlutheranchurchcolbywi.com/about-us/",
+      "response_time_ms": 75022.2
+    },
+    {
+      "url": "https://www.a1toyota.com/inventory/new-2025-toyota-rav4-hybrid-xle-premium-all-wheel-drive-xle-prem-awd-suv-jtmb6rfv6sd163505/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2212.7
+    },
+    {
+      "url": "https://abcauto.com/en/search?&fit=N&ac_q=ArmorAll&sort=score&mpp=24&hawkFacetField_item_quantity_size_description=30%20CT",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2681.1
+    },
+    {
+      "url": "https://chickasawfederal.com/globalsolutions",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1422.6
+    },
+    {
+      "url": "https://www.tuinplant.nl/bloeiende-tuinvaren-incarvillea-delavayi-roze",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2426.4
+    },
+    {
+      "url": "https://datapath.com/category/news/product/c%E2%80%90series-portables/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 6774.4
+    },
+    {
+      "url": "https://proforto.nl/werkschoenen/veiligheidsschoenen/werkschoenen-sneakers/rucanor-work_gerba_shoes-for-crews_herock_unisex_groen_hoog-model",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 4344.0
+    },
+    {
+      "url": "http://calvertjonesgreen.com",
+      "status_code": 504,
+      "failure_reason": "page load timed out for http://calvertjonesgreen.com",
+      "response_time_ms": 75011.7
+    },
+    {
+      "url": "https://www.americanbankingnews.com/2025/04/09/capital-management-corp-va-raises-stake-in-amazon-com-inc-nasdaqamzn.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1882.8
+    },
+    {
+      "url": "https://www.consum.es/directory/listing/villena/claim",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2322.4
+    },
+    {
+      "url": "https://happyhotel.jp/hotels/680136",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1978.2
+    },
+    {
+      "url": "https://japan-ai.geniee.co.jp/media/tool/2232/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Bad Gateway",
+      "response_time_ms": 2127.9
+    },
+    {
+      "url": "https://kitchenyeah.es/kitchenyeah-cocina-portarretratos-banquete-de-hamburguesas",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 7656.8
+    },
+    {
+      "url": "https://www.sciencedirect.com/science/article/pii/S2667096822000453",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1201.5
+    },
+    {
+      "url": "https://www.okx.com/convert/aevo-to-huf",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.okx.com/convert/aevo-to-huf",
+      "response_time_ms": 75032.5
+    },
+    {
+      "url": "https://botpress.com/docs/zapier",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2815.3
+    },
+    {
+      "url": "http://bg.kompass.com",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2411.7
+    },
+    {
+      "url": "https://www.bitdefender.com/en-us/toolbox/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1446.0
+    },
+    {
+      "url": "https://developer.android.com/studio/projects/version-control",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 45999.6
+    },
+    {
+      "url": "https://www.maisongreene.co/events/paint-sip-1",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1838.5
+    },
+    {
+      "url": "https://www.digitalservice.metro.tokyo.lg.jp/2025%E5%B9%B41?page=8",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1070.8
+    },
+    {
+      "url": "https://fintool.com/app/research/companies/HLIT",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2805.3
+    },
+    {
+      "url": "https://docs.vectorize.io/administration/billing-and-usage/usage-monitoring",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 252.0
+    },
+    {
+      "url": "https://eaglehook.com/contact-us/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 4653.5
+    },
+    {
+      "url": "https://bigevent.io/ai-conferences-usa/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2591.7
+    },
+    {
+      "url": "https://www.fullmoto.com/suiche-para-exploradoras-mastech",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 10663.2
+    },
+    {
+      "url": "https://www.autolenders.com/new-jersey-used-Lexus-RX 450h F SPORT Appearance",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 843.1
+    },
+    {
+      "url": "https://www.gunbroker.com/item/1066433550",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1393.7
+    },
+    {
+      "url": "http://www.leslielanellamas.com/contact.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 8143.3
+    },
+    {
+      "url": "https://mirror.xyz/musicprotocol.eth/zYHEbl96P2NaUke44LUclMPA-4yhkf8mLOGzXpXH8xs?collectors=true",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 6862.0
+    },
+    {
+      "url": "https://tdan.com/data-cleansing-tools-for-big-data-challenges-and-solutions/31659",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 5775.6
+    },
+    {
+      "url": "https://www.fool.com/money/offers/credit-cards/american-express-platinum/?from=108&luri=%2Fcredit-cards%2Fbest-credit-card-sign-up-bonuses%2F&furi=%2Fcredit-cards%2Fbest-credit-card-sign-up-bonuses%2F&fuuid=c8d63426-a826-40c3-be2b-1758934bd15c&luuid=c8d63426-a826-40c3-be2b-1758934bd15c&ltyp=btn&lclksec=offer_tile&ord=1&ltxt=Apply+Now+button+for+The+Platinum+Card%C2%AE+from+American+Express.",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 987.0
+    },
+    {
+      "url": "https://www.bbc.co.uk/news/articles/c2lk14q9k5ro",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 3331.2
+    },
+    {
+      "url": "https://www.harnett.org/permits/downloads/info-commercial.pdf",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.harnett.org/permits/downloads/info-commercial.pdf",
+      "response_time_ms": 75015.2
+    },
+    {
+      "url": "https://www.essity.com/careers/jobs/JOB_POSTING-3-85122",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3221.4
+    },
+    {
+      "url": "https://codezine.jp/article/detail/20349",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2947.3
+    },
+    {
+      "url": "https://post.smzdm.com/p/azonnp9r",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 18847.4
+    },
+    {
+      "url": "https://www.njcourts.gov/attorneys/opinions/unpublished-appellate?start=2024-10-15&end=2024-10-15",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 463.8
+    },
+    {
+      "url": "https://www.pflanzen-koelle.de/kirschlorbeer-caucasica-3er-set-hoehe-50-60-cm-topf-je-4-6-liter-0410950489/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1777.0
+    },
+    {
+      "url": "https://careers.astrazeneca.com/job/waltham/associate-regulatory-affairs-director/7684/79304073712",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2677.2
+    },
+    {
+      "url": "https://www.bandbhdwr.com/p/case-mini-trapper-bonestag-pocket-knife-021205653051",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Acceptable",
+      "response_time_ms": 2490.4
+    },
+    {
+      "url": "https://help.welcometothejungle.com/hc/en-gb/articles/4404011315602-GDPR-update-2022-Informing-applicants-about-their-resume-retention-in-Welcome-to-the-Jungle-Solutions-ATS",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2817.4
+    },
+    {
+      "url": "https://woovin.com/store/kicksbymattie/reviews/page/218/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3006.8
+    },
+    {
+      "url": "https://plockie.se/article/spionen_bergling",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Internal Server Error",
+      "response_time_ms": 1986.9
+    },
+    {
+      "url": "https://ded.mo.gov/press-room/arlee-home-fashions-expands-west-plains-opening-second-manufacturing-facility-and-adding",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1609.2
+    },
+    {
+      "url": "https://baike.baidu.com/item/%E5%86%9B%E7%94%A8%E6%97%A0%E4%BA%BA%E6%9C%BA/8805883",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://baike.baidu.com/item/%E5%86%9B%E7%94%A8%E6%97%A0%E4%BA%BA%E6%9C%BA/8805883",
+      "response_time_ms": 75015.8
+    },
+    {
+      "url": "https://auth.bigid.com/ai-security-governance",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2126.9
+    },
+    {
+      "url": "https://sportsbook.draftkings.com/nfl-odds-week-18",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://sportsbook.draftkings.com/nfl-odds-week-18",
+      "response_time_ms": 75015.1
+    },
+    {
+      "url": "http://www.0411hd.com/2024baiqi/baiye/yntanxian/1187407.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 40969.1
+    },
+    {
+      "url": "http://boglagold.com",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 8234.9
+    },
+    {
+      "url": "http://www.temp-mail.org//*",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 1996.5
+    },
+    {
+      "url": "https://www.kraken.com/it/learn/what-is-shiden-sdn",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.kraken.com/it/learn/what-is-shiden-sdn",
+      "response_time_ms": 75017.1
+    },
+    {
+      "url": "https://www.mondy.co.id/blog/details/groupthink-pemikiran-kelompok-dan-dampaknya-terhadap-kreativitas/7",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.mondy.co.id/blog/details/groupthink-pemikiran-kelompok-dan-dampaknya-terhadap-kreati",
+      "response_time_ms": 75020.8
+    },
+    {
+      "url": "http://hangzhou.customs.gov.cn/hangzhou_customs/575648/6010987/6473347/index.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Precondition Failed",
+      "response_time_ms": 3990.9
+    },
+    {
+      "url": "http://im.cas.cn/gflab/kxpj/202502/t20250218_7528987.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2293.9
+    },
+    {
+      "url": "https://seramount.com/research/disabilities-in-the-workplace/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3126.1
+    },
+    {
+      "url": "http://pollux-ag.ch/weg-mit-dem-dreck",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3014.5
+    },
+    {
+      "url": "https://apploi.com/blog/apploi-vs-applicantpro/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2310.1
+    },
+    {
+      "url": "https://www.zoro.com/klein-tools-screwdriver-slotted-12-12-in-square-600-12/i/G1578306/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2792.7
+    },
+    {
+      "url": "https://www.wine-searcher.com/find/repris+right+bank/2015?Xcurrencycode=USD&Xsavecurrency=Y",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1754.4
+    },
+    {
+      "url": "http://macys.com/shop/junior-clothing/shop-all-juniors-apparel/Sleeve_length,Top_style/Sleeveless,Active?id=60983",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 9721.5
+    },
+    {
+      "url": "http://www.kjdb.org/CN/abstract/article/1000-7857/17823",
+      "status_code": 504,
+      "failure_reason": "page load timed out for http://www.kjdb.org/CN/abstract/article/1000-7857/17823",
+      "response_time_ms": 75018.5
+    },
+    {
+      "url": "https://www.zysolutionsrd.com/devoluciones.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3145.9
+    },
+    {
+      "url": "http://www.nopss.gov.cn/n1/2020/1221/c219544-31973309.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2578.1
+    },
+    {
+      "url": "https://platform.openai.com/docs/guides/structured-outputs/introduction",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 4591.6
+    },
+    {
+      "url": "https://open.lefebvre-dalloz.fr/droit-affaires/fonds-commerce/tribunal-commerce_dz-oasis-001006",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2267.2
+    },
+    {
+      "url": "https://mrguppyfish.com/product-tag/recommendation/?filter_tax_product_cat=143%2C164%2C166",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Payment Required",
+      "response_time_ms": 1487.3
+    },
+    {
+      "url": "https://planetlovelife.com/how-you-can-reduce-the-amount-of-plastic-thats-killing-marine-animals/",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 385.9
+    },
+    {
+      "url": "https://www.loumalnatis.com/the-history-of-lous",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 2069.6
+    },
+    {
+      "url": "https://burkroyalty.com/recent-activity/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 895.1
+    },
+    {
+      "url": "https://riskonnect.com/event/rims-webinar-unlocking-the-value-of-business-continuity-and-insurable-risk-management",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2428.3
+    },
+    {
+      "url": "https://www.floridabar.org/directories/find-mbr/profile/?num=1019164",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 494.8
+    },
+    {
+      "url": "https://www.hispanaweb.com/diseno-y-montaje-de-clusters-de-servidores",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 4934.0
+    },
+    {
+      "url": "https://developers.webflow.com/designer/data/docs/getting-started-designer-extensions",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3084.7
+    },
+    {
+      "url": "https://www.bignonlebray.com/equipe/emmanuelle-bouton-avocate-paris/?team=cHJhY3RpY2U9MjczNzgmbWVudV9vcmRlcj04Ng--",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2895.1
+    },
+    {
+      "url": "https://kidneyballdc.org/nkf-announces-doug-kammerer-as-this-years-host-2/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2172.6
+    },
+    {
+      "url": "https://lelandscabins.com/tools-that-will-help-you-downsize",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 1642.2
+    },
+    {
+      "url": "https://tcimro.com/components/com_eventgallery/helpers/image.php?&mode=full&folder=HurricaneMaria&file=IMG_4458.JPG",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 3727.8
+    },
+    {
+      "url": "https://www.fdxsme.com/newsdetails.html?id=7e899459e140de2a075b2dd2e5b0148e",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://www.fdxsme.com/newsdetails.html?id=7e899459e140de2a075b2dd2e5b0148e",
+      "response_time_ms": 75015.1
+    },
+    {
+      "url": "https://www.investors.com/research/magnificent-seven-stocks-february-2025/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2406.5
+    },
+    {
+      "url": "http://www.360doc.com/content/23/0521/10/5820348_1081533855.shtml",
+      "status_code": 504,
+      "failure_reason": "page load timed out for http://www.360doc.com/content/23/0521/10/5820348_1081533855.shtml",
+      "response_time_ms": 75017.3
+    },
+    {
+      "url": "https://www.hardeeso.com/join_our_team/deputy_sheriff.php",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 3318.6
+    },
+    {
+      "url": "https://10insightsclimate.science/wp-content/uploads/2024/11/10-New-Insights-in-Climate-Science-2024-Report-Final.pdf",
+      "status_code": 200,
+      "failure_reason": "no markdown",
+      "response_time_ms": 15575.9
+    },
+    {
+      "url": "https://www.thecerbatgem.com/2025/01/22/braun-bostich-associates-inc-reduces-stake-in-novartis-ag-nysenvs.html",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2119.2
+    },
+    {
+      "url": "https://www.twp.pine.pa.us/172/Friends-of-Pine-Community-Parks",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 3199.4
+    },
+    {
+      "url": "https://fgsglobal.com/join-us/opportunities/praktikant-all-genders-public-affairs-13066927",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Not Found",
+      "response_time_ms": 2021.4
+    },
+    {
+      "url": "http://moversguide.com",
+      "status_code": 504,
+      "failure_reason": "page load timed out for http://moversguide.com",
+      "response_time_ms": 75011.0
+    },
+    {
+      "url": "http://digitroniklabs.com",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Internal Server Error",
+      "response_time_ms": 6377.0
+    },
+    {
+      "url": "https://www.repairclinic.com/",
+      "status_code": 200,
+      "failure_reason": "target returned HTTP Forbidden",
+      "response_time_ms": 815.5
+    },
+    {
+      "url": "https://des.asisasegurosmedicos.es/autonomos-pymes/proxima-pymes",
+      "status_code": 504,
+      "failure_reason": "page load timed out for https://des.asisasegurosmedicos.es/autonomos-pymes/proxima-pymes",
+      "response_time_ms": 75019.8
+    }
+  ]
+}
