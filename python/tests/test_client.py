@@ -31,7 +31,12 @@ class TestScrape:
         mock_response = {"markdown": "# Hello", "metadata": {"title": "Hello"}}
 
         with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
-            result = client.scrape("https://example.com", formats=["markdown", "html"])
+            result = client.scrape(
+                "https://example.com",
+                formats=["markdown", "html"],
+                wait_for=2000,
+                render_mode="browser",
+            )
 
         mock_post.assert_called_once()
         call_args = mock_post.call_args
@@ -39,19 +44,26 @@ class TestScrape:
         body = call_args[0][1]
         assert body["url"] == "https://example.com"
         assert body["formats"] == ["markdown", "html"]
+        assert body["waitFor"] == 2000
+        assert body["renderMode"] == "browser"
         assert result == mock_response
 
-    def test_scrape_subprocess_calls_tool(self) -> None:
+    def test_scrape_rejects_invalid_url(self) -> None:
         client = QuickCrawlClient()
-        mock_response = {"markdown": "# Hello"}
+        with pytest.raises(ValueError, match="url must start with http"):
+            client.scrape("not-a-url")
 
-        with patch.object(client, "_tool_call", return_value=mock_response) as mock_tool:
+    def test_scrape_subprocess_calls_cli(self) -> None:
+        client = QuickCrawlClient()
+        mock_response = {"markdown": "# Hello", "metadata": {"title": "Hello"}}
+
+        with patch.object(client, "_cli_call", return_value=mock_response) as mock_cli:
             result = client.scrape("https://example.com")
 
-        mock_tool.assert_called_once()
-        call_args = mock_tool.call_args
-        assert call_args[0][0] == "quickcrawl_scrape"
-        assert call_args[0][1]["url"] == "https://example.com"
+        mock_cli.assert_called_once()
+        call_args = mock_cli.call_args[0][0]
+        assert call_args[0] == "scrape"
+        assert call_args[1] == "https://example.com"
         assert result == mock_response
 
 
@@ -133,7 +145,7 @@ class TestSearch:
                 {"position": 1, "score": 9.0, "title": "Go", "url": "https://go.dev", "site_name": "go.dev", "snippet": "..."},
             ],
             "total_results": 1,
-            "page": 0,
+            "page": 1,
         }
 
         with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
@@ -144,7 +156,7 @@ class TestSearch:
         assert call_args[0][0] == "/v1/search"
         body = call_args[0][1]
         assert body["query"] == "golang"
-        assert body["page"] == 0
+        assert body["page"] == 1
         assert "use_bm25" not in body
 
     def test_search_http_with_bm25_and_page(self) -> None:
@@ -152,13 +164,33 @@ class TestSearch:
         mock_response = {"query": "x", "results": [], "total_results": 0, "page": 2}
 
         with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
-            result = client.search("x", use_bm25=True, page=2, timelimit="w")
+            result = client.search("x", use_bm25=True, page=2, time_range="week")
 
         body = mock_post.call_args[0][1]
         assert body["use_bm25"] is True
         assert body["page"] == 2
-        assert body["timelimit"] == "w"
+        assert body["timeRange"] == "week"
         assert result["page"] == 2
+
+    def test_search_http_with_time_range(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        mock_response = {"query": "golang", "results": [], "total_results": 0, "page": 1}
+
+        with patch.object(client, "_http_post", return_value=mock_response) as mock_post:
+            result = client.search("golang", time_range="day")
+
+        body = mock_post.call_args[0][1]
+        assert body["timeRange"] == "day"
+
+    def test_search_http_rejects_invalid_time_range(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        with pytest.raises(ValueError, match="time_range must be one of"):
+            client.search("golang", time_range="hour")
+
+    def test_search_http_rejects_invalid_page(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        with pytest.raises(ValueError, match="page must be between 1 and 1000"):
+            client.search("golang", page=0)
 
     def test_search_subprocess_passes_all_flags(self) -> None:
         client = QuickCrawlClient()
@@ -167,39 +199,34 @@ class TestSearch:
         with patch.object(client, "_cli_call", return_value=mock_response) as mock_cli:
             result = client.search(
                 "go",
-                page=1,
-                timelimit="d",
+                page=2,
+                time_range="month",
                 use_bm25=True,
                 scrape=True,
                 region="gb-en",
-                safesearch="strict",
             )
 
         args = mock_cli.call_args[0][0]
         assert "search" in args
         assert "go" in args
-        assert "--page" in args and "1" in args
-        assert "--timelimit" in args and "d" in args
+        assert "--page" in args and "2" in args
+        assert "--time-range" in args and "month" in args
         assert "--use-bm25" in args
         assert "--scrape" in args
         assert "--region" in args and "gb-en" in args
-        assert "--safesearch" in args and "strict" in args
         assert result == mock_response
+
+    def test_search_rejects_empty_query(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000", api_key="test")
+        with pytest.raises(ValueError, match="query is required"):
+            client.search("")
 
 
 @pytest.mark.unit
 class TestLifecycle:
-    def test_close_terminates_process(self) -> None:
-        client = QuickCrawlClient()
-        mock_proc = MagicMock()
-        mock_proc.poll.return_value = None
-        mock_proc.wait.return_value = 0
-        client._process = mock_proc
-
+    def test_close_noop_for_http_mode(self) -> None:
+        client = QuickCrawlClient(api_url="http://localhost:3000")
         client.close()
-
-        mock_proc.stdin.close.assert_called_once()
-        assert client._process is None
 
     def test_context_manager(self) -> None:
         client = QuickCrawlClient(api_url="http://localhost:3000")
@@ -223,17 +250,22 @@ class TestErrors:
                 client.scrape("https://example.com")
             assert exc_info.value.status_code == 400
 
-    def test_jsonrpc_error_handling(self) -> None:
+    def test_scrape_raises_on_invalid_url(self) -> None:
         client = QuickCrawlClient()
-        mock_proc = MagicMock()
-        error_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "error": {"code": -32600, "message": "Invalid request"},
-        })
-        mock_proc.stdout.readline.return_value = error_response + "\n"
-        mock_proc.poll.return_value = None
-        client._process = mock_proc
+        with pytest.raises(ValueError, match="url must start with http"):
+            client.scrape("ftp://example.com")
 
-        with pytest.raises(QuickCrawlApiError, match="Invalid request"):
-            client._jsonrpc("tools/call", {"name": "quickcrawl_scrape", "arguments": {}})
+    def test_search_raises_on_empty_query(self) -> None:
+        client = QuickCrawlClient()
+        with pytest.raises(ValueError, match="query is required"):
+            client.search("")
+
+    def test_crawl_raises_on_invalid_max_depth(self) -> None:
+        client = QuickCrawlClient()
+        with pytest.raises(ValueError, match="max_depth must be between"):
+            client.crawl("https://example.com", max_depth=101)
+
+    def test_crawl_raises_on_negative_max_depth(self) -> None:
+        client = QuickCrawlClient()
+        with pytest.raises(ValueError, match="max_depth must be between"):
+            client.crawl("https://example.com", max_depth=-1)
