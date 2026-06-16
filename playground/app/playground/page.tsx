@@ -70,6 +70,7 @@ import type {
   CrawlRequest,
   MapRequest,
   SearchRequest,
+  SearchTimeRange,
   APIResponse,
   CrawlState,
   HealthResponse,
@@ -189,12 +190,12 @@ export default function PlaygroundPage({
 
   const [searchQuery, setSearchQuery] = useState("")
   const [searchRegion, setSearchRegion] = useState("us-en")
-  const [searchTimeLimit, setSearchTimeLimit] = useState("")
+  const [searchTimeRange, setSearchTimeRange] = useState<SearchTimeRange>("")
   const [searchFormats, setSearchFormats] = useState<Format[]>(["markdown"])
   const [searchRenderMode, setSearchRenderMode] = useState<RenderMode | null>(null)
   const [searchScrape, setSearchScrape] = useState(false)
   const [searchUseBM25, setSearchUseBM25] = useState(false)
-  const [searchPage, setSearchPage] = useState(0)
+  const [searchPage, setSearchPage] = useState(1)
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -299,7 +300,7 @@ export default function PlaygroundPage({
         return {
           query: searchQuery,
           region: searchRegion,
-          timelimit: searchTimeLimit || undefined,
+          ...(searchTimeRange && { timeRange: searchTimeRange }),
           ...(searchRenderMode !== null && { renderMode: searchRenderMode }),
           formats: searchFormats,
           scrape: searchScrape,
@@ -313,7 +314,7 @@ export default function PlaygroundPage({
     mapOptions,
     searchQuery,
     searchRegion,
-    searchTimeLimit,
+    searchTimeRange,
     searchRenderMode,
     searchFormats,
     searchScrape,
@@ -413,7 +414,7 @@ export default function PlaygroundPage({
       const request: SearchRequest = {
         query: searchQuery,
         region: searchRegion,
-        timelimit: searchTimeLimit || undefined,
+        ...(searchTimeRange && { timeRange: searchTimeRange }),
         page: searchPage,
         use_bm25: searchUseBM25,
         renderMode: searchRenderMode,
@@ -460,12 +461,12 @@ export default function PlaygroundPage({
     setUrl("")
     setSearchQuery("")
     setSearchRegion("us-en")
-    setSearchTimeLimit("")
+    setSearchTimeRange("")
     setSearchFormats(["markdown"])
     setSearchRenderMode(null)
     setSearchScrape(false)
     setSearchUseBM25(false)
-    setSearchPage(0)
+    setSearchPage(1)
     setAdvancedExpanded(false)
     setSchemaBuilderOpen(false)
     setSchemaFields([{ name: "title", type: "string", description: "" }])
@@ -1313,18 +1314,18 @@ export default function PlaygroundPage({
           </DropdownMenu>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="search-timelimit">Time Limit</Label>
+          <Label htmlFor="search-timeRange">Time Range</Label>
           <select
-            id="search-timelimit"
-            value={searchTimeLimit}
-            onChange={(e) => setSearchTimeLimit(e.target.value)}
+            id="search-timeRange"
+            value={searchTimeRange}
+            onChange={(e) => setSearchTimeRange(e.target.value as SearchTimeRange)}
             className="h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
             <option value="">Any time</option>
-            <option value="d">Past day</option>
-            <option value="w">Past week</option>
-            <option value="m">Past month</option>
-            <option value="y">Past year</option>
+            <option value="day">Past day</option>
+            <option value="week">Past week</option>
+            <option value="month">Past month</option>
+            <option value="year">Past year</option>
           </select>
         </div>
       </div>
@@ -1337,23 +1338,23 @@ export default function PlaygroundPage({
             variant="default"
             size="sm"
             className="h-10 w-10 shrink-0 p-0"
-            disabled={searchPage <= 0}
-            onClick={() => setSearchPage(Math.max(0, searchPage - 1))}
+            disabled={searchPage <= 1}
+            onClick={() => setSearchPage(Math.max(1, searchPage - 1))}
           >
             −
           </Button>
           <Input
             id="search-page"
             type="number"
-            min={0}
-            max={10}
+            min={1}
+            max={1000}
             value={searchPage}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10)
-              if (Number.isNaN(v) || v < 0) {
-                setSearchPage(0)
+              if (Number.isNaN(v) || v < 1) {
+                setSearchPage(1)
               } else {
-                setSearchPage(Math.min(10, v))
+                setSearchPage(Math.min(1000, v))
               }
             }}
             className="h-10 text-center"
@@ -1363,13 +1364,13 @@ export default function PlaygroundPage({
             variant="default"
             size="sm"
             className="h-10 w-10 shrink-0 p-0"
-            disabled={searchPage >= 10}
-            onClick={() => setSearchPage(Math.min(10, searchPage + 1))}
+            disabled={searchPage >= 1000}
+            onClick={() => setSearchPage(Math.min(1000, searchPage + 1))}
           >
             +
           </Button>
           <span className="text-xs text-muted-foreground">
-            (0-indexed)
+            (1-indexed)
           </span>
         </div>
       </div>
