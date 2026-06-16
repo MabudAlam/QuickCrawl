@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
@@ -37,15 +36,12 @@ type ScrapeArgs struct {
 	CSSSelector *string  `json:"cssSelector,omitempty"`
 	// Renderer is deprecated: the new scraper uses chromedp only.
 	Renderer *string `json:"renderer,omitempty"`
-	// Browser is deprecated: the new scraper uses chromedp only.
-	Browser *string `json:"browser,omitempty"`
 }
 
 type SearchArgs struct {
 	Query      string            `json:"query"`
 	Region     string            `json:"region,omitempty"`
-	Safesearch string            `json:"safesearch,omitempty"`
-	Timelimit  string            `json:"timelimit,omitempty"`
+	TimeRange  string            `json:"timeRange,omitempty"`
 	Page       int               `json:"page,omitempty"`
 	UseBM25    bool              `json:"use_bm25,omitempty"`
 	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
@@ -65,23 +61,9 @@ func convertFormats(formats []string) []types.OutputFormat {
 }
 
 func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, any, error) {
-	if args.URL == "" {
-		return errorResult("url is required"), nil, nil
-	}
-
-	if _, urlErr := types.ValidateURL(args.URL); urlErr != nil {
-		return errorResult(fmt.Sprintf("invalid URL: %v", urlErr)), nil, nil
-	}
-
-	// Log deprecation warning if the caller pinned a renderer/browser.
-	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
-		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
-		utils.Log.Warn("deprecated renderer/browser fields ignored for scrape", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
-	}
-
-	scraper := s.state.CoreScraper
-	if scraper == nil {
-		return errorResult("scraper is not initialized"), nil, nil
+	// Log deprecation warning if the caller pinned a renderer.
+	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
+		utils.Log.Warn("deprecated renderer field ignored for scrape", "renderer", strVal(args.Renderer))
 	}
 
 	coreReq := &types.ScrapeRequest{
@@ -93,12 +75,19 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 		ExcludeTags: args.ExcludeTags,
 		CSSSelector: args.CSSSelector,
 	}
+	coreReq.Defaults()
+	if err := coreReq.Validate(); err != nil {
+		return errorResult(err.Error()), nil, nil
+	}
+
 	if coreReq.RenderMode != nil && *coreReq.RenderMode == types.RenderModeBrowser && coreReq.WaitFor == nil {
 		defaultWait := int64(2000)
 		coreReq.WaitFor = &defaultWait
 	}
-	if coreReq.Formats == nil {
-		coreReq.Formats = []types.OutputFormat{types.FormatMarkdown}
+
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized"), nil, nil
 	}
 
 	// Check robots.txt if respect_robots_txt is enabled
@@ -127,23 +116,13 @@ type CrawlArgs struct {
 	Formats    []string          `json:"formats,omitempty"`
 	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
 	WaitFor    *int64            `json:"waitFor,omitempty"`
-	// Renderer/Browser are deprecated: the new scraper uses chromedp only.
+	// Renderer is deprecated: the new scraper uses chromedp only.
 	Renderer *string `json:"renderer,omitempty"`
-	Browser  *string `json:"browser,omitempty"`
 }
 
 func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, any, error) {
-	if args.URL == "" {
-		return errorResult("url is required"), nil, nil
-	}
-
-	if _, urlErr := types.ValidateURL(args.URL); urlErr != nil {
-		return errorResult(fmt.Sprintf("invalid URL: %v", urlErr)), nil, nil
-	}
-
-	if (args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto") ||
-		(args.Browser != nil && *args.Browser != "" && *args.Browser != "auto") {
-		utils.Log.Warn("deprecated renderer/browser fields ignored for crawl", "renderer", strVal(args.Renderer), "browser", strVal(args.Browser))
+	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
+		utils.Log.Warn("deprecated renderer field ignored for crawl", "renderer", strVal(args.Renderer))
 	}
 
 	maxDepth := uint32(s.config.Crawler.DefaultMaxDepth)
@@ -163,12 +142,6 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		}
 	}
 
-	for _, f := range formats {
-		if f == types.FormatJson {
-			return errorResult("'json' format is not supported on quickcrawl_crawl. Use quickcrawl_scrape for LLM-based JSON extraction."), nil, nil
-		}
-	}
-
 	crawlReq := &types.CrawlRequest{
 		URL:        args.URL,
 		MaxDepth:   &maxDepth,
@@ -176,6 +149,10 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 		Formats:    formats,
 		RenderMode: args.RenderMode,
 		WaitFor:    args.WaitFor,
+	}
+	crawlReq.Defaults()
+	if err := crawlReq.Validate(); err != nil {
+		return errorResult(err.Error()), nil, nil
 	}
 
 	scraper := s.state.CoreScraper
@@ -252,27 +229,30 @@ type MapArgs struct {
 }
 
 func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args MapArgs) (*mcp.CallToolResult, any, error) {
-	if args.URL == "" {
-		return errorResult("url is required"), nil, nil
+	mapReq := types.MapRequest{
+		URL:        args.URL,
+		MaxDepth:   args.MaxDepth,
+		UseSitemap: args.UseSitemap,
+		Timeout:    args.Timeout,
 	}
-
-	if _, urlErr := types.ValidateURL(args.URL); urlErr != nil {
-		return errorResult(fmt.Sprintf("invalid URL: %v", urlErr)), nil, nil
+	mapReq.Defaults()
+	if err := mapReq.Validate(); err != nil {
+		return errorResult(err.Error()), nil, nil
 	}
 
 	useSitemap := true
-	if args.UseSitemap != nil {
-		useSitemap = *args.UseSitemap
+	if mapReq.UseSitemap != nil {
+		useSitemap = *mapReq.UseSitemap
 	}
 
 	maxDepth := uint32(s.config.Crawler.DefaultMaxDepth)
-	if args.MaxDepth != nil {
-		maxDepth = uint32(*args.MaxDepth)
+	if mapReq.MaxDepth != nil {
+		maxDepth = uint32(*mapReq.MaxDepth)
 	}
 
 	timeout := 30 * time.Second
-	if args.Timeout != nil && *args.Timeout > 0 {
-		timeout = time.Duration(*args.Timeout) * time.Millisecond
+	if mapReq.Timeout != nil && *mapReq.Timeout > 0 {
+		timeout = time.Duration(*mapReq.Timeout) * time.Millisecond
 	}
 	crawlCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -315,8 +295,24 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 }
 
 func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, any, error) {
-	if strings.TrimSpace(args.Query) == "" {
-		return errorResult("query is required"), nil, nil
+	formats := convertFormats(args.Formats)
+	if args.Scrape && len(formats) == 0 {
+		formats = []types.OutputFormat{types.FormatMarkdown}
+	}
+
+	apiReq := types.SearchRequest{
+		Query:      args.Query,
+		Region:     args.Region,
+		TimeRange:  args.TimeRange,
+		Page:       args.Page,
+		UseBM25:    args.UseBM25,
+		RenderMode: args.RenderMode,
+		Formats:    formats,
+		Scrape:     args.Scrape,
+	}
+	apiReq.Defaults()
+	if err := apiReq.Validate(); err != nil {
+		return errorResult(err.Error()), nil, nil
 	}
 
 	searxng, searxngErr := s.state.GetSearXNG()
@@ -324,25 +320,25 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		return errorResult(fmt.Sprintf("search configuration error: %v", searxngErr)), nil, nil
 	}
 
-	formats := []string{"markdown"}
-	if len(args.Formats) > 0 {
-		formats = args.Formats
+	scrapeFormats := make([]string, len(formats))
+	for i, f := range formats {
+		scrapeFormats[i] = string(f)
 	}
 
 	resp, err := search.Search(ctx, searxng, s.state.CoreScraper, search.Request{
-		Query:      args.Query,
-		Language:   args.Region,
-		TimeRange:  args.Timelimit,
-		Safesearch: search.NormalizeSafesearch(args.Safesearch),
-		Page:       args.Page,
-		UseBM25:    args.UseBM25,
+		Query:      apiReq.Query,
+		Language:   apiReq.Language,
+		TimeRange:  apiReq.TimeRange,
+		Categories: apiReq.Categories,
+		Page:       apiReq.Page,
+		UseBM25:    apiReq.UseBM25,
 		BM25FWeights: search.BM25FWeights{
 			Title:   s.config.Search.BM25FTitleWeight,
 			Snippet: s.config.Search.BM25FSnippetWeight,
 		},
-		Scrape:     args.Scrape,
-		Formats:    formats,
-		RenderMode: args.RenderMode,
+		Scrape:     apiReq.Scrape,
+		Formats:    scrapeFormats,
+		RenderMode: apiReq.RenderMode,
 	})
 	if err != nil {
 		return errorResult(fmt.Sprintf("search failed: %v", err)), nil, nil
@@ -472,6 +468,7 @@ func AddTools(server *mcp.Server, s *Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "site_map",
 		Description: "Discover all URLs on a website without scraping the content",
+		InputSchema: mapInputSchema(),
 	}, s.HandleMap)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -500,7 +497,8 @@ func scrapeInputSchema() map[string]any {
 			},
 			"formats": map[string]any{
 				"type":        "array",
-				"description": "Output formats such as markdown, html, links, or json",
+				"description": "Output formats such as markdown, html, links, or json. Defaults to [\"markdown\"] when omitted.",
+				"default":     []string{"markdown"},
 				"items": map[string]any{
 					"type": "string",
 					"enum": []string{"markdown", "html", "links", "json"},
@@ -544,11 +542,17 @@ func crawlInputSchema() map[string]any {
 			},
 			"maxDepth": map[string]any{
 				"type":        "integer",
-				"description": "Maximum crawl depth",
+				"description": "Maximum crawl depth. Defaults to 2 when omitted.",
+				"default":     2,
+				"minimum":     0,
+				"maximum":     100,
 			},
 			"maxPages": map[string]any{
 				"type":        "integer",
-				"description": "Maximum number of pages to crawl",
+				"description": "Maximum number of pages to crawl. Defaults to 100 when omitted.",
+				"default":     100,
+				"minimum":     1,
+				"maximum":     100,
 			},
 			"renderMode": map[string]any{
 				"type":        "string",
@@ -558,13 +562,16 @@ func crawlInputSchema() map[string]any {
 			"waitFor": map[string]any{
 				"type":        "integer",
 				"description": "Milliseconds to wait after JS rendering on each page",
+				"minimum":     0,
+				"maximum":     120000,
 			},
 			"formats": map[string]any{
 				"type":        "array",
-				"description": "Output formats for each crawled page",
+				"description": "Output formats for each crawled page. Defaults to [\"markdown\"] when omitted.",
+				"default":     []string{"markdown"},
 				"items": map[string]any{
 					"type": "string",
-					"enum": []string{"markdown", "html", "links", "json"},
+					"enum": []string{"markdown", "html", "links"},
 				},
 			},
 		},
@@ -584,17 +591,16 @@ func searchInputSchema() map[string]any {
 				"type":        "string",
 				"description": "Region code (e.g., us-en)",
 			},
-			"safesearch": map[string]any{
+			"timeRange": map[string]any{
 				"type":        "string",
-				"description": "SafeSearch mode: moderate, strict, off",
-			},
-			"timelimit": map[string]any{
-				"type":        "string",
-				"description": "Time limit filter (d=day, w=week, m=month, y=year)",
+				"enum":        []string{"day", "week", "month", "year"},
+				"description": "SearXNG time_range filter. Omit for no time filter.",
 			},
 			"page": map[string]any{
 				"type":        "integer",
-				"description": "Page number (0-based, default 0)",
+				"description": "Page number (1-based, default 1)",
+				"minimum":     1,
+				"maximum":     1000,
 			},
 			"use_bm25": map[string]any{
 				"type":        "boolean",
@@ -611,7 +617,8 @@ func searchInputSchema() map[string]any {
 			},
 			"formats": map[string]any{
 				"type":        "array",
-				"description": "Output formats for each result",
+				"description": "Output formats for each result. Defaults to [\"markdown\"] when omitted.",
+				"default":     []string{"markdown"},
 				"items": map[string]any{
 					"type": "string",
 					"enum": []string{"markdown", "html", "links", "json"},
@@ -619,5 +626,37 @@ func searchInputSchema() map[string]any {
 			},
 		},
 		"required": []string{"query"},
+	}
+}
+
+func mapInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"url": map[string]any{
+				"type":        "string",
+				"description": "The starting URL to crawl",
+			},
+			"maxDepth": map[string]any{
+				"type":        "integer",
+				"description": "Maximum link depth to follow. Defaults to 2 when omitted.",
+				"default":     2,
+				"minimum":     0,
+				"maximum":     100,
+			},
+			"useSitemap": map[string]any{
+				"type":        "boolean",
+				"description": "Use sitemap.xml and robots.txt sitemaps as seed URLs. Defaults to true.",
+				"default":     true,
+			},
+			"timeout": map[string]any{
+				"type":        "integer",
+				"description": "Timeout in milliseconds for the entire operation. Defaults to 30000.",
+				"default":     30000,
+				"minimum":     1,
+				"maximum":     600000,
+			},
+		},
+		"required": []string{"url"},
 	}
 }
