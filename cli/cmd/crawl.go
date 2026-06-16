@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
@@ -42,15 +41,15 @@ func init() {
 	rootCmd.AddCommand(crawlCmd)
 
 	crawlCmd.Flags().StringVarP(&crawlFlags.formats, "formats", "f", "markdown",
-		"Output formats (comma-separated): markdown,html,links")
+		"Output formats (comma-separated): markdown,html,rawHtml,plainText,links,imageLinks. Note: 'json' is not allowed on crawl")
 	crawlCmd.Flags().StringVar(&crawlFlags.renderMode, "render", "auto",
-		"Renderer mode: auto (default), http, browser")
+		"Render mode: auto (default), http, browser")
 	crawlCmd.Flags().Int64Var(&crawlFlags.waitFor, "wait-for", 0,
 		"Milliseconds to wait after page load")
 	crawlCmd.Flags().IntVar(&crawlFlags.maxDepth, "max-depth", 2,
-		"Maximum link depth to follow (0-10)")
-	crawlCmd.Flags().IntVar(&crawlFlags.maxPages, "max-pages", 10,
-		"Maximum number of pages to scrape")
+		"Maximum link depth to follow (0-100, no negatives)")
+	crawlCmd.Flags().IntVar(&crawlFlags.maxPages, "max-pages", 100,
+		"Maximum number of pages to scrape (1-100, no negatives)")
 }
 
 func runCrawl(cmd *cobra.Command, args []string) error {
@@ -60,28 +59,17 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 
 	targetURL := args[0]
 
-	parsedURL, urlErr := url.Parse(targetURL)
-	if urlErr != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return fmt.Errorf("invalid URL: %s", targetURL)
+	formats, err := parseFormats(crawlFlags.formats)
+	if err != nil {
+		return err
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid URL scheme: %s (only http/https)", parsedURL.Scheme)
-	}
-
-	formats := parseFormats(crawlFlags.formats)
 
 	maxDepth := uint32(crawlFlags.maxDepth)
-	if maxDepth > 10 {
-		maxDepth = 10
-	}
 	maxPages := uint32(crawlFlags.maxPages)
-	if maxPages > 1000 {
-		maxPages = 1000
-	}
 
 	mode, err := types.ParseRenderMode(crawlFlags.renderMode)
 	if err != nil {
-		return fmt.Errorf("invalid --render-mode: %w", err)
+		return fmt.Errorf("invalid --render: %w", err)
 	}
 	var modePtr *types.RenderMode
 	if mode != "" {
@@ -103,6 +91,9 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 		WaitFor:    waitFor,
 	}
 	crawlReq.Defaults()
+	if err := crawlReq.Validate(); err != nil {
+		return err
+	}
 
 	cfg, teardown, err := loadConfigWithRenderer()
 	if err != nil {
