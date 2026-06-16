@@ -58,23 +58,37 @@ class QuickCrawlClient:
         include_tags: list[str] | None = None,
         exclude_tags: list[str] | None = None,
         render_mode: str = "auto",
+        wait_for: int | None = None,
         ttl: int | None = None,
+        css_selector: str | None = None,
         **kwargs: Any,
     ) -> dict:
         """Scrape a single URL and return its content.
 
         Args:
-            url: The URL to scrape.
-            formats: Output formats (markdown, html, links, json). Default: ["markdown"].
+            url: The URL to scrape (must start with http:// or https://).
+            formats: Output formats. Allowed: markdown, html, rawHtml, plainText,
+                links, imageLinks, json. Default: ["markdown"].
             include_tags: CSS selectors to include.
             exclude_tags: CSS selectors to exclude.
-            render_mode: Renderer mode - "auto" (default), "http", or "browser".
+            render_mode: Render mode - "auto" (default), "http", or "browser".
+            wait_for: Milliseconds to wait after page load for late content
+                (0-120000).
             ttl: Cache TTL in seconds (0=bypass cache, >0=accept cached if younger).
+            css_selector: Extract content from a specific CSS selector.
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
             Dict with keys like 'markdown', 'html', 'metadata', etc.
+
+        Raises:
+            ValueError: If the URL is missing or invalid.
         """
+        if not url:
+            raise ValueError("url is required")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError(f"url must start with http:// or https:// (got: {url!r})")
+
         args = ["scrape", url]
 
         if formats:
@@ -85,8 +99,12 @@ class QuickCrawlClient:
             args.extend(["--exclude-tags", ",".join(exclude_tags)])
         if render_mode != "auto":
             args.extend(["--render", render_mode])
+        if wait_for is not None:
+            args.extend(["--wait-for", str(wait_for)])
         if ttl is not None:
             args.extend(["--ttl", str(ttl)])
+        if css_selector:
+            args.extend(["--css-selector", css_selector])
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
@@ -98,11 +116,19 @@ class QuickCrawlClient:
                 args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            body = {"url": url, "formats": formats}
+            body: dict[str, Any] = {"url": url, "formats": formats or ["markdown"]}
             if render_mode in ("http", "browser", "auto"):
                 body["renderMode"] = render_mode
+            if wait_for is not None:
+                body["waitFor"] = wait_for
             if ttl is not None:
                 body["ttl"] = ttl
+            if css_selector:
+                body["cssSelector"] = css_selector
+            if include_tags:
+                body["includeTags"] = include_tags
+            if exclude_tags:
+                body["excludeTags"] = exclude_tags
             return self._http_post("/v1/scrape", body)
         return self._cli_call(args)
 
@@ -114,6 +140,8 @@ class QuickCrawlClient:
         poll_interval: float = 2.0,
         timeout: float = 300.0,
         render_mode: str = "auto",
+        wait_for: int | None = None,
+        formats: list[str] | None = None,
         **kwargs: Any,
     ) -> list[dict]:
         """Crawl a website and return all page results.
@@ -121,21 +149,40 @@ class QuickCrawlClient:
         Starts a crawl job, polls for completion, and returns all scraped pages.
 
         Args:
-            url: The starting URL to crawl.
-            max_depth: Maximum link depth to follow. Default: 2.
-            max_pages: Maximum number of pages to scrape. Default: 10.
+            url: The starting URL to crawl (must start with http:// or https://).
+            max_depth: Maximum link depth to follow. Default: 2. Range: 0-100.
+            max_pages: Maximum number of pages to scrape. Default: 100. Range: 1-100.
             poll_interval: Seconds between status checks. Default: 2.0.
             timeout: Maximum seconds to wait. Default: 300.0.
-            render_mode: Renderer mode - "auto" (default), "http", or "browser".
+            render_mode: Render mode - "auto" (default), "http", or "browser".
+            wait_for: Milliseconds to wait after page load (0-120000).
+            formats: Output formats. Allowed: markdown, html, rawHtml, plainText,
+                links, imageLinks. "json" is not supported on crawl - use scrape.
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
             List of dicts, each containing scraped page data.
+
+        Raises:
+            ValueError: If the URL is missing or invalid.
         """
+        if not url:
+            raise ValueError("url is required")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError(f"url must start with http:// or https:// (got: {url!r})")
+        if not (0 <= max_depth <= 100):
+            raise ValueError(f"max_depth must be between 0 and 100 (got: {max_depth})")
+        if not (1 <= max_pages <= 100):
+            raise ValueError(f"max_pages must be between 1 and 100 (got: {max_pages})")
+
         args = ["crawl", url, "--max-depth", str(max_depth), "--max-pages", str(max_pages)]
 
+        if formats:
+            args.extend(["--formats", ",".join(formats)])
         if render_mode != "auto":
             args.extend(["--render", render_mode])
+        if wait_for is not None:
+            args.extend(["--wait-for", str(wait_for)])
 
         for key, value in kwargs.items():
             if isinstance(value, bool):
@@ -145,7 +192,17 @@ class QuickCrawlClient:
                 args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            return self._http_crawl(args, poll_interval, timeout)
+            body = {
+                "url": url,
+                "maxDepth": max_depth,
+                "maxPages": max_pages,
+                "formats": formats or ["markdown"],
+            }
+            if render_mode in ("http", "browser", "auto"):
+                body["renderMode"] = render_mode
+            if wait_for is not None:
+                body["waitFor"] = wait_for
+            return self._http_crawl(body, poll_interval, timeout)
 
         result = self._cli_call(args)
         return result
@@ -155,25 +212,55 @@ class QuickCrawlClient:
         url: str,
         max_depth: int = 2,
         use_sitemap: bool = True,
+        timeout: int = 30000,
         **kwargs: Any,
     ) -> list[str]:
         """Discover URLs on a website without scraping content.
 
         Args:
-            url: The starting URL for discovery.
-            max_depth: Maximum link depth. Default: 2.
+            url: The starting URL for discovery (must start with http:// or https://).
+            max_depth: Maximum link depth. Default: 2. Range: 0-100.
             use_sitemap: Use sitemap.xml as seed. Default: True.
+            timeout: Timeout in milliseconds for the entire operation (1-600000).
             **kwargs: Additional arguments passed to the CLI.
 
         Returns:
             List of discovered URLs.
+
+        Raises:
+            ValueError: If the URL is missing or invalid.
         """
+        if not url:
+            raise ValueError("url is required")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError(f"url must start with http:// or https:// (got: {url!r})")
+        if not (0 <= max_depth <= 50):
+            raise ValueError(f"max_depth must be between 0 and 50 (got: {max_depth})")
+        if not (1 <= timeout <= 600000):
+            raise ValueError(f"timeout must be between 1 and 600000 ms (got: {timeout})")
+
         args = ["map", url, "--max-depth", str(max_depth)]
         if not use_sitemap:
             args.append("--no-sitemap")
+        if timeout != 30000:
+            args.extend(["--timeout", str(timeout)])
+
+        for key, value in kwargs.items():
+            if isinstance(value, bool):
+                if value:
+                    args.append(f"--{key.replace('_', '-')}")
+            elif isinstance(value, (list, tuple)):
+                args.extend([f"--{key.replace('_', '-')}", ",".join(str(v) for v in value)])
+            else:
+                args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            data = self._http_post("/v1/map", {"url": url, "maxDepth": max_depth, "useSitemap": use_sitemap})
+            data = self._http_post("/v1/map", {
+                "url": url,
+                "maxDepth": max_depth,
+                "useSitemap": use_sitemap,
+                "timeout": timeout,
+            })
             return data.get("links", [])
 
         result = self._cli_call(args)
@@ -184,11 +271,10 @@ class QuickCrawlClient:
         query: str,
         formats: list[str] | None = None,
         region: str = "us-en",
-        safesearch: str = "moderate",
         scrape: bool = False,
         render_mode: str = "auto",
-        page: int = 0,
-        timelimit: str | None = None,
+        page: int = 1,
+        time_range: str | None = None,
         use_bm25: bool = False,
         **kwargs: Any,
     ) -> dict:
@@ -197,12 +283,13 @@ class QuickCrawlClient:
         Args:
             query: Search query string.
             formats: Output formats for scraped pages (default: ["markdown"]).
+                Allowed: markdown, html, rawHtml, plainText, links, imageLinks.
             region: Region code for search results (e.g., "us-en", "gb-en").
-            safesearch: SafeSearch mode: "moderate", "strict", "off".
             scrape: Whether to scrape content from each result URL.
             render_mode: Renderer mode for scraping - "auto" (default), "http", or "browser".
-            page: 0-indexed page number to fetch. Default: 0.
-            timelimit: Time-range filter ("d"=day, "w"=week, "m"=month, "y"=year). Default: None.
+            page: 1-indexed page number to fetch. Default: 1. Range: 1-1000.
+            time_range: SearXNG time_range filter. Allowed: "day", "week", "month", "year".
+                Omit or pass "" for no time filter.
             use_bm25: If True, re-rank results with BM25 and add a `bm25_score` field.
             **kwargs: Additional arguments passed to the CLI.
 
@@ -215,22 +302,27 @@ class QuickCrawlClient:
                 "page": int,
               }
         """
+        if not query or not query.strip():
+            raise ValueError("query is required and cannot be empty")
+        if page < 1 or page > 1000:
+            raise ValueError(f"page must be between 1 and 1000 (got: {page})")
+        if time_range not in (None, "", "day", "week", "month", "year"):
+            raise ValueError(f"time_range must be one of: day, week, month, year (got: {time_range!r})")
+
         args = ["search", query]
 
         if formats:
             args.extend(["--formats", ",".join(formats)])
         if region and region != "us-en":
             args.extend(["--region", region])
-        if safesearch and safesearch != "moderate":
-            args.extend(["--safesearch", safesearch])
         if scrape:
             args.append("--scrape")
         if render_mode != "auto":
             args.extend(["--render", render_mode])
-        if page:
+        if page != 1:
             args.extend(["--page", str(page)])
-        if timelimit:
-            args.extend(["--timelimit", timelimit])
+        if time_range:
+            args.extend(["--time-range", time_range])
         if use_bm25:
             args.append("--use-bm25")
 
@@ -244,17 +336,20 @@ class QuickCrawlClient:
                 args.extend([f"--{key.replace('_', '-')}", str(value)])
 
         if self._api_url:
-            body = {
+            body: dict[str, Any] = {
                 "query": query,
                 "formats": formats or ["markdown"],
                 "region": region,
-                "safesearch": safesearch,
                 "page": page,
             }
-            if timelimit:
-                body["timelimit"] = timelimit
+            if time_range:
+                body["timeRange"] = time_range
             if use_bm25:
                 body["use_bm25"] = True
+            if scrape:
+                body["scrape"] = True
+            if render_mode not in ("auto", ""):
+                body["renderMode"] = render_mode
             data = self._http_post("/v1/search", body)
             return {
                 "query": data.get("query", query),
@@ -355,8 +450,8 @@ class QuickCrawlClient:
     def _http_get(self, path: str) -> dict:
         return self._http_request("GET", path)
 
-    def _http_crawl(self, args: dict, poll_interval: float, timeout: float) -> list[dict]:
-        result = self._http_post("/v1/crawl", args)
+    def _http_crawl(self, body: dict, poll_interval: float, timeout: float) -> list[dict]:
+        result = self._http_post("/v1/crawl", body)
         job_id = result.get("id")
         if not job_id:
             raise QuickCrawlError(f"Crawl did not return job ID: {result}")
