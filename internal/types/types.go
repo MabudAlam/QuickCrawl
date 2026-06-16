@@ -152,6 +152,35 @@ func (r *ScrapeRequest) Defaults() {
 	}
 }
 
+// Validate checks the request against the allowed contract:
+//   - URL must be present and parse cleanly with ValidateURL
+//   - renderMode (if set) must be one of auto/browser/http
+//   - waitFor must be in [0, 120000] ms
+//   - ttl must be >= 0
+//   - formats are validated by OutputFormat.UnmarshalJSON
+func (r *ScrapeRequest) Validate() error {
+	if strings.TrimSpace(r.URL) == "" {
+		return fmt.Errorf("url is required")
+	}
+	if _, err := ValidateURL(r.URL); err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if r.RenderMode != nil {
+		if _, ok := validRenderModes[*r.RenderMode]; !ok {
+			return fmt.Errorf("renderMode %q is invalid; allowed: auto, browser, http", string(*r.RenderMode))
+		}
+	}
+	if r.WaitFor != nil {
+		if *r.WaitFor < 0 || *r.WaitFor > 120000 {
+			return fmt.Errorf("waitFor %d is out of range; must be between 0 and 120000 ms", *r.WaitFor)
+		}
+	}
+	if r.TTL != nil && *r.TTL < 0 {
+		return fmt.Errorf("ttl %d is invalid; must be >= 0", *r.TTL)
+	}
+	return nil
+}
+
 // PageMetadata contains extracted metadata about a scraped page.
 type PageMetadata struct {
 	Title         *string `json:"title,omitempty"`          // Page title
@@ -238,6 +267,54 @@ func (r *CrawlRequest) Defaults() {
 	}
 }
 
+// Validate checks the request against the allowed contract:
+//   - URL must be present and parse cleanly with ValidateURL
+//   - maxDepth in [0, 100] if set (negative rejected)
+//   - maxPages in [1, 100] if set (zero and negatives rejected)
+//   - renderMode (if set) must be one of auto/browser/http
+//   - waitFor in [0, 120000] ms
+//   - json format is not allowed on /v1/crawl (caller must use /v1/scrape)
+func (r *CrawlRequest) Validate() error {
+	if strings.TrimSpace(r.URL) == "" {
+		return fmt.Errorf("url is required")
+	}
+	if _, err := ValidateURL(r.URL); err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if r.MaxDepth != nil {
+		if *r.MaxDepth < 0 {
+			return fmt.Errorf("maxDepth %d is invalid; must be >= 0", *r.MaxDepth)
+		}
+		if *r.MaxDepth > 100 {
+			return fmt.Errorf("maxDepth %d is out of range; must be between 0 and 100", *r.MaxDepth)
+		}
+	}
+	if r.MaxPages != nil {
+		if *r.MaxPages < 1 {
+			return fmt.Errorf("maxPages %d is out of range; must be between 1 and 100", *r.MaxPages)
+		}
+		if *r.MaxPages > 100 {
+			return fmt.Errorf("maxPages %d is out of range; must be between 1 and 100", *r.MaxPages)
+		}
+	}
+	if r.RenderMode != nil {
+		if _, ok := validRenderModes[*r.RenderMode]; !ok {
+			return fmt.Errorf("renderMode %q is invalid; allowed: auto, browser, http", string(*r.RenderMode))
+		}
+	}
+	if r.WaitFor != nil {
+		if *r.WaitFor < 0 || *r.WaitFor > 120000 {
+			return fmt.Errorf("waitFor %d is out of range; must be between 0 and 120000 ms", *r.WaitFor)
+		}
+	}
+	for _, f := range r.Formats {
+		if f == FormatJson {
+			return fmt.Errorf("'json' format is not supported on /v1/crawl. Use /v1/scrape for LLM-based JSON extraction")
+		}
+	}
+	return nil
+}
+
 // CrawlState represents the current state of a crawl job.
 type CrawlState struct {
 	ID        string       `json:"id,omitempty"`    // Unique job ID
@@ -275,6 +352,33 @@ func (r *MapRequest) Defaults() {
 	}
 }
 
+// Validate checks the request against the allowed contract:
+//   - URL must be present and parse cleanly with ValidateURL
+//   - maxDepth in [0, 100] if set (negative rejected)
+//   - timeout in (0, 600000] ms if set
+func (r *MapRequest) Validate() error {
+	if strings.TrimSpace(r.URL) == "" {
+		return fmt.Errorf("url is required")
+	}
+	if _, err := ValidateURL(r.URL); err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if r.MaxDepth != nil {
+		if *r.MaxDepth < 0 {
+			return fmt.Errorf("maxDepth %d is invalid; must be >= 0", *r.MaxDepth)
+		}
+		if *r.MaxDepth > 100 {
+			return fmt.Errorf("maxDepth %d is out of range; must be between 0 and 100", *r.MaxDepth)
+		}
+	}
+	if r.Timeout != nil {
+		if *r.Timeout <= 0 || *r.Timeout > 600000 {
+			return fmt.Errorf("timeout %d is out of range; must be between 1 and 600000 ms", *r.Timeout)
+		}
+	}
+	return nil
+}
+
 // MapData contains discovered URLs.
 type MapData struct {
 	Links []string `json:"links"` // Discovered URLs
@@ -296,10 +400,8 @@ type SearchRequest struct {
 	Query      string         `json:"query"`                // Search query (required)
 	Region     string         `json:"region,omitempty"`     // Region code, e.g. "us-en". Mapped to SearXNG language.
 	Language   string         `json:"language,omitempty"`   // SearXNG language code, e.g. "en", "auto", "all".
-	TimeRange  string         `json:"timeRange,omitempty"`  // SearXNG time range: "day", "month", "year".
+	TimeRange  string         `json:"timeRange,omitempty"`  // SearXNG time range: "day", "week", "month", "year".
 	Categories string         `json:"categories,omitempty"` // Comma-separated SearXNG categories, e.g. "general,news".
-	Safesearch string         `json:"safesearch,omitempty"` // SafeSearch mode: "0", "1", "2". Mapped to SearXNG safesearch.
-	Timelimit  string         `json:"timelimit,omitempty"`  // Legacy: time limit filter (e.g., "d" for day)
 	Page       int            `json:"page,omitempty"`       // SearXNG pageno, default 1.
 	UseBM25    bool           `json:"use_bm25,omitempty"`   // Use BM25 scoring algorithm (default: false)
 	RenderMode *RenderMode    `json:"renderMode,omitempty"` // Per-request override: "auto" | "browser" | "http". nil = inherit server default.
@@ -312,9 +414,6 @@ func (r *SearchRequest) Defaults() {
 	if r.Region == "" && r.Language == "" {
 		r.Language = "auto"
 	}
-	if r.Safesearch == "" {
-		r.Safesearch = "0"
-	}
 	if r.Categories == "" {
 		r.Categories = "general"
 	}
@@ -324,6 +423,79 @@ func (r *SearchRequest) Defaults() {
 	if r.Scrape && r.Formats == nil {
 		r.Formats = []OutputFormat{FormatMarkdown}
 	}
+}
+
+// Valid SearXNG time_range values. Empty string is treated as "no filter".
+var validTimeRanges = map[string]struct{}{
+	"":     {},
+	"day":   {},
+	"week":  {},
+	"month": {},
+	"year":  {},
+}
+
+// Valid SearXNG category tokens.
+var validCategories = map[string]struct{}{
+	"general":      {},
+	"images":       {},
+	"videos":       {},
+	"news":         {},
+	"map":          {},
+	"music":        {},
+	"it":           {},
+	"science":      {},
+	"social media": {},
+	"files":        {},
+	"code":         {},
+}
+
+// Valid SearXNG safesearch levels.
+var validSafesearch = map[string]struct{}{
+	"":  {},
+	"0": {},
+	"1": {},
+	"2": {},
+}
+
+// Valid SearXNG render mode overrides accepted by the API.
+var validRenderModes = map[RenderMode]struct{}{
+	"":            {},
+	RenderModeAuto:   {},
+	RenderModeBrowser: {},
+	RenderModeHTTP:   {},
+}
+
+// Validate returns an error if any field holds a value outside the allowed
+// SearXNG contract. Empty optional fields are accepted.
+func (r *SearchRequest) Validate() error {
+	if strings.TrimSpace(r.Query) == "" {
+		return fmt.Errorf("query is required")
+	}
+	if r.TimeRange != "" {
+		if _, ok := validTimeRanges[r.TimeRange]; !ok {
+			return fmt.Errorf("timeRange %q is invalid; allowed: day, week, month, year", r.TimeRange)
+		}
+	}
+	if r.Categories != "" {
+		for _, raw := range strings.Split(r.Categories, ",") {
+			cat := strings.TrimSpace(raw)
+			if cat == "" {
+				continue
+			}
+			if _, ok := validCategories[cat]; !ok {
+				return fmt.Errorf("categories contains invalid value %q; allowed: general, images, videos, news, map, music, it, science, \"social media\", files, code", cat)
+			}
+		}
+	}
+	if r.Page < 0 || r.Page > 1000 {
+		return fmt.Errorf("page %d is out of range; must be between 0 and 1000", r.Page)
+	}
+	if r.RenderMode != nil {
+		if _, ok := validRenderModes[*r.RenderMode]; !ok {
+			return fmt.Errorf("renderMode %q is invalid; allowed: auto, browser, http", string(*r.RenderMode))
+		}
+	}
+	return nil
 }
 
 // SearchResult represents a single search result with optional scraped content.
