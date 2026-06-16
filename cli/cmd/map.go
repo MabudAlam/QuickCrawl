@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
@@ -41,11 +40,11 @@ func init() {
 	rootCmd.AddCommand(mapCmd)
 
 	mapCmd.Flags().IntVar(&mapFlags.maxDepth, "max-depth", 2,
-		"Maximum link depth to follow (0-10)")
+		"Maximum link depth to follow (0-100, no negatives)")
 	mapCmd.Flags().BoolVar(&mapFlags.useSitemap, "sitemap", true,
 		"Use sitemap.xml and robots.txt sitemaps as seed URLs")
 	mapCmd.Flags().IntVar(&mapFlags.timeout, "timeout", 30000,
-		"Timeout in milliseconds for the entire operation")
+		"Timeout in milliseconds for the entire operation (1-600000)")
 	mapCmd.Flags().StringVar(&mapFlags.renderer, "renderer", "auto",
 		"Deprecated: ignored. The scraper uses chromedp only.")
 }
@@ -57,12 +56,18 @@ func runMap(cmd *cobra.Command, args []string) error {
 
 	targetURL := args[0]
 
-	parsedURL, urlErr := url.Parse(targetURL)
-	if urlErr != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return fmt.Errorf("invalid URL: %s", targetURL)
+	maxDepth := mapFlags.maxDepth
+	timeout := mapFlags.timeout
+
+	mapReq := types.MapRequest{
+		URL:        targetURL,
+		MaxDepth:   &maxDepth,
+		UseSitemap: &mapFlags.useSitemap,
+		Timeout:    &timeout,
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid URL scheme: %s (only http/https)", targetURL)
+	mapReq.Defaults()
+	if err := mapReq.Validate(); err != nil {
+		return err
 	}
 
 	cfg, err := loadConfig()
@@ -76,25 +81,15 @@ func runMap(cmd *cobra.Command, args []string) error {
 	}
 	defer scraper.Close()
 
-	maxDepth := uint32(mapFlags.maxDepth)
-	if maxDepth > 10 {
-		maxDepth = 10
-	}
-
-	timeout := mapFlags.timeout
-	if timeout <= 0 {
-		timeout = 30000
-	}
-
 	opts := crawler.MapOptions{
 		BaseURL:           targetURL,
-		MaxDepth:          maxDepth,
-		UseSitemap:        mapFlags.useSitemap,
+		MaxDepth:          uint32(*mapReq.MaxDepth),
+		UseSitemap:        *mapReq.UseSitemap,
 		Scraper:           scraper,
 		MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 		RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 		UserAgent:         cfg.Crawler.UserAgent,
-		Timeout:           &timeout,
+		Timeout:           mapReq.Timeout,
 	}
 
 	result, mapErr := crawler.Map(opts)
