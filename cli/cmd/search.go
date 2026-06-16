@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	"github.com/MabudAlam/quickcrawl/internal/core"
@@ -37,8 +36,8 @@ Example:
 var searchFlags = struct {
 	formats    string
 	region     string
-	safesearch string
-	timelimit  string
+	timeRange  string
+	page       int
 	renderMode string
 	scrape     bool
 	useBM25    bool
@@ -50,13 +49,13 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 
 	searchCmd.Flags().StringVar(&searchFlags.formats, "formats", "markdown",
-		"Output formats (comma-separated): markdown,html,links,json")
+		"Output formats (comma-separated): markdown,html,rawHtml,plainText,links,imageLinks,json")
 	searchCmd.Flags().StringVar(&searchFlags.region, "region", "us-en",
 		"Region code for search results (e.g., us-en, gb-en)")
-	searchCmd.Flags().StringVar(&searchFlags.safesearch, "safesearch", "moderate",
-		"SafeSearch mode: moderate, strict, off")
-	searchCmd.Flags().StringVar(&searchFlags.timelimit, "timelimit", "",
-		"Time limit filter (d=day, w=week, m=month, y=year)")
+	searchCmd.Flags().StringVar(&searchFlags.timeRange, "time-range", "",
+		"SearXNG time_range filter: day, week, month, year. Omit for no filter.")
+	searchCmd.Flags().IntVar(&searchFlags.page, "page", 1,
+		"Page number to fetch (1-indexed, default 1, max 1000)")
 	searchCmd.Flags().StringVar(&searchFlags.renderMode, "render-mode", "auto",
 		"Render mode for scraping each result: auto, browser, http")
 	searchCmd.Flags().BoolVar(&searchFlags.scrape, "scrape", false,
@@ -74,9 +73,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("a search query is required")
 	}
 	query := args[0]
-	if strings.TrimSpace(query) == "" {
-		return fmt.Errorf("search query cannot be empty")
-	}
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -109,7 +105,10 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		scraper = s
 	}
 
-	formats := parseFormats(searchFlags.formats)
+	formats, err := parseFormats(searchFlags.formats)
+	if err != nil {
+		return err
+	}
 	formatStrs := formatsToStrings(formats)
 	if searchFlags.scrape && len(formatStrs) == 0 {
 		formatStrs = []string{"markdown"}
@@ -125,20 +124,37 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		renderModePtr = &m
 	}
 
-	resp, err := search.Search(context.Background(), searxng, scraper, search.Request{
+	// Build a types.SearchRequest so the same validation rules used by
+	// the API and MCP surfaces run on the CLI.
+	apiReq := types.SearchRequest{
 		Query:      query,
-		Language:   searchFlags.region,
-		TimeRange:  searchFlags.timelimit,
-		Safesearch: search.NormalizeSafesearch(searchFlags.safesearch),
+		Region:     searchFlags.region,
+		TimeRange:  searchFlags.timeRange,
+		Page:       searchFlags.page,
 		UseBM25:    searchFlags.useBM25,
+		RenderMode: renderModePtr,
+		Scrape:     searchFlags.scrape,
+	}
+	apiReq.Defaults()
+	if err := apiReq.Validate(); err != nil {
+		return err
+	}
+
+	resp, err := search.Search(context.Background(), searxng, scraper, search.Request{
+		Query:    apiReq.Query,
+		Language: apiReq.Language,
+		Categories: apiReq.Categories,
+		TimeRange: apiReq.TimeRange,
+		UseBM25:  apiReq.UseBM25,
 		BM25FWeights: search.BM25FWeights{
 			Title:   cfg.Search.BM25FTitleWeight,
 			Snippet: cfg.Search.BM25FSnippetWeight,
 		},
-		Scrape:     searchFlags.scrape,
+		Scrape:     apiReq.Scrape,
 		Formats:    formatStrs,
-		RenderMode: renderModePtr,
+		RenderMode: apiReq.RenderMode,
 		MaxWorkers: searchFlags.workers,
+		Page:       apiReq.Page,
 	})
 	if err != nil {
 		return fmt.Errorf("search failed: %w", err)
