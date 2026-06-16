@@ -56,7 +56,6 @@ internal.md
 
 preview/
 
-*.json
 *.csv
 
 .browser_configs/
