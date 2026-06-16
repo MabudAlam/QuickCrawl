@@ -14,8 +14,11 @@ builds:
     goarch:
       - amd64
       - arm64
-    flags:
-      - -tags=""
+    ldflags:
+      - -X github.com/MabudAlam/quickcrawl/internal/utils.DefaultLevel=error
+      - -X github.com/MabudAlam/quickcrawl/internal/version.Version={{.Version}}
+      - -X github.com/MabudAlam/quickcrawl/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/MabudAlam/quickcrawl/internal/version.BuildDate={{.Date}}
 
   - id: quickcrawl-cli
     binary: quickcrawl
@@ -28,8 +31,11 @@ builds:
     goarch:
       - amd64
       - arm64
-    flags:
-      - -tags=""
+    ldflags:
+      - -X github.com/MabudAlam/quickcrawl/internal/utils.DefaultLevel=error
+      - -X github.com/MabudAlam/quickcrawl/internal/version.Version={{.Version}}
+      - -X github.com/MabudAlam/quickcrawl/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/MabudAlam/quickcrawl/internal/version.BuildDate={{.Date}}
 
 archives:
   - id: quickcrawl-mcp-archive
