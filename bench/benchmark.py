@@ -5,8 +5,8 @@ Drives QuickCrawl's /v1/scrape against every row of
 `firecrawl/scrape-content-dataset-v1` (configurable cap), records one
 result per URL to a streaming JSONL, then prints and persists a
 per-run aggregate. Mirrors the methodology documented in
-docs/bench-methodology.md (-comparable): phrase filters, link-syntax
-collapse, calibrated-recall denominator, p50/p90/p95/p99 latency,
+docs/bench-methodology.md: phrase filters, link-syntax collapse,
+calibrated-recall denominator, p50/p90/p95/p99 latency,
 noise-rejection.
 """
 
