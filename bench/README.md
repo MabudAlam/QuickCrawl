@@ -329,11 +329,7 @@ Concretely:
 - **Percentiles.** Linear-interpolated (not floored-index), reported as
   p50 / p90 / p95 / p99 over successful-request response times only.
 
-## Schema Versioning
 
-The summary's `schema` field is `quickcrawl.bench/v3`. A reader seeing
-`v3` can rely on the field names documented above; older schemas (v1, v2)
-are not compatible and should be re-run.
 
 ## What This Benchmark Does Not Measure
 
