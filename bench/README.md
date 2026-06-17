@@ -3,7 +3,7 @@
 Evaluates QuickCrawl's scrape quality against
 [`firecrawl/scrape-content-dataset-v1`](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1)
 (1000 real URLs with ground-truth content and noise annotations).
-Methodology is CRW-comparable: same phrase filters, same link-syntax collapse,
+Methodology is comparable to industry standards: same phrase filters, same link-syntax collapse,
 same calibrated-recall denominator. See [Methodology](#methodology) for details.
 
 ## What It Measures
@@ -54,7 +54,7 @@ uv sync                         # creates .venv and installs deps
 | Scenario | `BENCH_CONCURRENCY` | `BENCH_TIMEOUT` | `BENCH_MAX_URLS` | Why |
 |----------|---------------------|-----------------|------------------|-----|
 | Smoke test (verify setup) | `5` | `30` | `10` | Fast, low cost, catches wiring issues |
-| Local full run (dev box) | `10` | `120` | `1000` | Mirrors the CRW published run; headroom for browser-render path |
+| Local full run (dev box) | `10` | `120` | `1000` | Mirrors published benchmark runs; headroom for browser-render path |
 | Railway / free-tier deploy | `3` | `120` | `1000` | Lower concurrency avoids CPU throttling on shared CPU plans |
 | Railway / paid deploy | `10` | `120` | `1000` | Matches local numbers for honest comparison |
 | CI regression check | `5` | `60` | `150` | Sub-15-min run, statistically useful on this dataset |
@@ -251,7 +251,7 @@ ls server-runs/
   "extracted_text_length": 32147,
   "has_ground_truth_to_check": true,
   "enough_phrases_found": true,
-  "phrases_we_expected_to_find": 4,        // = truth_total in CRW terms
+  "phrases_we_expected_to_find": 4,        // = truth_total
   "phrases_we_actually_found": 3,          // phrases that actually matched
   "leaked_unwanted_phrases": false,
   "forbidden_phrases_in_dataset": 2,
@@ -299,7 +299,7 @@ Config: max_concurrent=10  timeout=120s  max_urls=1000  endpoint=http://localhos
 
 ## Methodology
 
-The benchmark is **CRW-comparable**: identical phrase filters, the same
+The benchmark uses: identical phrase filters, the same
 link-syntax collapse fairness control, the same calibrated-recall denominator.
 Concretely:
 
@@ -321,8 +321,8 @@ Concretely:
   short forbidden phrases.
 - **Calibrated denominator.** `phrase_match_rate_pct` divides by the count
   of `urls_with_ground_truth` (successful scrape AND has at least one
-  >20-char expected phrase). This matches the 819-style denominator CRW
-  uses and excludes bench artifacts — rows with no truth label are not
+  >20-char expected phrase). This matches the 819-style denominator
+  and excludes bench artifacts — rows with no truth label are not
   the scraper's fault.
 - **Streaming JSONL.** Every result is written to disk before the next is
   awaited, so a 30-minute run is crash-safe.
