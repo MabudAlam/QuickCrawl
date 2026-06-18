@@ -12,7 +12,7 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/config"
 	quickcrawl "github.com/MabudAlam/quickcrawl/internal/mcp"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
-	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 const (
@@ -23,19 +23,19 @@ const (
 func main() {
 	utils.InitLogger()
 
+	hooks := &server.Hooks{}
+
+	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
+		utils.Log.Info("client disconnected, stopping LightPanda", "session", session.SessionID())
+		browser.StopLightPanda()
+	})
+
 	cfg, err := api.LoadConfig()
 	if err != nil {
 		utils.Log.Error(fmt.Sprintf("failed to load config: %s", err.Error()))
 		os.Exit(1)
 	}
 
-	// If the user has not configured a Chrome WS URL, fall back to
-	// auto-launching a local LightPanda. The HTTP server path does not
-	// do this — it requires an explicit WS URL — but the MCP path is
-	// expected to be self-contained, so we provide a default browser
-	// here. The launched process is killed on shutdown. This runs
-	// before the scraper is built so the scraper picks up the patched
-	// WSURL.
 	teardown, ensureErr := browser.EnsureRenderer(cfg)
 	if ensureErr != nil {
 		utils.Log.Error(fmt.Sprintf("%s", ensureErr.Error()))
@@ -43,19 +43,12 @@ func main() {
 	}
 	if teardown != nil {
 		utils.Log.Info("LightPanda started", "ws", cfg.Renderer.Chrome.WSURL)
-		defer func() {
-			teardown()
-			utils.Log.Info("LightPanda stopped")
-		}()
+		defer teardown()
 	}
 
-	// Build the shared *core.Scraper. This is the single render path
-	// used by every MCP tool — the same code path as the HTTP API.
 	scraper, scrapeErr := config.NewScraperFromConfig(cfg, cfg.Extraction.LLM)
 	if scrapeErr != nil {
-		if teardown != nil {
-			teardown()
-		}
+		teardown()
 		utils.Log.Error(fmt.Sprintf("failed to initialize core scraper: %s", scrapeErr.Message))
 		os.Exit(1)
 	}
@@ -63,11 +56,13 @@ func main() {
 	state, stateErr := api.NewAppState(cfg)
 	if stateErr != nil {
 		_ = scraper.Close()
+		teardown()
 		utils.Log.Error(fmt.Sprintf("failed to initialize server state: %s", stateErr.Message))
 		os.Exit(1)
 	}
 	state.CoreScraper = scraper
 	defer state.Close()
+	defer teardown()
 
 	browsers := state.RendererBrowsersInfo()
 	if len(browsers) > 0 {
@@ -76,16 +71,15 @@ func main() {
 		}
 	}
 
-	server := mcp.NewServer(
-		&mcp.Implementation{Name: serverName, Version: serverVersion},
-		nil,
+	mcpServer := server.NewMCPServer(
+		serverName,
+		serverVersion,
+		server.WithToolCapabilities(true),
+		server.WithHooks(hooks),
 	)
 
 	serverImpl := quickcrawl.NewServer(state, cfg)
-	quickcrawl.AddTools(server, serverImpl)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	quickcrawl.AddTools(mcpServer, serverImpl)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -93,14 +87,14 @@ func main() {
 	go func() {
 		<-quit
 		utils.Log.Info("shutting down MCP server...")
-		cancel()
+		browser.StopLightPanda()
+		os.Exit(0)
 	}()
 
 	utils.Log.Info("MCP server starting...")
-	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
+	if err := server.ServeStdio(mcpServer); err != nil {
 		utils.Log.Info(fmt.Sprintf("MCP server error: %v", err))
 	}
 
 	utils.Log.Info("MCP server exited gracefully")
-	os.Exit(0)
 }

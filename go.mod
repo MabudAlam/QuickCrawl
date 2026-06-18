@@ -11,11 +11,12 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
 	github.com/gookit/slog v0.6.0
+	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.18.6
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+	github.com/mark3labs/mcp-go v0.55.0
 	github.com/markusmobius/go-trafilatura v0.0.0-20260613110646-c891e43f4aa1
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/spf13/cobra v1.10.2
 	github.com/temoto/robotstxt v1.1.2
@@ -49,6 +50,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.6.1 // indirect
 	github.com/gookit/goutil v0.7.6 // indirect
 	github.com/gookit/gsr v0.1.1 // indirect
@@ -57,7 +59,6 @@ require (
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jalaali/go-jalaali v0.0.0-20250521085720-bf793ab67800 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -73,8 +74,8 @@ require (
 	github.com/quic-go/quic-go v0.60.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
-	github.com/segmentio/asm v1.2.1 // indirect
-	github.com/segmentio/encoding v0.5.4 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -90,7 +91,6 @@ require (
 	golang.org/x/arch v0.28.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
