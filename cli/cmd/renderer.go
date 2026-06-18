@@ -2,25 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/MabudAlam/quickcrawl/internal/browser"
 	"github.com/MabudAlam/quickcrawl/internal/types"
-	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
-// loadConfigWithRenderer loads the application config and, when no
-// Chrome WS URL has been configured, auto-launches a local LightPanda
-// and patches cfg.Renderer.Chrome so the scraper can use it.
-//
-// The returned teardown function must be called on shutdown to reap
-// the spawned LightPanda process. It is a no-op when no browser was
-// launched (e.g. the user already configured ws_url, or the command
-// does not need a browser).
-//
-// This helper is the CLI counterpart of the same logic in
-// cmd/mcp/main.go. The HTTP server does NOT use it: in the server
-// deployment model the user is expected to supply
-// [renderer.chrome].ws_url explicitly.
 func loadConfigWithRenderer() (cfg *types.AppConfig, teardown func(), err error) {
 	cfg, err = loadConfig()
 	if err != nil {
@@ -31,8 +20,20 @@ func loadConfigWithRenderer() (cfg *types.AppConfig, teardown func(), err error)
 	if ensureErr != nil {
 		return nil, nil, ensureErr
 	}
-	if teardown != nil {
-		utils.Log.Info("LightPanda auto-started", "ws", cfg.Renderer.Chrome.WSURL)
-	}
 	return cfg, teardown, nil
+}
+
+func setupSignalHandling() {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		signal.Stop(sigCh)
+		browser.StopLightPanda()
+		os.Exit(128 + int(sig.(syscall.Signal)))
+	}()
+}
+
+func init() {
+	setupSignalHandling()
 }

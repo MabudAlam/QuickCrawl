@@ -11,7 +11,8 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 type Server struct {
@@ -60,8 +61,7 @@ func convertFormats(formats []string) []types.OutputFormat {
 	return out
 }
 
-func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, any, error) {
-	// Log deprecation warning if the caller pinned a renderer.
+func (s *Server) HandleScrape(ctx context.Context, req mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, error) {
 	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
 		utils.Log.Warn("deprecated renderer field ignored for scrape", "renderer", strVal(args.Renderer))
 	}
@@ -77,7 +77,7 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 	}
 	coreReq.Defaults()
 	if err := coreReq.Validate(); err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error())
 	}
 
 	if coreReq.RenderMode != nil && *coreReq.RenderMode == types.RenderModeBrowser && coreReq.WaitFor == nil {
@@ -87,26 +87,25 @@ func (s *Server) HandleScrape(ctx context.Context, req *mcp.CallToolRequest, arg
 
 	scraper := s.state.CoreScraper
 	if scraper == nil {
-		return errorResult("scraper is not initialized"), nil, nil
+		return errorResult("scraper is not initialized")
 	}
 
-	// Check robots.txt if respect_robots_txt is enabled
 	if s.config.Crawler.RespectRobotsTxt {
 		if err := crawler.CheckRobotsTxt(args.URL, s.config.Crawler.UserAgent); err != nil {
-			return errorResult(err.Message), nil, nil
+			return errorResult(err.Message)
 		}
 	}
 
 	data, scrapeErr := scraper.Scrape(ctx, coreReq)
 	if scrapeErr != nil {
-		return errorResult(fmt.Sprintf("scrape error: %v", scrapeErr)), nil, nil
+		return errorResult(fmt.Sprintf("scrape error: %v", scrapeErr))
 	}
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: formatCoreScrapeData(data)},
+			mcp.NewTextContent(formatCoreScrapeData(data)),
 		},
-	}, nil, nil
+	}, nil
 }
 
 type CrawlArgs struct {
@@ -120,7 +119,7 @@ type CrawlArgs struct {
 	Renderer *string `json:"renderer,omitempty"`
 }
 
-func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, any, error) {
+func (s *Server) HandleCrawl(ctx context.Context, req mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, error) {
 	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
 		utils.Log.Warn("deprecated renderer field ignored for crawl", "renderer", strVal(args.Renderer))
 	}
@@ -152,12 +151,12 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 	}
 	crawlReq.Defaults()
 	if err := crawlReq.Validate(); err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error())
 	}
 
 	scraper := s.state.CoreScraper
 	if scraper == nil {
-		return errorResult("scraper is not initialized"), nil, nil
+		return errorResult("scraper is not initialized")
 	}
 
 	id := s.state.StartCrawlJob(crawlReq)
@@ -194,31 +193,31 @@ func (s *Server) HandleCrawl(ctx context.Context, req *mcp.CallToolRequest, args
 	data, _ := json.Marshal(result)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(data)},
+			mcp.NewTextContent(string(data)),
 		},
-	}, nil, nil
+	}, nil
 }
 
 type CrawlStatusArgs struct {
 	ID string `json:"id"`
 }
 
-func (s *Server) HandleCrawlStatus(ctx context.Context, req *mcp.CallToolRequest, args CrawlStatusArgs) (*mcp.CallToolResult, any, error) {
+func (s *Server) HandleCrawlStatus(ctx context.Context, req mcp.CallToolRequest, args CrawlStatusArgs) (*mcp.CallToolResult, error) {
 	if args.ID == "" {
-		return errorResult("id is required"), nil, nil
+		return errorResult("id is required")
 	}
 
 	state := s.state.GetCrawlJob(args.ID)
 	if state == nil {
-		return errorResult("crawl job not found"), nil, nil
+		return errorResult("crawl job not found")
 	}
 
 	data, _ := json.Marshal(state)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(data)},
+			mcp.NewTextContent(string(data)),
 		},
-	}, nil, nil
+	}, nil
 }
 
 type MapArgs struct {
@@ -228,7 +227,7 @@ type MapArgs struct {
 	Timeout    *int   `json:"timeout,omitempty"`
 }
 
-func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args MapArgs) (*mcp.CallToolResult, any, error) {
+func (s *Server) HandleMap(ctx context.Context, req mcp.CallToolRequest, args MapArgs) (*mcp.CallToolResult, error) {
 	mapReq := types.MapRequest{
 		URL:        args.URL,
 		MaxDepth:   args.MaxDepth,
@@ -237,7 +236,7 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 	}
 	mapReq.Defaults()
 	if err := mapReq.Validate(); err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error())
 	}
 
 	useSitemap := true
@@ -259,7 +258,7 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 
 	scraper := s.state.CoreScraper
 	if scraper == nil {
-		return errorResult("scraper is not initialized"), nil, nil
+		return errorResult("scraper is not initialized")
 	}
 
 	urls, discoverErr := crawler.DiscoverUrls(
@@ -276,9 +275,9 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 
 	if discoverErr != nil {
 		if discoverErr.Code == types.CodeForbidden {
-			return errorResult("access denied by robots.txt"), nil, nil
+			return errorResult("access denied by robots.txt")
 		}
-		return errorResult(fmt.Sprintf("map error: %v", discoverErr.Message)), nil, nil
+		return errorResult(fmt.Sprintf("map error: %v", discoverErr.Message))
 	}
 
 	result := map[string]interface{}{
@@ -289,12 +288,12 @@ func (s *Server) HandleMap(ctx context.Context, req *mcp.CallToolRequest, args M
 	data, _ := json.Marshal(result)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(data)},
+			mcp.NewTextContent(string(data)),
 		},
-	}, nil, nil
+	}, nil
 }
 
-func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, any, error) {
+func (s *Server) HandleSearch(ctx context.Context, req mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, error) {
 	formats := convertFormats(args.Formats)
 	if args.Scrape && len(formats) == 0 {
 		formats = []types.OutputFormat{types.FormatMarkdown}
@@ -312,12 +311,12 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 	}
 	apiReq.Defaults()
 	if err := apiReq.Validate(); err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error())
 	}
 
 	searxng, searxngErr := s.state.GetSearXNG()
 	if searxngErr != nil {
-		return errorResult(fmt.Sprintf("search configuration error: %v", searxngErr)), nil, nil
+		return errorResult(fmt.Sprintf("search configuration error: %v", searxngErr))
 	}
 
 	scrapeFormats := make([]string, len(formats))
@@ -341,10 +340,10 @@ func (s *Server) HandleSearch(ctx context.Context, req *mcp.CallToolRequest, arg
 		RenderMode: apiReq.RenderMode,
 	})
 	if err != nil {
-		return errorResult(fmt.Sprintf("search failed: %v", err)), nil, nil
+		return errorResult(fmt.Sprintf("search failed: %v", err))
 	}
 
-	return mcpTextResult(searchResponseToMap(resp)), nil, nil
+	return mcpTextResult(searchResponseToMap(resp)), nil
 }
 
 // searchResponseToMap converts the unified search.Response into the
@@ -395,18 +394,18 @@ func mcpTextResult(payload map[string]interface{}) *mcp.CallToolResult {
 	data, _ := json.Marshal(payload)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(data)},
+			mcp.NewTextContent(string(data)),
 		},
 	}
 }
 
-func errorResult(msg string) *mcp.CallToolResult {
+func errorResult(msg string) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf(`{"error": %s}`, jsonString(msg))},
+			mcp.NewTextContent(fmt.Sprintf(`{"error": %s}`, jsonString(msg))),
 		},
 		IsError: true,
-	}
+	}, nil
 }
 
 func jsonString(s string) string {
@@ -447,37 +446,69 @@ func formatCoreScrapeData(data *types.ScrapeData) string {
 	return string(b)
 }
 
-func AddTools(server *mcp.Server, s *Server) {
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "scrape",
-		Description: "Scrape a single URL and return its content in various formats (markdown, html, links, json)",
-		InputSchema: scrapeInputSchema(),
-	}, s.HandleScrape)
+func AddTools(mcpServer *server.MCPServer, s *Server) {
+	mcpServer.AddTool(mcp.NewTool("scrape",
+		mcp.WithDescription("Scrape a single URL and return its content in various formats (markdown, html, links, json)"),
+		mcp.WithString("url", mcp.Required(), mcp.Description("The URL to scrape"), mcp.MinLength(1)),
+		mcp.WithArray("formats", mcp.Description("Output formats: markdown, html, links, json"),
+			mcp.WithStringItems(mcp.Enum("markdown", "html", "links", "json"))),
+		mcp.WithString("renderMode", mcp.Description("Render mode: auto, browser, http")),
+		mcp.WithInteger("waitFor", mcp.Description("Milliseconds to wait after page load for late content"),
+			mcp.Min(0), mcp.Max(120000)),
+		mcp.WithArray("includeTags", mcp.Description("CSS selectors to include"),
+			mcp.WithStringItems()),
+		mcp.WithArray("excludeTags", mcp.Description("CSS selectors to exclude"),
+			mcp.WithStringItems()),
+		mcp.WithString("cssSelector", mcp.Description("Extract content from specific CSS selector")),
+	), mcp.NewTypedToolHandler[ScrapeArgs](s.HandleScrape))
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "crawl",
-		Description: "Start an async BFS crawl of a website, discovering and scraping multiple pages",
-		InputSchema: crawlInputSchema(),
-	}, s.HandleCrawl)
+	mcpServer.AddTool(mcp.NewTool("crawl",
+		mcp.WithDescription("Start an async BFS crawl of a website, discovering and scraping multiple pages"),
+		mcp.WithString("url", mcp.Required(), mcp.Description("The starting URL to crawl"), mcp.MinLength(1)),
+		mcp.WithInteger("maxDepth", mcp.Description("Maximum crawl depth (0-100)"),
+			mcp.Min(0), mcp.Max(100)),
+		mcp.WithInteger("maxPages", mcp.Description("Maximum number of pages to crawl (1-100)"),
+			mcp.Min(1), mcp.Max(100)),
+		mcp.WithString("renderMode", mcp.Description("Render mode: auto, browser, http")),
+		mcp.WithInteger("waitFor", mcp.Description("Milliseconds to wait after JS rendering on each page"),
+			mcp.Min(0), mcp.Max(120000)),
+		mcp.WithArray("formats", mcp.Description("Output formats for each page"),
+			mcp.WithStringItems(mcp.Enum("markdown", "html", "links"))),
+	), mcp.NewTypedToolHandler[CrawlArgs](s.HandleCrawl))
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "check_crawl_status",
-		Description: "Check the status of a crawl job by its ID",
-	}, s.HandleCrawlStatus)
+	mcpServer.AddTool(mcp.NewTool("check_crawl_status",
+		mcp.WithDescription("Check the status of a crawl job by its ID"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The crawl job ID"), mcp.MinLength(1)),
+	), mcp.NewTypedToolHandler[CrawlStatusArgs](s.HandleCrawlStatus))
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "site_map",
-		Description: "Discover all URLs on a website without scraping the content",
-		InputSchema: mapInputSchema(),
-	}, s.HandleMap)
+	mcpServer.AddTool(mcp.NewTool("site_map",
+		mcp.WithDescription("Discover all URLs on a website without scraping the content"),
+		mcp.WithString("url", mcp.Required(), mcp.Description("The starting URL"), mcp.MinLength(1)),
+		mcp.WithInteger("maxDepth", mcp.Description("Maximum link depth to follow"),
+			mcp.Min(0), mcp.Max(100)),
+		mcp.WithBoolean("useSitemap", mcp.Description("Use sitemap.xml and robots.txt sitemaps as seed URLs"),
+			mcp.DefaultBool(true)),
+		mcp.WithInteger("timeout", mcp.Description("Timeout in milliseconds for the entire operation"),
+			mcp.Min(1), mcp.Max(600000)),
+	), mcp.NewTypedToolHandler[MapArgs](s.HandleMap))
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "search",
-		Description: "Search SearXNG and scrape results in parallel with 10 concurrent workers",
-		InputSchema: searchInputSchema(),
-	}, s.HandleSearch)
+	mcpServer.AddTool(mcp.NewTool("search",
+		mcp.WithDescription("Search SearXNG and scrape results in parallel with 10 concurrent workers"),
+		mcp.WithString("query", mcp.Required(), mcp.Description("The search query"), mcp.MinLength(1)),
+		mcp.WithString("region", mcp.Description("Region code (e.g., us-en)")),
+		mcp.WithString("timeRange", mcp.Description("Time range filter: day, week, month, year")),
+		mcp.WithInteger("page", mcp.Description("Page number (1-based, default 1)"),
+			mcp.Min(1), mcp.Max(1000)),
+		mcp.WithBoolean("useBM25", mcp.Description("Use BM25 scoring algorithm instead of native score"),
+			mcp.DefaultBool(false)),
+		mcp.WithString("renderMode", mcp.Description("Render mode for scraping each result: auto, browser, http")),
+		mcp.WithBoolean("scrape", mcp.Description("Scrape each result URL and include extracted content"),
+			mcp.DefaultBool(false)),
+		mcp.WithArray("formats", mcp.Description("Output formats for each result"),
+			mcp.WithStringItems(mcp.Enum("markdown", "html", "links", "json"))),
+	), mcp.NewTypedToolHandler[SearchArgs](s.HandleSearch))
 
-	utils.Log.Info("MCP tools registered", "tools", "quickcrawl_scrape, quickcrawl_crawl, quickcrawl_check_crawl_status, quickcrawl_map, quickcrawl_search")
+	utils.Log.Info("MCP tools registered", "tools", "scrape, crawl, check_crawl_status, site_map, search")
 }
 
 func strVal(p *string) string {

@@ -6,7 +6,10 @@ import (
 )
 
 func TestErrorResult(t *testing.T) {
-	result := errorResult("test error")
+	result, err := errorResult("test error")
+	if err != nil {
+		t.Fatalf("errorResult returned error: %v", err)
+	}
 	if result == nil {
 		t.Fatal("errorResult returned nil")
 	}
