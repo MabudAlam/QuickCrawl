@@ -2,9 +2,11 @@ package browser
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -13,23 +15,13 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
-func TestFindAvailableLocalPort(t *testing.T) {
-	port, err := findAvailableLocalPort()
-	if err != nil {
-		t.Fatalf("findAvailableLocalPort: %v", err)
-	}
-	if port <= 0 || port > 65535 {
-		t.Errorf("port %d is not in the valid range", port)
-	}
-}
-
 func TestWaitForCDPEndpointURL_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/version" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/abc",
+			"webSocketDebuggerUrl": "ws://127.0.0.1:99999/devtools/browser/abc",
 		})
 	}))
 	defer srv.Close()
@@ -39,7 +31,7 @@ func TestWaitForCDPEndpointURL_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("waitForCDPEndpointURL: %v", err)
 	}
-	want := "ws://127.0.0.1:9222/devtools/browser/abc"
+	want := "ws://127.0.0.1:99999/devtools/browser/abc"
 	if got != want {
 		t.Errorf("waitForCDPEndpointURL = %q, want %q", got, want)
 	}
@@ -58,10 +50,12 @@ func TestWaitForCDPEndpointURL_MissingField(t *testing.T) {
 }
 
 func TestWaitForCDPEndpointURL_EndpointDown(t *testing.T) {
-	port, err := findAvailableLocalPort()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to allocate port: %v", err)
 	}
+	ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
 	if _, err := waitForCDPEndpointURL(port, 500*time.Millisecond); err == nil {
 		t.Error("expected timeout error against a closed port, got nil")
 	}
@@ -179,8 +173,8 @@ func TestEnsureRenderer_AlreadyConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureRenderer with configured WS URL: %v", err)
 	}
-	if teardown != nil {
-		t.Error("expected nil teardown when WS URL already configured")
+	if teardown == nil {
+		t.Error("expected non-nil teardown when WS URL already configured")
 	}
 	if cfg.Renderer.Chrome.WSURL != "ws://127.0.0.1:9222/devtools/browser/abc" {
 		t.Errorf("EnsureRenderer should not mutate configured WS URL, got %q", cfg.Renderer.Chrome.WSURL)
@@ -193,8 +187,28 @@ func TestEnsureRenderer_NilConfig(t *testing.T) {
 	}
 }
 
-// extractPort pulls the TCP port from an httptest server URL like
-// "http://127.0.0.1:54321".
+func TestLightPandaLauncher_StopKillsProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process group signals behave differently on Windows")
+	}
+	sleepCmd := exec.Command("sleep", "60")
+	if err := sleepCmd.Start(); err != nil {
+		t.Fatalf("failed to start sleep process: %v", err)
+	}
+	pid := sleepCmd.Process.Pid
+	launcher := &LightPandaLauncher{cmd: sleepCmd}
+	launcher.Stop()
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		t.Fatalf("FindProcess: %v", err)
+	}
+	_, err = process.Wait()
+	if err == nil {
+		t.Error("expected process to be killed, but it is still running")
+	}
+	launcher.Stop()
+}
+
 func extractPort(url string) int {
 	for i := len(url) - 1; i >= 0; i-- {
 		if url[i] == ':' {

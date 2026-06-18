@@ -19,7 +19,6 @@ package browser
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -32,11 +31,11 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
 
-// LightPandaLauncher owns the lifecycle of a locally-spawned LightPanda
-// process. The zero value is not usable; construct via StartLightPanda.
-//
-// Safe for concurrent use of WSURL. Stop may be called multiple times
-// (idempotent).
+const lightpandaPort = 9222
+
+var globalLauncher *LightPandaLauncher
+var launcherMu sync.Mutex
+
 type LightPandaLauncher struct {
 	cmd    *exec.Cmd
 	wsURL  string
@@ -44,9 +43,6 @@ type LightPandaLauncher struct {
 	closed bool
 }
 
-// WSURL returns the live Chrome DevTools Protocol WebSocket URL that
-// LightPanda is serving on. Empty string before Start completes or
-// after Stop.
 func (l *LightPandaLauncher) WSURL() string {
 	if l == nil {
 		return ""
@@ -56,9 +52,6 @@ func (l *LightPandaLauncher) WSURL() string {
 	return l.wsURL
 }
 
-// Stop terminates the LightPanda process (if running) and waits for
-// the OS to reap it. It is safe to call multiple times; subsequent
-// calls are no-ops.
 func (l *LightPandaLauncher) Stop() {
 	if l == nil {
 		return
@@ -75,55 +68,37 @@ func (l *LightPandaLauncher) Stop() {
 	}
 }
 
-// StartLightPanda launches a local LightPanda process, waits for its
-// CDP endpoint to become reachable, and returns a launcher whose
-// WSURL is the live webSocketDebuggerUrl. The process is killed and
-// reaped when Stop is called.
-//
-// If the lightpanda binary is not on $PATH, the function downloads
-// the platform-appropriate release from the official nightly URL into
-// ~/.quickcrawl/lightpanda and uses that. A failed download leaves
-// the launcher stopped and returns the error so the caller can decide
-// what to do.
 func StartLightPanda() (*LightPandaLauncher, error) {
+	launcherMu.Lock()
+	defer launcherMu.Unlock()
+
+	if globalLauncher != nil && !globalLauncher.closed {
+		return globalLauncher, nil
+	}
+
 	binary, err := findOrDownloadLightPandaBinary()
 	if err != nil {
 		return nil, err
 	}
 
-	port, err := findAvailableLocalPort()
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.Command(binary, "serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port))
+	cmd := exec.Command(binary, "serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", lightpandaPort))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
-	wsURL, err := waitForCDPEndpointURL(port, 5*time.Second)
+	wsURL, err := waitForCDPEndpointURL(lightpandaPort, 10*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 		return nil, err
 	}
 
-	return &LightPandaLauncher{cmd: cmd, wsURL: wsURL}, nil
+	globalLauncher = &LightPandaLauncher{cmd: cmd, wsURL: wsURL}
+	return globalLauncher, nil
 }
 
-// EnsureRenderer guarantees that cfg.Renderer.Chrome has a WS URL by
-// the time it returns, auto-launching a local LightPanda when the
-// user has not configured one. If a teardown function is returned,
-// the caller MUST invoke it on shutdown to reap the launched process.
-//
-// Returns (nil, nil) when the user already configured a WS URL, or
-// when render_mode is explicitly "http" (the scraper will never reach
-// the browser) — nothing to do, nothing to clean up.
-//
-// The HTTP server does NOT call this helper. It is for MCP and CLI
-// entry points only.
 func EnsureRenderer(cfg *types.AppConfig) (func(), error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("EnsureRenderer: cfg is nil")
@@ -131,13 +106,14 @@ func EnsureRenderer(cfg *types.AppConfig) (func(), error) {
 	if strings.EqualFold(string(cfg.Renderer.RenderMode), "http") {
 		return nil, nil
 	}
+
 	if cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) != "" {
-		return nil, nil
+		return func() {}, nil
 	}
 
 	lp, err := StartLightPanda()
 	if err != nil {
-		return nil, fmt.Errorf("EnsureRenderer: no Chrome WS URL configured and LightPanda auto-start failed: %w (hint: set [renderer.chrome] ws_url in quickcrawl.toml to point at a running Chrome)", err)
+		return nil, fmt.Errorf("EnsureRenderer: LightPanda auto-start failed: %w", err)
 	}
 
 	if cfg.Renderer.Chrome == nil {
@@ -146,10 +122,37 @@ func EnsureRenderer(cfg *types.AppConfig) (func(), error) {
 		cfg.Renderer.Chrome.WSURL = lp.WSURL()
 	}
 
-	return lp.Stop, nil
+	return StopLightPanda, nil
 }
 
-// findOrDownloadLightPandaBinary returns a LightPanda binary, downloading it if necessary.
+func StopLightPanda() {
+	launcherMu.Lock()
+	defer launcherMu.Unlock()
+	if globalLauncher != nil && !globalLauncher.closed {
+		globalLauncher.Stop()
+		globalLauncher = nil
+	}
+	_ = killLightPandaOnPort(lightpandaPort)
+}
+
+func killLightPandaOnPort(port int) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	output, err := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port)).Output()
+	if err != nil {
+		return nil
+	}
+	pids := strings.TrimSpace(string(output))
+	if pids == "" {
+		return nil
+	}
+	for _, pid := range strings.Fields(pids) {
+		_ = exec.Command("kill", "-9", pid).Run()
+	}
+	return nil
+}
+
 func findOrDownloadLightPandaBinary() (string, error) {
 	if path := lookPath("lightpanda"); path != "" {
 		return path, nil
@@ -209,17 +212,6 @@ func lightpandaDownloadURL() string {
 	}
 }
 
-// findAvailableLocalPort asks the OS for a free localhost TCP port.
-func findAvailableLocalPort() (int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port, nil
-}
-
-// waitForCDPEndpointURL polls the browser /json/version endpoint until CDP is available.
 func waitForCDPEndpointURL(port int, timeout time.Duration) (string, error) {
 	url := fmt.Sprintf("http://127.0.0.1:%d/json/version", port)
 	deadline := time.Now().Add(timeout)
@@ -246,8 +238,6 @@ func waitForCDPEndpointURL(port int, timeout time.Duration) (string, error) {
 	return "", fmt.Errorf("lightpanda did not expose CDP at %s within %s", url, timeout)
 }
 
-// lookPath returns the executable path for a command, if present.
-// Uses the system `which` command, matching the legacy launcher.
 func lookPath(name string) string {
 	output, err := exec.Command("which", name).Output()
 	if err != nil {
