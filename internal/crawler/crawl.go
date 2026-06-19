@@ -129,7 +129,7 @@ func RunCrawl(opts CrawlOptions) {
 				}
 
 				fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs, opts.Req.Browser)
+				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs)
 				cancel()
 				if fetchErr != nil {
 					resultsCh <- crawlPageResult{item: item, err: convertCoreCrawlError(fetchErr)}
@@ -370,7 +370,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 				}
 
 				fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0, nil)
+				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0)
 				cancel()
 				if fetchErr != nil || fetchResult == nil {
 					resultsCh <- nil
