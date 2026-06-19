@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/config"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/spf13/cobra"
@@ -145,7 +146,7 @@ func runScrape(cmd *cobra.Command, args []string) error {
 	cancel()
 
 	if scrapeErr != nil {
-		return fmt.Errorf("scrape failed: %w", scrapeErr)
+		return handleScrapeError(scrapeErr, modePtr)
 	}
 
 	result := formatCoreScrapeData(data)
@@ -248,4 +249,40 @@ func formatCoreScrapeData(data *types.ScrapeData) string {
 // It's a thin wrapper around the internal config loader that handles errors.
 func loadConfig() (*types.AppConfig, error) {
 	return configLoadAppConfig()
+}
+
+func handleScrapeError(err *core.QuickCrawlError, mode *types.RenderMode) error {
+	if err == nil {
+		return nil
+	}
+
+	code := err.Code
+	msg := err.Message
+
+	switch code {
+	case core.CodeRendererError:
+		if strings.Contains(msg, "navigate failed") || strings.Contains(msg, "page load timed out") {
+			suggestion := ""
+			if mode != nil && *mode == types.RenderModeBrowser {
+				suggestion = " (try --render=auto instead, which uses HTTP first and escalates to browser only when needed)"
+			}
+			return fmt.Errorf("browser navigation failed%s: %s", suggestion, msg)
+		}
+		return fmt.Errorf("render error: %s", msg)
+	case core.CodeTimeout:
+		return fmt.Errorf("request timed out: %s (try increasing --wait-for or using --render=http)", msg)
+	case core.CodeForbidden:
+		if strings.Contains(msg, "robots.txt") {
+			return fmt.Errorf("access denied by robots.txt: %s", msg)
+		}
+		return fmt.Errorf("access forbidden: %s", msg)
+	case core.CodeRateLimited:
+		return fmt.Errorf("rate limited: %s", msg)
+	case core.CodeHttp:
+		return fmt.Errorf("HTTP error: %s", msg)
+	case core.CodeInvalidURL:
+		return fmt.Errorf("invalid URL: %s", msg)
+	default:
+		return fmt.Errorf("scrape failed: %s", msg)
+	}
 }

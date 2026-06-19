@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/MabudAlam/quickcrawl/internal/version"
@@ -77,9 +78,9 @@ Examples:
 	// any actual command logic runs.
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			// When verbose mode is enabled, we could configure
-			// logging to show more details about what's happening.
-			// For now, this is a placeholder for future enhancement.
+			log.SetOutput(os.Stderr)
+		} else {
+			log.SetOutput(io.Discard)
 		}
 	},
 }
