@@ -459,7 +459,7 @@ export default function PlaygroundPage({
     setSearchRegion("us-en")
     setSearchTimeRange("")
     setSearchFormats(["markdown"])
-    setSearchRenderMode(null)
+    setSearchRenderMode("auto")
     setSearchScrape(false)
     setSearchUseBM25(false)
     setSearchPage(1)
