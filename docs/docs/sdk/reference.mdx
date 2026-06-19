@@ -1,0 +1,145 @@
+---
+sidebar_position: 2
+---
+
+# SDK Reference
+
+## QuickCrawlClient
+
+```python
+QuickCrawlClient(api_url: str | None = None, api_key: str | None = None)
+```
+
+Create a client. Set `api_url` for HTTP mode, leave empty for CLI mode.
+
+---
+
+## `client.scrape(url, **kwargs)`
+
+Scrape a single URL and return its content in various formats.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `str` | required | URL to scrape |
+| `formats` | `list[str]` | `["markdown"]` | Output formats: `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json` |
+| `render_mode` | `str` | `"auto"` | Render mode: `auto`, `http`, `browser` |
+| `wait_for` | `int` | `None` | Milliseconds to wait after page load (0-120000) |
+| `include_tags` | `list[str]` | `None` | CSS selectors to include |
+| `exclude_tags` | `list[str]` | `None` | CSS selectors to exclude |
+| `css_selector` | `str` | `None` | Extract content from a specific CSS selector |
+| `ttl` | `int` | `None` | Cache TTL in seconds (0=bypass cache) |
+
+**Returns:** `dict` with keys `markdown`, `html`, `metadata`, `links`, etc.
+
+---
+
+## `client.crawl(url, max_depth=2, max_pages=10, **kwargs)`
+
+Crawl a website using BFS. In HTTP mode this is async — it starts a crawl job and polls for completion.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `str` | required | Starting URL |
+| `max_depth` | `int` | `2` | Maximum link depth (0-100) |
+| `max_pages` | `int` | `10` | Maximum pages to scrape (1-100) |
+| `poll_interval` | `float` | `2.0` | Seconds between status checks (HTTP mode only) |
+| `timeout` | `float` | `300.0` | Maximum seconds to wait (HTTP mode only) |
+| `render_mode` | `str` | `"auto"` | Render mode: `auto`, `http`, `browser` |
+| `wait_for` | `int` | `None` | Milliseconds to wait after each page load |
+| `formats` | `list[str]` | `None` | Output formats per page (note: `json` not supported) |
+
+**Returns:** `list[dict]` — each dict contains scraped page data.
+
+---
+
+## `client.map(url, max_depth=2, use_sitemap=True, timeout=30000)`
+
+Discover URLs on a website without scraping content.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `str` | required | Starting URL |
+| `max_depth` | `int` | `2` | Maximum link depth (0-50) |
+| `use_sitemap` | `bool` | `True` | Use sitemap.xml as seed URLs |
+| `timeout` | `int` | `30000` | Timeout in milliseconds (1-600000) |
+
+**Returns:** `list[str]` — discovered URLs.
+
+---
+
+## `client.search(query, **kwargs)`
+
+Search SearXNG and optionally scrape content from each result.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | `str` | required | Search query |
+| `scrape` | `bool` | `False` | Scrape each result URL |
+| `formats` | `list[str]` | `["markdown"]` | Output formats when scraping |
+| `render_mode` | `str` | `"auto"` | Render mode for scraping results |
+| `region` | `str` | `"us-en"` | Region code (e.g., `us-en`, `gb-en`) |
+| `page` | `int` | `1` | 1-based page number (1-1000) |
+| `time_range` | `str` | `None` | Time filter: `day`, `week`, `month`, `year` |
+| `use_bm25` | `bool` | `False` | Re-rank results with BM25 scoring |
+
+**Returns:**
+
+```python
+{
+    "query": str,
+    "results": [
+        {
+            "position": int,
+            "score": float,
+            "bm25_score": float | None,  # only if use_bm25=True
+            "title": str,
+            "url": str,
+            "site_name": str,
+            "snippet": str,
+            "markdown": str | None,       # only if scrape=True
+            "html": str | None,            # only if scrape=True
+        }
+    ],
+    "total_results": int,
+    "page": int,
+}
+```
+
+---
+
+## Context Manager
+
+```python
+with QuickCrawlClient() as client:
+    result = client.scrape("https://example.com")
+# close() is called automatically
+```
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `QUICKCRAWL_BINARY` | Path to the quickcrawl CLI binary |
+| `QUICKCRAWL_API_URL` | API URL for HTTP mode |
+| `QUICKCRAWL_API_KEY` | API key for HTTP mode |
+
+---
+
+## Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `QuickCrawlError` | Base exception for all SDK errors |
+| `QuickCrawlBinaryNotFoundError` | Binary could not be found or downloaded |
+| `QuickCrawlTimeoutError` | Operation timed out |
+| `QuickCrawlApiError` | API returned an error (includes `status_code`) |

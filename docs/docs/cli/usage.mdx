@@ -1,0 +1,66 @@
+---
+sidebar_position: 2
+---
+
+# CLI Usage
+
+The QuickCrawl CLI provides four main subcommands: `scrape`, `crawl`, `map`, and `search`.
+
+## Scrape a Single URL
+
+```bash
+# Basic scrape (defaults to markdown)
+quickcrawl scrape https://example.com
+
+# Multiple formats
+quickcrawl scrape https://example.com --formats html,markdown
+
+# With browser rendering
+quickcrawl scrape https://example.com --render-mode browser --wait-for 2000
+```
+
+## Crawl a Website
+
+```bash
+# Basic crawl
+quickcrawl crawl https://example.com
+
+# With limits and formats
+quickcrawl crawl https://example.com --max-pages 10 --max-depth 3 --formats markdown,links
+
+# With browser rendering
+quickcrawl crawl https://example.com --render-mode browser
+```
+
+## Discover URLs
+
+```bash
+# Map a site structure
+quickcrawl map https://example.com
+
+# With depth limit
+quickcrawl map https://example.com --max-depth 2
+```
+
+## Web Search
+
+```bash
+# Basic search
+quickcrawl search "golang web scraping"
+
+# Search and scrape results
+quickcrawl search "python" --scrape --formats markdown
+
+# With time range filter
+quickcrawl search "AI agents" --time-range week
+```
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--help` | Show help for any command |
+| `--config` | Path to quickcrawl.toml config file |
+| `--timeout` | Request timeout in seconds |
+
+Run `quickcrawl [command] --help` for detailed flag information on any subcommand.

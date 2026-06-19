@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg fill="none" viewBox="0 0 260 50" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="zapGrad" gradientUnits="userSpaceOnUse" spreadMethod="pad" x2="16.25" y2="9.375" x1="-5" y1="-6.375">
+      <stop offset="0%" stop-color="#fccf4a" />
+      <stop offset="50%" stop-color="#f3c439" />
+      <stop offset="100%" stop-color="#eab927" />
+    </linearGradient>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;700&amp;display=swap');
+      .qc-text { font-family: 'Inter', system-ui, sans-serif; font-size: 28px; font-weight: 700; fill: #111111; letter-spacing: -0.5px; }
+      .qc-tag { font-family: 'Inter', system-ui, sans-serif; font-size: 9px; font-weight: 500; fill: #888888; letter-spacing: 1.5px; }
+    </style>
+  </defs>
+
+  <!-- Zap Icon Group -->
+  <g transform="translate(15, 0)">
+    <g id="Shape Layer 1">
+      <g transform="translate(24.531,26.125)">
+        <animateTransform repeatCount="indefinite" type="translate" attributeName="transform" dur="1s" begin="0s" calcMode="spline" values="24.531 26.125; 24.531 26.125; 24.531 27; 24.531 26.125" keyTimes="0; 0.067; 0.567; 1" keySplines="0 0 1 1; 0.333 0 0.667 1; 0.333 0 0.667 1" fill="freeze" />
+        <g transform="scale(0.98,0.98)">
+          <animateTransform repeatCount="indefinite" type="scale" attributeName="transform" dur="1s" begin="0s" calcMode="spline" values="0.98 0.98; 1 1; 1 1; 0.98 0.98" keyTimes="0; 0.067; 0.567; 1" keySplines="0.167 0.167 0.667 1; 0 0 1 1; 0 0 1 1" fill="freeze" />
+          <g transform="translate(0,0)">
+            <g opacity="0" id="Shape Layer 2">
+              <animate repeatCount="indefinite" attributeName="opacity" dur="1s" begin="0s" calcMode="spline" values="0; 0.5; 0.74; 0.27" keyTimes="0; 0.1; 0.933; 1" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1" fill="freeze" />
+              <g transform="translate(1.25,0.5) scale(1,1) translate(0,0)">
+                <g id="Shape 1">
+                  <path stroke-linejoin="miter" stroke-linecap="butt" stroke-width="0" stroke-opacity="1" stroke="#074992" fill="#a18903" fill-opacity="1" d="M-5.813,-19.875L-12.125,1.938L-2.438,2L-8.125,18.125L13.063,-3.813L-0.188,-4L8.375,-19.813L-5.813,-19.875Z" />
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g opacity="0.5" id="Shape Layer 1 copy">
+      <animate repeatCount="indefinite" attributeName="opacity" dur="1s" begin="0s" calcMode="spline" values="0.5; 1; 1; 1; 0.5" keyTimes="0; 0.067; 0.567; 0.933; 1" keySplines="0 0 1 1; 0 0 1 1; 0 0 1 1; 0 0 1 1" fill="freeze" />
+      <g transform="translate(24.531,26.125)">
+        <animateTransform repeatCount="indefinite" type="translate" attributeName="transform" dur="1s" begin="0s" calcMode="spline" values="24.531 26.125; 24.531 26.125; 24.531 27; 24.531 26.125" keyTimes="0; 0.067; 0.567; 1" keySplines="0 0 1 1; 0.333 0 0.667 1; 0.333 0 0.667 1" fill="freeze" />
+        <g transform="scale(0.98,0.98)">
+          <animateTransform repeatCount="indefinite" type="scale" attributeName="transform" dur="1s" begin="0s" calcMode="spline" values="0.98 0.98; 1 1; 1 1; 0.98 0.98" keyTimes="0; 0.067; 0.567; 1" keySplines="0.167 0.167 0.667 1; 0 0 1 1; 0 0 1 1" fill="freeze" />
+          <g transform="translate(0,0)">
+            <g id="Shape 1">
+              <path stroke-linejoin="miter" stroke-linecap="butt" stroke-width="0" stroke-opacity="1" stroke="#074992" fill="url(#zapGrad)" fill-opacity="1" d="M-5.813,-19.875L-12.125,1.938L-2.438,2L-8.125,18.125L13.063,-3.813L-0.188,-4L8.375,-19.813L-5.813,-19.875Z" />
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- Text -->
+  <text x="60" y="32" class="qc-text">QuickCrawl</text>
+  <text x="62" y="45" class="qc-tag">WEB FOR AGENTS</text>
+</svg>

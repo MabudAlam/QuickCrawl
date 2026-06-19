@@ -1,0 +1,169 @@
+---
+sidebar_position: 1
+---
+
+# Deployment
+
+Deploy QuickCrawl server and its dependencies via Docker or Railway.
+
+## QuickCrawl Server
+
+### Docker
+
+```bash
+docker build -f infra/Dockerfile.server -t quickcrawl .
+docker run -p 3000:3000 quickcrawl
+```
+
+The server binary is at `/usr/local/bin/quickcrawl-server`. Mount your config:
+
+```bash
+docker run -p 3000:3000 -v /path/to/quickcrawl.toml:/app/quickcrawl.toml quickcrawl
+```
+
+### Railway
+
+One-click deploy via Railway:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/5Dcxsc?referralCode=jEIluR&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+1. Click the button above
+2. Connect your GitHub repository
+3. Configure environment variables — see the [Environment](../environment/configuration) section
+4. Deploy
+
+## CloakBrowser
+
+[CloakBrowser](https://cloakbrowser.dev/#results) is a closed-source headless browser binary that provides maximum stealth with realistic browser fingerprints. It is designed to bypass anti-bot detection systems.
+
+The QuickCrawl infra includes a Dockerfile that packages CloakBrowser with the **Bypass Paywalls Clean** Chrome extension pre-installed and a configurable SOCKS5 proxy.
+
+### Docker
+
+```bash
+docker build -f infra/cloakbrowser/Dockerfile.cloak -t cloakbrowser .
+docker run -p 9222:9222 cloakbrowser
+```
+
+CloakBrowser exposes CDP on port **9222**. Point QuickCrawl at it:
+
+```bash
+RENDERER__CHROME__WS_URL=ws://localhost:9222 quickcrawl server
+```
+
+Or in `quickcrawl.toml`:
+
+```toml
+[renderer.chrome]
+ws_url = "ws://localhost:9222"
+browser = "cloak"
+```
+
+### Runtime Configuration
+
+The image is configured via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROXY_ENABLED` | `false` | Enable SOCKS5 proxy |
+| `PROXY_SERVER` | `""` | SOCKS5 URL, e.g. `socks5://user:pass@host:1080` |
+| `EXTENSION_PATH` | `/app/extensions/bypass-content` | Path to Chrome extension |
+| `EXTRA_CHROME_FLAGS` | `--no-sandbox --headless=new --disable-dev-shm-usage --disable-gpu` | Additional Chrome flags |
+
+### With Proxy
+
+```bash
+docker run -p 9222:9222 \
+  -e PROXY_ENABLED=true \
+  -e PROXY_SERVER=socks5://user:pass@proxyhost:1080 \
+  cloakbrowser
+```
+
+### Without Extension
+
+```bash
+docker run -p 9222:9222 \
+  -e EXTENSION_PATH="" \
+  cloakbrowser
+```
+
+## SearXNG
+
+[SearXNG](https://searxng.org/) is an open-source privacy-friendly metasearch engine. QuickCrawl uses it as the backend for `/v1/search`.
+
+The infra includes a pre-configured SearXNG image:
+
+```bash
+docker build -f infra/SearXNG/Dockerfile.searxng -t searxng .
+docker run -p 8080:8080 searxng
+```
+
+Then configure QuickCrawl to use it:
+
+```bash
+SEARCH__BASE_URL=http://localhost:8080 quickcrawl server
+```
+
+Or in `quickcrawl.toml`:
+
+```toml
+[search]
+base_url = "http://localhost:8080"
+```
+
+### Settings
+
+The pre-configured image uses `infra/SearXNG/settings.yml`:
+
+- Instance name: `SearXNG - QC`
+- Rate limiter: disabled
+- Image proxy: enabled
+- Available formats: `html`, `json`
+
+## Playground
+
+The playground is a separate Next.js app:
+
+```bash
+docker build -f infra/Dockerfile.playground -t quickcrawl-playground .
+docker run -p 3000:3000 quickcrawl-playground
+```
+
+Build args:
+- `NEXT_PUBLIC_BASE_URL` — QuickCrawl server URL (default: `http://localhost:3000`)
+- `NEXT_PUBLIC_TINY_FISH_API_KEY` — Optional TinyFish API key
+
+## Docs
+
+The documentation site is deployed using a multi-stage Dockerfile:
+
+```bash
+docker build -f infra/Dockerfile.docs -t quickcrawl-docs .
+```
+
+### Development
+
+```bash
+docker build --target dev -t quickcrawl-docs:dev .
+docker run -p 3000:3000 quickcrawl-docs:dev
+```
+
+### Production Build
+
+```bash
+docker build --target prod -t quickcrawl-docs:prod .
+```
+
+### Serve Built Site
+
+```bash
+docker build --target serve -t quickcrawl-docs:serve .
+docker run -p 3000:3000 quickcrawl-docs:serve
+```
+
+### Serve with Caddy
+
+```bash
+docker build --target caddy -t quickcrawl-docs:caddy .
+docker run -p 3000:3000 quickcrawl-docs:caddy
+```

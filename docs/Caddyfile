@@ -1,0 +1,6 @@
+:9009 {
+    root * /var/docusaurus
+    try_files {path} {path}/ /index.html
+    encode gzip
+    file_server
+}

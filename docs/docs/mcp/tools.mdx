@@ -1,0 +1,111 @@
+---
+sidebar_position: 2
+---
+
+# MCP Tools
+
+QuickCrawl MCP server provides 5 tools for web scraping and search.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `scrape` | Scrape a single URL |
+| `crawl` | Start an async BFS crawl |
+| `check_crawl_status` | Check crawl job status by ID |
+| `site_map` | Discover URLs without scraping (sitemap-aware) |
+| `search` | Search SearXNG and optionally scrape results |
+
+## Tool: `scrape`
+
+Scrape a single URL with configurable formats and rendering.
+
+```json
+{
+  "url": "https://www.notion.so/",
+  "formats": ["markdown"],
+  "renderMode": "browser"
+}
+```
+
+**Parameters:**
+- `url` (string, required) — URL to scrape
+- `formats` (string[]) — Output formats: `markdown`, `html`, `links`, `json`
+- `renderMode` (string) — `"auto"`, `"browser"`, `"http"`
+- `waitFor` (int) — Milliseconds to wait after JS rendering
+- `includeTags` (string[]) — CSS selectors to include
+- `excludeTags` (string[]) — CSS selectors to exclude
+- `cssSelector` (string) — Extract content from specific CSS selector
+
+## Tool: `crawl`
+
+Start an async BFS crawl of a website.
+
+```json
+{
+  "url": "https://example.com",
+  "maxDepth": 2,
+  "maxPages": 50,
+  "formats": ["markdown"]
+}
+```
+
+**Parameters:**
+- `url` (string, required) — Starting URL
+- `maxDepth` (int) — Maximum crawl depth (0-100). Default: `2`
+- `maxPages` (int) — Maximum pages (1-100). Default: `100`
+- `formats` (string[]) — Output formats for each page: `markdown`, `html`, `links`
+- `renderMode` (string) — Render mode override
+- `waitFor` (int) — Wait time after each page load
+
+## Tool: `check_crawl_status`
+
+Check the status of a crawl job by its ID.
+
+```json
+{
+  "id": "crawl-1748899200000000000"
+}
+```
+
+**Parameters:**
+- `id` (string, required) — Crawl job ID
+
+## Tool: `site_map`
+
+Discover all URLs on a website without scraping content. Uses sitemap.xml by default.
+
+```json
+{
+  "url": "https://example.com",
+  "maxDepth": 2
+}
+```
+
+**Parameters:**
+- `url` (string, required) — Starting URL
+- `maxDepth` (int) — Maximum depth (0-100). Default: `2`
+- `useSitemap` (bool) — Use sitemap.xml as seed URLs. Default: `true`
+- `timeout` (int) — Timeout in ms. Default: `30000`
+
+## Tool: `search`
+
+Search SearXNG and optionally scrape result URLs.
+
+```json
+{
+  "query": "golang web scraping",
+  "scrape": true,
+  "formats": ["markdown"]
+}
+```
+
+**Parameters:**
+- `query` (string, required) — Search query
+- `scrape` (bool) — Scrape each result URL. Default: `false`
+- `formats` (string[]) — Output formats when scraping: `markdown`, `html`, `links`, `json`
+- `timeRange` (string) — `day`, `week`, `month`, `year`
+- `region` (string) — Language/region code
+- `page` (int) — Page number (1-based)
+- `useBM25` (bool) — Use BM25 scoring. Default: `false`
+- `renderMode` (string) — Render mode for scraping results

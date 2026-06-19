@@ -1,0 +1,99 @@
+---
+sidebar_position: 2
+---
+
+# Crawl API
+
+Start and manage asynchronous BFS crawls of entire websites.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/crawl` | Start an async BFS crawl |
+| `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
+| `DELETE` | `/v1/crawl/:id` | Cancel a running crawl |
+
+## Start a Crawl — `POST /v1/crawl`
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Starting URL |
+| `maxDepth` | int | no | Maximum link depth (0-100). Default from config |
+| `maxPages` | int | no | Maximum pages to scrape (1-100). Default from config |
+| `formats` | string[] | no | Output formats per page. `"json"` rejected (use `/v1/scrape`) |
+| `renderMode` | string | no | `"auto"`, `"browser"`, `"http"` |
+| `waitFor` | int | no | Milliseconds to wait after each navigation |
+
+### Example Request
+
+```json
+{
+  "url": "https://example.com",
+  "maxDepth": 2,
+  "maxPages": 50,
+  "formats": ["markdown", "links"],
+  "renderMode": "http"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "id": "crawl-1748899200000000000"
+}
+```
+
+## Check Status — `GET /v1/crawl/:id`
+
+### Response (running)
+
+```json
+{
+  "id": "crawl-1748899200000000000",
+  "success": true,
+  "status": "scraping",
+  "total": 47,
+  "completed": 12,
+  "data": []
+}
+```
+
+### Response (completed)
+
+```json
+{
+  "id": "crawl-1748899200000000000",
+  "success": true,
+  "status": "completed",
+  "total": 47,
+  "completed": 47,
+  "data": [
+    {
+      "markdown": "# Example Domain\n\n...",
+      "links": ["https://www.iana.org/domains/example"],
+      "metadata": {
+        "sourceURL": "https://example.com",
+        "statusCode": 200,
+        "renderedMode": "http",
+        "timeTaken": 281
+      }
+    }
+  ]
+}
+```
+
+`status` is one of: `pending`, `scraping`, `completed`, `failed`.
+
+## Cancel a Crawl — `DELETE /v1/crawl/:id`
+
+Returns `204 No Content` on success, `404 Not Found` if the job ID is unknown.
+
+## Error Responses
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `invalid_request` | Missing url, invalid params, `formats` contains `"json"` |
+| 500 | `internal_error` | Scraper not initialized |

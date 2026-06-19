@@ -1,0 +1,101 @@
+---
+sidebar_position: 1
+---
+
+# Scrape API
+
+`POST /v1/scrape` — Scrape a single URL with one or more output formats.
+
+The canonical endpoint for fetching and extracting content from one page. Supports HTTP and browser (JS) rendering, content filters, and LLM-based structured extraction.
+
+## Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Absolute `http://` or `https://` URL to scrape |
+| `formats` | string[] | no | Output formats: `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, `json`. Default: `["markdown"]` |
+| `renderMode` | string | no | `"auto"`, `"browser"`, `"http"`. Inherits server default |
+| `waitFor` | int | no | Milliseconds to wait after navigation (0-120000). Default: `0` |
+| `headers` | object | no | Custom HTTP headers for the fetch |
+| `includeTags` | string[] | no | CSS selectors to keep (e.g. `["article", "h1"]`) |
+| `excludeTags` | string[] | no | CSS selectors to drop (e.g. `["nav", ".ad"]`) |
+| `cssSelector` | string | no | Extract content matching this CSS selector only |
+| `jsonSchema` | object | no | JSON Schema for LLM extraction (when `formats: ["json"]`) |
+| `extract` | object | no | LLM extraction overrides: `{ schema, prompt, responseFormat }` |
+| `llmExtractionPrompt` | string | no | Per-request LLM system prompt override |
+| `llmResponseFormat` | string | no | Per-request LLM `response_format` name override |
+| `ttl` | int | no | Cache TTL in seconds. `0` = bypass cache |
+
+## Minimal Request
+
+```json
+{
+  "url": "https://example.com"
+}
+```
+
+## Full Request with Filters
+
+```json
+{
+  "url": "https://example.com/article",
+  "formats": ["markdown", "html", "links"],
+  "renderMode": "browser",
+  "waitFor": 2000,
+  "headers": { "Cookie": "session=abc" },
+  "includeTags": ["article", "h1", "h2", "p"],
+  "excludeTags": ["nav", "footer", ".advertisement"]
+}
+```
+
+## Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "# Example Domain\n\nThis domain is for use...",
+    "html": "<h1>Example Domain</h1><p>...</p>",
+    "plainText": "Example Domain...",
+    "links": ["https://www.iana.org/domains/example"],
+    "imageLinks": [],
+    "metadata": {
+      "title": "Example Domain",
+      "description": null,
+      "sourceURL": "https://example.com",
+      "language": "en",
+      "statusCode": 200,
+      "renderedMode": "http",
+      "timeTaken": 281
+    }
+  }
+}
+```
+
+## LLM Extraction Response
+
+When `formats` includes `"json"` and LLM is configured:
+
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "...",
+    "json": {
+      "title": "Example Domain",
+      "purpose": "documentation example"
+    },
+    "metadata": { "...": "..." }
+  }
+}
+```
+
+## Error Responses
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `invalid_request` | Missing `url`, non-http(s) scheme, malformed JSON |
+| 400 | `forbidden` | Blocked by robots.txt |
+| 500 | `internal_error` | Scraper not initialized |
+| 200 with `success:false` | `http` | Target returned HTTP 4xx/5xx |
+| 200 with `success:false` | `renderer_error` | Browser requested but no Chrome WS URL configured |

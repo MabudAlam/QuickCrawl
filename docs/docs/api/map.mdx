@@ -1,0 +1,49 @@
+---
+sidebar_position: 3
+---
+
+# Map API
+
+`POST /v1/map` — Discover all URLs on a site instantly without scraping content.
+
+## Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Absolute URL to start from |
+| `maxDepth` | int | no | Maximum link depth (0-100). Default: `2` |
+| `useSitemap` | bool | no | Seed with sitemap.xml and robots.txt sitemaps. Default: `true` |
+| `timeout` | int | no | Operation timeout in ms (1-600000). Default: `30000` |
+
+## Example Request
+
+```json
+{
+  "url": "https://www.mabud.dev/",
+  "maxDepth": 2,
+  "useSitemap": true,
+  "timeout": 30000
+}
+```
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "links": [
+      "https://www.mabud.dev/blog",
+      "https://www.mabud.dev/projects",
+      "https://www.mabud.dev/resume"
+    ]
+  }
+}
+```
+
+## Error Responses
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `invalid_request` | Missing url, non-http(s) scheme, params out of range |
+| 500 | `internal_error` | Server error |

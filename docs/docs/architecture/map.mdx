@@ -1,0 +1,109 @@
+---
+sidebar_position: 4
+---
+
+# Map
+
+Discover all URLs on a website without scraping content. Much faster than crawling since no page content is fetched.
+
+## Flow
+
+```
+POST /v1/map { url, maxDepth, useSitemap }
+    │
+    ├── Sitemap seeds (if useSitemap = true)
+    │       ├── /sitemap.xml ──→ Parse XML for URLs
+    │       └── robots.txt sitemaps ──→ Fetch each declared sitemap
+    │
+    ├── BFS URL Discovery
+    │       └── For each discovered URL:
+    │               ├── Fetch HTML (HTTP only — no browser)
+    │               ├── Parse links from HTML
+    │               ├── Filter same-origin
+    │               └── Add to queue if depth < maxDepth
+    │
+    └── Return sorted unique URL list
+```
+
+## Key Differences from Crawl
+
+| | Map | Crawl |
+|--|-----|-------|
+| **Content** | Not extracted | Extracted (markdown, html, etc.) |
+| **HTTP mode** | HTTP only | HTTP or browser |
+| **Sitemap** | Used as seed URLs | Not used |
+| **Speed** | Fast | Slower |
+| **Use case** | Site structure discovery | Content indexing |
+
+## Sitemap Discovery
+
+If `useSitemap = true` (default), QuickCrawl uses sitemap.xml as seed URLs before crawling:
+
+```go
+func collectSitemapSeedURLs(origin, userAgent string) []string {
+    urls := []string{origin + "/sitemap.xml"}
+
+    // Also check robots.txt for sitemap declarations
+    robots := FetchRobotsTxt(origin, userAgent)
+    if robots != nil {
+        urls = append(urls, robots.Sitemaps...)
+    }
+
+    return urls
+}
+```
+
+### robots.txt Sitemap Declaration
+
+```txt
+Sitemap: https://example.com/sitemap.xml
+Sitemap: https://example.com/news-sitemap.xml
+```
+
+Search engines declare sitemaps this way. QuickCrawl reads them to discover additional URL sources.
+
+## URL Collection Process
+
+```
+Seed URLs (from sitemap)
+    │
+    └── BFS Crawl
+            │
+            ├── HTTP GET (no browser rendering)
+            ├── Parse <a href="..."> from raw HTML
+            ├── Apply filters:
+            │     ├── Same origin only
+            │     ├── Not already visited
+            │     └── Safe URL (http/https only)
+            │
+            └── Add to queue if depth < maxDepth
+```
+
+Uses the same `*core.Scraper` in **HTTP-only mode** — browser rendering is never used since content is not extracted.
+
+## HTTP-Only Fetch
+
+Map uses the HTTP fetcher directly, not the full orchestrator:
+
+```go
+// HTTP fetcher is called without browser escalation
+result, err := renderer.http.Fetch(rawURL, headers, nil)
+```
+
+This makes map significantly faster than crawl since:
+- No JavaScript rendering overhead
+- No SPA detection or auto-escalation
+- No content extraction (only link parsing)
+
+## robots.txt Respect
+
+If `respect_robots_txt = true` in config:
+- Disallowed paths are not followed
+- Disallowed paths are still included in results (they were found, just not crawled)
+
+## Use Cases
+
+- **Site auditing** — Find all pages, identify orphan pages
+- **Sitemap generation** — Feed discovered URLs into a sitemap.xml
+- **SEO analysis** — Identify pages not linked from anywhere
+- **Pre-crawl reconnaissance** — Discover URL structure before running a full crawl

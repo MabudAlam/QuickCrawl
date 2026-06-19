@@ -1,0 +1,101 @@
+---
+sidebar_position: 1
+---
+
+# Python SDK
+
+Python SDK for QuickCrawl — scrape, crawl, map, and search websites from Python code.
+
+## Installation
+
+```bash
+# From GitHub
+pip install git+https://github.com/MabudAlam/quickcrawl.git@python-sdk#subdirectory=python
+
+# Or clone and install
+git clone https://github.com/MabudAlam/quickcrawl
+cd quickcrawl/python
+pip install -e .
+
+# From PyPI (when published)
+pip install quickcrawl
+```
+
+**Requirements:** Python 3.9+
+
+## Two Modes
+
+### CLI Mode (Default)
+
+Zero-config mode that downloads and runs the `quickcrawl` CLI binary as a subprocess. No server or API key needed.
+
+```python
+from quickcrawl import QuickCrawlClient
+
+client = QuickCrawlClient()
+```
+
+The SDK automatically:
+1. Checks if `quickcrawl` binary is in PATH
+2. Downloads from GitHub releases and caches it if not found
+3. Shells out to CLI for each operation
+
+Override binary location:
+```bash
+export QUICKCRAWL_BINARY=/path/to/quickcrawl
+```
+
+### HTTP Mode (Cloud/Server)
+
+Connect to a deployed QuickCrawl server for cloud-based scraping.
+
+```python
+client = QuickCrawlClient(
+    api_url="https://your-server.com",
+    api_key="your-api-key"  # optional
+)
+```
+
+## Quick Start
+
+```python
+from quickcrawl import QuickCrawlClient
+
+with QuickCrawlClient() as client:
+    # Scrape
+    result = client.scrape("https://example.com")
+    print(result["markdown"])
+
+    # Crawl
+    pages = client.crawl("https://example.com", max_depth=2, max_pages=10)
+
+    # Map
+    urls = client.map("https://example.com")
+
+    # Search
+    results = client.search("golang web scraping", scrape=True)
+```
+
+## Examples
+
+See `python/examples/` for complete working examples:
+
+| File | Description |
+|------|-------------|
+| `01_scrape.py` | Scrape a single URL and extract markdown content |
+| `02_crawl.py` | Crawl a website using BFS, print titles and URLs |
+| `03_map.py` | Discover URLs without scraping content using sitemap.xml |
+| `04_formats.py` | Use multiple output formats: markdown, html, links |
+| `05_cloud.py` | Connect to a deployed QuickCrawl server via HTTP mode |
+| `06_search.py` | Web search with BM25 re-ranking and content scraping |
+| `perplexity.py` | Perplexity-style AI research agent using Google ADK with LiteLlm |
+
+### Perplexity-Style Agent
+
+The `perplexity.py` example creates a fully autonomous research agent using Google ADK. It wraps QuickCrawl in three tools:
+
+- **`web_search`** — searches the web and scrapes content from results
+- **`scrape_url`** — scrapes a specific URL with full content extraction
+- **`crawl_website`** — crawls an entire website and returns all pages
+
+Supports interactive chat mode and single-question mode.

@@ -1,0 +1,60 @@
+---
+sidebar_position: 4
+---
+
+# Search API
+
+`POST /v1/search` — Search SearXNG and optionally scrape results in parallel.
+
+By default returns search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content from each result URL using 10 concurrent workers.
+
+## Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | yes | Search query string |
+| `region` | string | no | SearXNG language code. Default: `auto` |
+| `timeRange` | string | no | `day`, `week`, `month`, `year`. Omit for no filter |
+| `categories` | string | no | Comma-separated categories. Default: `general` |
+| `page` | int | no | 1-based page number (1-1000). Default: `1` |
+| `use_bm25` | bool | no | Re-rank results using BM25F scoring. Default: `false` |
+| `scrape` | bool | no | Fetch and extract content from each result. Default: `false` |
+| `formats` | string[] | no | Output formats when `scrape=true`. Default: `["markdown"]` |
+| `renderMode` | string | no | Per-request render mode override for scraping results |
+
+## Example Request
+
+```json
+{
+  "query": "golang web scraping",
+  "timeRange": "month",
+  "page": 1,
+  "scrape": true,
+  "formats": ["markdown"]
+}
+```
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "title": "Web Scraping with Go",
+        "url": "https://example.com/go-scraping",
+        "snippet": "A comprehensive guide to web scraping...",
+        "markdown": "# Web Scraping with Go\n\n..."
+      }
+    ]
+  }
+}
+```
+
+## Error Responses
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `invalid_request` | Missing query, invalid params |
+| 500 | `internal_error` | Search service unavailable |

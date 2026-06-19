@@ -1,0 +1,139 @@
+---
+sidebar_position: 1
+---
+
+# Configuration
+
+QuickCrawl loads configuration in this order (later layers override earlier):
+
+1. **Defaults** — hardcoded sensible defaults
+2. **`quickcrawl.toml`** — TOML config file
+3. **Environment variables** — always override (including `.env` loaded at startup)
+
+## TOML Config File
+
+Place `quickcrawl.toml` in the same directory as the binary, or set the `CONFIG` env var to point to a custom path.
+
+```bash
+CONFIG=/path/to/custom.toml quickcrawl server
+```
+
+### Example `quickcrawl.toml`
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 3000
+request_timeout_secs = 60
+rate_limit_rps = 10
+
+[renderer]
+page_timeout_ms = 45000
+pool_size = 4
+render_mode = "auto"
+browser = "cloak"
+
+[renderer.chrome]
+ws_url = ""
+
+[crawler]
+max_concurrency = 40
+requests_per_second = 40.0
+respect_robots_txt = false
+default_max_depth = 2
+default_max_pages = 100
+
+[crawler.stealth]
+enabled = true
+strategy = "modern_browser"
+
+[extraction.llm]
+api_key = ""
+model = "gpt-4o-mini"
+
+[cache]
+enabled = true
+ttl_default_secs = 3600
+
+[search]
+base_url = ""
+timeout_secs = 30
+```
+
+## Environment Variables
+
+Environment variables always override TOML values. Use the format `SECTION__KEY` (double underscore).
+
+### Server
+
+| Variable | Description |
+|----------|-------------|
+| `SERVER__HOST` | Listen address |
+| `SERVER__PORT` | Listen port |
+| `SERVER__REQUEST_TIMEOUT_SECS` | Request timeout |
+| `SERVER__RATE_LIMIT_RPS` | Rate limit (requests/sec) |
+
+### Renderer
+
+| Variable | Description |
+|----------|-------------|
+| `RENDERER__PAGE_TIMEOUT_MS` | Page load timeout |
+| `RENDERER__POOL_SIZE` | Browser pool size |
+| `RENDERER__RENDER_MODE` | Default render mode: `auto`, `browser`, `http` |
+| `RENDERER__BROWSER` | Browser type: `cloak`, `lightpanda`, `browserless` |
+| `RENDERER__CHROME__WS_URL` | Chrome CDP WebSocket URL |
+
+### Crawler
+
+| Variable | Description |
+|----------|-------------|
+| `CRAWLER__MAX_CONCURRENCY` | Max concurrent crawls |
+| `CRAWLER__REQUESTS_PER_SECOND` | Rate limit |
+| `CRAWLER__RESPECT_ROBOTS_TXT` | Follow robots.txt (`true`/`false`) |
+| `CRAWLER__DEFAULT_MAX_DEPTH` | Default crawl depth |
+| `CRAWLER__DEFAULT_MAX_PAGES` | Default max pages |
+| `CRAWLER__STEALTH__ENABLED` | Enable stealth mode |
+| `CRAWLER__STEALTH__STRATEGY` | Header strategy: `modern_browser`, `mobile_device`, `bot_friendly` |
+
+### LLM Extraction
+
+| Variable | Description |
+|----------|-------------|
+| `EXTRACTION__LLM__API_KEY` | OpenAI API key |
+| `EXTRACTION__LLM__MODEL` | Model name |
+| `EXTRACTION__LLM__BASE_URL` | Custom API base URL |
+
+### Search
+
+| Variable | Description |
+|----------|-------------|
+| `SEARCH__BASE_URL` | SearXNG instance URL |
+
+### Cache
+
+| Variable | Description |
+|----------|-------------|
+| `REDIS_URL` | Redis connection URL |
+| `CACHE__ENABLED` | Enable Redis cache |
+| `CACHE__TTL_DEFAULT_SECS` | Default cache TTL |
+
+## .env File
+
+QuickCrawl loads `.env` at startup via `godotenv.Load()`. Variables in `.env` follow the same `SECTION__KEY` format.
+
+```bash
+# .env
+SERVER__PORT=3000
+EXTRACTION__LLM__API_KEY=sk-...
+SEARCH__BASE_URL=https://searx.example.com
+```
+
+## Render Mode
+
+Controls how pages are fetched globally or per-request:
+
+| Value | Behavior |
+|-------|----------|
+| `auto` | HTTP first, escalate to browser on anti-bot / SPA signals (default) |
+| `browser` | Always use browser (Chrome/LightPanda) |
+| `http` | HTTP only, never use browser |

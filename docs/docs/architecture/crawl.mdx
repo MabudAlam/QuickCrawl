@@ -1,0 +1,124 @@
+---
+sidebar_position: 3
+---
+
+# Crawl
+
+Start an asynchronous BFS (Breadth-First Search) crawl of a website. The job runs in the background — `POST /v1/crawl` returns immediately with a job ID, and you poll `GET /v1/crawl/:id` for progress.
+
+## Flow
+
+```
+POST /v1/crawl { url, maxDepth, maxPages, formats }
+    │
+    ├── Validate URL
+    ├── Fetch robots.txt  (if respect_robots_txt = true)
+    ├── Create goroutine for crawling
+    └── Return job ID immediately
+            │
+            └── BFS Crawler (background)
+                    │
+                    ├── Depth 0: Seed URL
+                    │       ├── Fetch (same render path as /v1/scrape)
+                    │       ├── Extract content
+                    │       └── Extract links
+                    │
+                    ├── Depth 1: Discovered URLs (same-origin, not disallowed)
+                    │       └── ...
+                    │
+                    └── Until maxDepth or maxPages reached
+```
+
+## BFS Algorithm
+
+```
+Queue = [seedURL at depth 0]
+
+while queue not empty and results < maxPages:
+    Extract all items at current depth as "frontier"
+
+    Process frontier concurrently (up to maxConcurrency):
+        ├── Check robots.txt ──→ skip if disallowed
+        ├── Rate limit sleep (per-domain)
+        ├── Fetch via shared *core.Scraper
+        │     (same render path: HTTP or browser auto-escalation)
+        ├── Extract content (markdown, html, links, etc.)
+        └── Send result via StateCh
+
+    Wait for all goroutines to complete
+
+    For each discovered link (depth + 1):
+        ├── Same origin? ──→ No: skip
+        ├── Already visited? ──→ Yes: skip
+        ├── Safe URL? (no javascript:, data:) ──→ No: skip
+        └── robots.txt allowed? ──→ No: skip
+        └── Add to queue
+```
+
+## Key Features
+
+### robots.txt
+
+Fetched once at crawl start per origin:
+
+```go
+robots := FetchRobotsTxt(origin, userAgent)
+// Stored and reused for all URLs in this crawl
+```
+
+`IsAllowed(path)` checks both `User-agent: *` and the specific user-agent configured.
+
+### Per-Domain Rate Limiting
+
+```go
+limiter := newDomainRateLimiter(host, requestsPerSecond)
+limiter.Sleep()  // blocks until it's time to make the next request
+```
+
+Also applies optional random jitter (`jitterFactor`) to the sleep duration to avoid uniform request patterns.
+
+### Concurrency Control
+
+Two-level semaphore:
+- **Global**: Max `maxConcurrency` concurrent fetches across all hosts
+- **Per-host**: Max 10 concurrent fetches per individual host
+
+```go
+sem := make(chan struct{}, maxConcurrency)  // global
+hostSem[host] := make(chan struct{}, 10)       // per-host
+```
+
+### Link Filtering
+
+Only same-origin links are followed. Before adding a discovered URL to the queue:
+
+1. Parse URL and extract origin
+2. Check same origin as seed
+3. Check not already visited (global deduplication map)
+4. Check safe protocol (http/https only)
+5. Check robots.txt allowance
+
+## State Reporting
+
+Crawl state is streamed via a channel to the HTTP handler:
+
+```go
+type CrawlState struct {
+    ID        string       // Job ID
+    Status    CrawlStatus  // "pending" | "scraping" | "completed" | "failed"
+    Total     uint32       // URLs discovered so far
+    Completed uint32       // Pages successfully scraped
+    Data      []ScrapeData // Completed page results
+    Error     *string      // Error message if failed
+}
+```
+
+## Per-Page Render Mode
+
+Each page in the crawl uses the same render path as `/v1/scrape`:
+
+1. If `renderMode = "http"` → HTTP fetcher only
+2. If `renderMode = "browser"` → Always browser (CDP)
+3. If `renderMode = "auto"` (default) → HTTP first, escalate on SPA/anti-bot triggers
+
+This is done with the **shared `*core.Scraper`** — the same single render path used by all endpoints.

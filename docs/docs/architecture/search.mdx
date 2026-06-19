@@ -1,0 +1,170 @@
+---
+sidebar_position: 5
+---
+
+# Search
+
+Query SearXNG — a privacy-friendly, open-source metasearch engine — and optionally scrape each result URL in parallel.
+
+## What is SearXNG?
+
+[SearXNG](https://searxng.org/) is an open-source metasearch engine that aggregates results from multiple search providers (Google, Bing, DuckDuckGo, etc.) while preserving user privacy. It does not track or profile users.
+
+QuickCrawl's search is powered by a self-hosted or public SearXNG instance. All queries are sent to your configured SearXNG server.
+
+```
+You → QuickCrawl /v1/search → SearXNG → Google/Bing/DuckDuckGo/etc.
+                          ↑
+                   Your configured instance
+```
+
+## Flow
+
+```
+POST /v1/search { query, scrape }
+    │
+    ├── Build SearXNG query
+    │       ├── q = search query
+    │       ├── format = json
+    │       ├── language = auto / en / etc.
+    │       ├── time_range = day / week / month / year
+    │       └── pageno = page number
+    │
+    ├── GET to SearXNG /search endpoint
+    │
+    ├── Parse JSON response
+    │       └── [title, url, snippet, engine, published_date]
+    │
+    ├── Normalize results
+    │       └── Assign positions, extract site name
+    │
+    ├── [Optional] BM25F re-ranking
+    │       └── Re-rank by relevance score
+    │
+    ├── [Optional] Scrape each result URL
+    │       └── 10 concurrent workers
+    │             └── Same render path as /v1/scrape
+    │
+    └── Return unified response
+```
+
+## SearXNG Query Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `q` | Search query |
+| `format` | Always `json` |
+| `language` | `auto`, `en`, `all`, etc. |
+| `time_range` | `day`, `week`, `month`, `year` (optional) |
+| `categories` | `general`, `news`, `videos`, `images`, etc. |
+| `safesearch` | `0` (off), `1` (moderate), `2` (strict) |
+| `pageno` | 1-based page number |
+
+## Response
+
+```go
+type SearchResponse struct {
+    Query        string          // Echo of the query
+    Results      []SearchResult  // List of results
+    TotalResults int             // Total found
+    Page         int             // Page number
+}
+
+type SearchResult struct {
+    Position   int      // 1-based position
+    Score      float64  // Native score from search engine
+    BM25Score  float64  // BM25F score (if use_bm25 = true)
+    Title      string   // Result title
+    URL        string   // Result URL
+    SiteName   string   // Extracted hostname
+    Snippet    string   // Search description
+    Markdown   *string   // Scraped content (if scrape = true)
+    HTML       *string   // Scraped HTML (if scrape = true)
+    Links      []string  // Links from scraped page
+}
+```
+
+## BM25F Scoring
+
+BM25F is a field-weighted variant of BM25 (Best Matching 25) — a classic TF-IDF-like relevance ranking algorithm used in search engines.
+
+### Standard BM25 Formula
+
+```
+score = IDF(t) * (tf(t,d) * (k1 + 1)) / (tf(t,d) + k1 * (1 - b + b * |d| / avgdl))
+
+Where:
+  t = query term
+  d = document
+  tf = term frequency in document
+  IDF = inverse document frequency
+  k1 = 1.5 (term frequency saturation)
+  b = 0.75 (document length normalization)
+  |d| = document length
+  avgdl = average document length across corpus
+```
+
+### BM25F (Field-Weighted)
+
+BM25F extends BM25 to work across multiple fields (title, snippet) with separate weights:
+
+```
+BM25F = Σ_t  IDF(t) * Σ_f  wf * (tf_f(t,d) * (k1 + 1)) / (tf_f(t,d) + k1 * (1 - b + b * dl_f / avgdl_f))
+
+Where:
+  wf = field weight (title: 2.0, snippet: 1.0 by default)
+```
+
+### How QuickCrawl Uses It
+
+1. **When `use_bm25 = true`**: Results are re-ranked by BM25F score instead of the search engine's native score
+2. **Default weights**: Title weight = 2.0, Snippet weight = 1.0 (configurable via `SEARCH__BM25F_TITLE_WEIGHT` and `SEARCH__BM25F_SNIPPET_WEIGHT`)
+
+```
+Query: "golang web scraping"
+
+For each result:
+    Tokenize query → ["golang", "web", "scraping"]
+    For each term:
+        Compute IDF from all results' titles + snippets
+        Compute weighted TF across title + snippet fields
+        Sum → BM25F score
+    Re-rank descending by score
+```
+
+## Parallel Result Scraping
+
+When `scrape = true`, each result URL is fetched with 10 concurrent workers:
+
+```
+Results [1, 2, 3, ..., 10]
+    │
+    ├── Worker 1: Scrape result[1]
+    ├── Worker 2: Scrape result[2]
+    ├── ...
+    └── Worker 10: Scrape result[10]
+                      │
+                      └── Same render path as /v1/scrape
+                          (HTTP or browser auto-escalation)
+```
+
+Each scrape:
+- Has a 60-second timeout
+- Is non-fatal — a failed scrape doesn't fail the whole search
+- Uses the `formats` and `renderMode` from the search request
+
+This enables Perplexity-style research: search for a topic, get results with full scraped content.
+
+## Configuration
+
+```bash
+# Environment variable
+SEARCH__BASE_URL=https://searx.example.com
+
+# Or in quickcrawl.toml
+[search]
+base_url = "https://searx.example.com"
+timeout_secs = 30
+bm25f_title_weight = 2.0
+bm25f_snippet_weight = 1.0
+```

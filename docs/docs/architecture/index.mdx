@@ -1,0 +1,57 @@
+---
+sidebar_position: 1
+---
+
+# Architecture
+
+QuickCrawl uses a layered architecture that combines HTTP fetching, headless browser automation, and LLM-powered structured extraction.
+
+## Layers
+
+```
+Client (HTTP / MCP / CLI)
+         ↓
+   Gin Router
+         ↓
+   API Handlers
+         ↓
+┌────────┴────────┐
+│   Renderer       │
+│  (HTTP / CDP)   │
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   Extractor     │
+│ (Markdown, HTML,│
+│  Links, JSON)   │
+└─────────────────┘
+```
+
+## Components
+
+| Component | File | Responsibility |
+|----------|------|----------------|
+| **HTTP Fetcher** | `internal/core/http.go` | Plain HTTP GET with stealth headers, retries |
+| **CDP Browser** | `internal/core/renderer.go` | Headless Chrome via chromedp |
+| **Extractor** | `internal/extractor/` | HTML → Markdown, Plain Text, Links |
+| **Crawler** | `internal/crawler/crawl.go` | BFS site crawling with robots.txt |
+| **Sitemap** | `internal/crawler/map.go` | URL discovery via sitemap.xml |
+| **Search** | `internal/search/` | SearXNG + optional result scraping |
+| **LLM Extraction** | `internal/core/llm.go` | JSON schema-based extraction |
+
+## Render Modes
+
+Every fetch goes through one of three render strategies:
+
+| Mode | Description |
+|------|-------------|
+| `http` | Plain HTTP GET, no JavaScript |
+| `browser` | Headless Chrome via CDP (full JS rendering) |
+| `auto` | HTTP first — escalate to browser when needed |
+
+## Sections
+
+- [Scrape](./scrape) — Single URL fetching with HTTP/browser/auto modes
+- [Crawl](./crawl) — Async BFS website crawling
+- [Map](./map) — URL discovery without content extraction
+- [Search](./search) — SearXNG search with optional result scraping

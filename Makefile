@@ -1,8 +1,9 @@
-.PHONY: install build build-prod run dev clean test lint
+.PHONY: install build build-prod run dev clean test lint swag
 
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
+GOBIN=$(HOME)/go/bin
 GOTEST=$(GOCMD) test
 GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
@@ -70,6 +71,17 @@ lint:
 # Format code
 fmt:
 	$(GOFMT) ./...
+
+# Generate Swagger docs
+swag:
+	$(GOBIN)/swag init -g cmd/server/main.go -o internal/api/docs --parseInternal --parseDependency
+	@# Patch servers array into swagger.json for Scalar API playground
+	@if command -v jq >/dev/null 2>&1; then \
+		jq '.servers = [{ "url": "http://localhost:3000", "description": "Local" }, { "url": "https://quickcrawl-server-production.up.railway.app", "description": "Production" }]' \
+			internal/api/docs/swagger.json > internal/api/docs/swagger.json.tmp && \
+			mv internal/api/docs/swagger.json.tmp internal/api/docs/swagger.json; \
+	fi
+	@cp internal/api/docs/swagger.json docs/static/swagger.json
 
 # Clean build artifacts
 clean:

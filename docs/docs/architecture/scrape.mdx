@@ -1,0 +1,223 @@
+---
+sidebar_position: 2
+---
+
+# Scrape
+
+Scrape a single URL and return content in one or more formats: `markdown`, `html`, `rawHtml`, `plainText`, `links`, `imageLinks`, or `json` (LLM extraction).
+
+## Render Flow
+
+```
+Request
+    │
+    ├── renderMode = "http" ──→ HTTP Fetcher ──────────→ Extractor
+    │
+    └── renderMode = "auto" ──→ HTTP Fetcher
+                                   │
+                          ┌────────┴────────┐
+                          │  Success +     │
+                          │  no triggers?   │
+                          └────────┬────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ↓              ↓              ↓
+               Return it    SPA / anti-bot  Thin content /
+                    │        / soft-block   Cloudflare?
+                    │              ↓              ↓
+                    │         Browser CDP   Browser CDP
+                    ↓              ↓              ↓
+                    └──────────→ Extractor ←─────┘
+                                    │
+                              ┌─────┴─────┐
+                              ↓           ↓
+                         Markdown     HTML /
+                         (primary)    Plain Text
+```
+
+## HTTP Fetcher
+
+The HTTP fetcher (`internal/core/http.go`) makes a plain HTTP GET request with:
+
+- **Stealth headers** — Real browser User-Agent from a pool, injected via `HeaderProfile`
+- **Custom headers** — Caller-provided headers merged on top
+- **TLS 1.2/1.3** — Minimum TLS version enforced
+- **Retries** — Up to `HTTPMaxRetries` for retriable errors (502, 503, 504, timeouts, connection resets)
+- **Response size limit** — Rejects responses over `MaxResponseBytes`
+
+```go
+result, err := httpFetcher.Fetch(url, headers, waitForMs)
+```
+
+### Response
+
+```go
+type FetchResult struct {
+    URL          string  // Requested URL
+    FinalURL     string  // After redirects
+    StatusCode   uint16 // HTTP status
+    HTML         string  // Response body
+    ContentType  string  // Content-Type header
+    RenderedWith string  // "http" or "pdf"
+    Warning      *string // Non-fatal warning
+}
+```
+
+## Browser (CDP) Fetcher
+
+When `renderMode = "browser"` or auto mode escalates, the CDP fetcher (`internal/core/renderer.go`) launches a headless Chrome browser via the Chrome DevTools Protocol (CDP).
+
+### Browser Startup
+
+```
+RendererBootstrap
+    │
+    ├── LightPanda ──→ WebSocket CDP endpoint
+    │   (auto-launched if no ws_url configured)
+    │
+    └── Chrome / Cloak ──→ User-provided WS URL
+```
+
+### CDP Action Sequence
+
+For each browser request, chromedp runs this action chain:
+
+```
+1. enableNetworkTracking
+   → Enables Network CDP domain
+   → Captures document response status code (normally hidden from chromedp)
+   → Tracks in-flight requests for SPA network-idle fast exit
+         │
+2. fetchBlockAction
+   → Blocks analytics, ads, and tracking URLs
+   → Logs blocked URLs for reporting
+         │
+3. stealthInjectionAction  (if stealth.enabled)
+   → Patches navigator.webdriver → false
+   → Adds window.chrome object
+   → Patches navigator.plugins with fake Chrome plugins
+   → Patches navigator.languages → ["en-US", "en"]
+   → Patches WebGLRenderingContext.getParameter → Intel GPU
+   → Patches Function.toString for native functions
+   → Runs BEFORE page's own scripts via Page.addScriptToEvaluateOnNewDocument
+         │
+4. navigateIgnoringHTTPStatus
+   → Raw CDP page.Navigate
+   → Ignores errorText (chromedp normally aborts on non-2xx)
+   → Waits for Page.loadEventFired
+         │
+5. dismissCookieBannersFastAction  (only when waitMs == 0)
+   → Fast cookie banner dismissal via JS
+         │
+6a. SPA Readiness Poll  (when waitMs == 0)
+    → Polls every 200ms for:
+      - CSS selector match (main, article, [role=main], #content, #root > *, #app > *)
+      - Body text ≥ 800 chars
+      - Optional JS predicate
+      - Network idle for 500ms (fast exit for static pages)
+    → Timeout: 15s budget
+    → OR
+6b. Fixed Wait  (when waitMs > 0)
+    → Single time.Sleep(waitMs)
+         │
+7. AutoScrollAction
+   → 30 steps of 90% viewport scroll, 200ms pause
+   → Lazy-loads images and triggers XHR/fetch responses
+         │
+8. HTML Extraction
+   → Single Evaluate: returns [headHTML, bodyHTML, window.location.href]
+```
+
+### CloakBrowser
+
+When `browser = "cloak"` in config, a fresh Chrome instance is created per-request:
+
+```
+Each request → discoverCloakBrowserWSURL() → new Chrome instance → CDP
+```
+
+This prevents cookie/state sharing between requests and is useful for anti-bot avoidance.
+
+### Per-Host Concurrency Limiting
+
+The `hostPool` semaphore prevents overwhelming any single origin:
+
+```
+Global pool (maxConcurrency)
+    │
+    └── Per-host slot (10 per host)
+         │
+         └── Browser tab (chromedp context)
+```
+
+## Auto Mode — Escalation Triggers
+
+In `auto` mode, QuickCrawl tries HTTP first, then checks for these triggers:
+
+| Trigger | Condition | Action |
+|---------|-----------|--------|
+| SPA shell | HTML contains framework markers (React, Vue, Angular, Next.js, Gatsby) | Escalate to browser |
+| Soft-block status | HTTP 401, 403, 404, 405, 406, 410, 412, 429, 450, 500, 502, 503 | Escalate to browser |
+| Thin content | Body text < 200 chars on 2xx | Escalate to browser |
+| Anti-bot challenge | Cloudflare, CAPTCHA, generic bot wall in HTML | Escalate to browser |
+
+If HTTP fails entirely and a browser is available, it also escalates.
+
+## SPA Readiness Poll
+
+The SPA poll (`internal/core/spa.go`) is the core of the auto mode's intelligence:
+
+```
+Default selectors: main, article, [role=main], #content, #root > *, #app > *
+Default min text: 800 chars
+Poll interval: 200ms
+Timeout: 15s
+```
+
+Exit conditions:
+- **Ready**: Selector matched + body text ≥ 800 + (predicate truthy if set)
+- **Timeout**: Budget exhausted — returns last observed state
+- **Lenient exit**: Body text ≥ 800 chars even without selector match (handles pages like Hacker News)
+
+Network-idle fast exit: If no network requests for 500ms, exits immediately — this is the dominant path for static/SSR pages.
+
+## Extractor
+
+After fetching, the `Extractor` (`internal/extractor/`) transforms raw HTML:
+
+```
+Raw HTML
+    │
+    ├── ExtractMetadata → title, description, OG tags, canonical, language
+    │
+    ├── preprocessHTML
+    │   ├── Strip <head>
+    │   ├── cleanNoise() — removes scripts, styles, nav, footer
+    │   └── Apply IncludeTags / ExcludeTags / CSSSelector filters
+    │
+    ├── postprocessHTML
+    │   ├── Sanitize
+    │   ├── Deduplicate
+    │   └── Normalize whitespace
+    │
+    ├── HTMLToMarkdown ──→ Clean, LLM-ready markdown
+    ├── HTMLToPlainText ──→ Plain text without markup
+    └── ExtractLinks ──→ All href URLs + image src URLs
+```
+
+## LLM Extraction
+
+When `formats: ["json"]` is set and `[extraction.llm]` is configured:
+
+```
+Markdown + JSON Schema
+    │
+    ├── Send to OpenAI (chat/completions)
+    │   with extraction_prompt system message
+    │
+    └── Validate against schema
+            │
+            └── data.json populated in response
+```
+
+Requires `EXTRACTION__LLM__API_KEY` and optionally `EXTRACTION__LLM__MODEL`.

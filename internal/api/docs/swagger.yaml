@@ -1,0 +1,608 @@
+definitions:
+  github_com_MabudAlam_quickcrawl_internal_types.CrawlRequest:
+    properties:
+      formats:
+        description: Desired output formats
+        items:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.OutputFormat'
+        type: array
+      maxDepth:
+        description: Maximum link depth
+        type: integer
+      maxPages:
+        description: Maximum pages to crawl
+        type: integer
+      renderMode:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.RenderMode'
+        description: 'Per-request override: "auto" | "browser" | "http". nil = inherit
+          server default.'
+      url:
+        description: Starting URL
+        type: string
+      waitFor:
+        description: Wait time in ms
+        type: integer
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.CrawlStartResponse:
+    properties:
+      id:
+        description: Unique job ID for status checks
+        type: string
+      success:
+        description: Always true if job started
+        type: boolean
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.CrawlState:
+    properties:
+      completed:
+        description: Pages successfully scraped
+        type: integer
+      data:
+        description: Scraped page data
+        items:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.ScrapeData'
+        type: array
+      error:
+        description: Error message if failed
+        type: string
+      id:
+        description: Unique job ID
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.CrawlStatus'
+        description: Current status
+      success:
+        description: Whether job succeeded
+        type: boolean
+      total:
+        description: Total URLs discovered
+        type: integer
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.CrawlStatus:
+    enum:
+    - scraping
+    - completed
+    - failed
+    type: string
+    x-enum-comments:
+      CrawlStatusCompleted: Successfully completed
+      CrawlStatusFailed: Failed with error
+      CrawlStatusInProgress: Currently scraping
+    x-enum-descriptions:
+    - Currently scraping
+    - Successfully completed
+    - Failed with error
+    x-enum-varnames:
+    - CrawlStatusInProgress
+    - CrawlStatusCompleted
+    - CrawlStatusFailed
+  github_com_MabudAlam_quickcrawl_internal_types.ExtractOptions:
+    properties:
+      prompt:
+        description: Custom extraction prompt
+        type: string
+      responseFormat:
+        description: Custom response format name
+        type: string
+      schema:
+        description: JSON schema for structured extraction
+        items:
+          type: integer
+        type: array
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.MapData:
+    properties:
+      links:
+        description: Discovered URLs
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.MapRequest:
+    properties:
+      maxDepth:
+        description: Maximum link depth
+        type: integer
+      timeout:
+        description: Timeout in milliseconds
+        type: integer
+      url:
+        description: Starting URL
+        type: string
+      useSitemap:
+        description: Whether to check sitemap
+        type: boolean
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.MapResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.MapData'
+        description: Discovered URLs
+      error:
+        description: Error message
+        type: string
+      success:
+        description: Whether operation succeeded
+        type: boolean
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.OutputFormat:
+    enum:
+    - markdown
+    - html
+    - rawHtml
+    - plainText
+    - links
+    - json
+    - imageLinks
+    type: string
+    x-enum-comments:
+      FormatHtml: Clean HTML format
+      FormatImageLinks: All image src URLs
+      FormatJson: JSON (LLM extracted)
+      FormatLinks: Just the links found on page
+      FormatMarkdown: Markdown format (images stripped by default)
+      FormatPlainText: Plain text without markup
+      FormatRawHtml: Raw HTML as received
+    x-enum-descriptions:
+    - Markdown format (images stripped by default)
+    - Clean HTML format
+    - Raw HTML as received
+    - Plain text without markup
+    - Just the links found on page
+    - JSON (LLM extracted)
+    - All image src URLs
+    x-enum-varnames:
+    - FormatMarkdown
+    - FormatHtml
+    - FormatRawHtml
+    - FormatPlainText
+    - FormatLinks
+    - FormatJson
+    - FormatImageLinks
+  github_com_MabudAlam_quickcrawl_internal_types.PageMetadata:
+    properties:
+      canonicalUrl:
+        description: Canonical URL
+        type: string
+      description:
+        description: Meta description
+        type: string
+      language:
+        description: Page language
+        type: string
+      ogpDescription:
+        description: Open Graph description
+        type: string
+      ogpImage:
+        description: Open Graph image URL
+        type: string
+      ogpTitle:
+        description: Open Graph title
+        type: string
+      renderedMode:
+        description: How it was rendered (http/js)
+        type: string
+      sourceURL:
+        description: Actual URL scraped
+        type: string
+      statusCode:
+        description: HTTP status code
+        type: integer
+      title:
+        description: Page title
+        type: string
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.RenderMode:
+    enum:
+    - auto
+    - browser
+    - http
+    type: string
+    x-enum-varnames:
+    - RenderModeAuto
+    - RenderModeBrowser
+    - RenderModeHTTP
+  github_com_MabudAlam_quickcrawl_internal_types.ScrapeData:
+    properties:
+      html:
+        description: Clean HTML
+        type: string
+      imageLinks:
+        description: Image URLs found on page
+        items:
+          type: string
+        type: array
+      json:
+        description: LLM extracted JSON
+        items:
+          type: integer
+        type: array
+      links:
+        description: URLs found on page
+        items:
+          type: string
+        type: array
+      markdown:
+        description: Markdown conversion (images stripped)
+        type: string
+      metadata:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.PageMetadata'
+        description: Page metadata
+      plainText:
+        description: Plain text
+        type: string
+      rawHtml:
+        description: Raw HTML as received
+        type: string
+      warning:
+        description: Non-fatal warning
+        type: string
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.ScrapeRequest:
+    properties:
+      cssSelector:
+        description: Extract specific element
+        type: string
+      excludeTags:
+        description: HTML tags to exclude
+        items:
+          type: string
+        type: array
+      extract:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.ExtractOptions'
+        description: LLM extraction options
+      formats:
+        description: Desired output formats
+        items:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.OutputFormat'
+        type: array
+      headers:
+        additionalProperties:
+          type: string
+        description: Custom HTTP headers
+        type: object
+      includeTags:
+        description: HTML tags to include
+        items:
+          type: string
+        type: array
+      jsonSchema:
+        description: Schema for JSON output
+        items:
+          type: integer
+        type: array
+      llmExtractionPrompt:
+        description: LLM extraction prompt override
+        type: string
+      llmResponseFormat:
+        description: LLM response format name override
+        type: string
+      renderMode:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.RenderMode'
+        description: 'Per-request override: "auto" | "browser" | "http". nil = inherit
+          server default.'
+      ttl:
+        description: Cache TTL in seconds (0 = bypass cache, >0 = accept cached if
+          younger)
+        type: integer
+      url:
+        description: URL to scrape
+        type: string
+      waitFor:
+        description: Wait time in ms after page load
+        type: integer
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.SearchRequest:
+    properties:
+      categories:
+        description: Comma-separated SearXNG categories, e.g. "general,news".
+        type: string
+      formats:
+        description: Desired output formats when scrape=true.
+        items:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.OutputFormat'
+        type: array
+      language:
+        description: SearXNG language code, e.g. "en", "auto", "all".
+        type: string
+      page:
+        description: SearXNG pageno, default 1.
+        type: integer
+      query:
+        description: Search query (required)
+        type: string
+      region:
+        description: Region code, e.g. "us-en". Mapped to SearXNG language.
+        type: string
+      renderMode:
+        allOf:
+        - $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.RenderMode'
+        description: 'Per-request override: "auto" | "browser" | "http". nil = inherit
+          server default.'
+      scrape:
+        description: 'Scrape each result URL and include extracted content (default:
+          false).'
+        type: boolean
+      timeRange:
+        description: 'SearXNG time range: "day", "week", "month", "year".'
+        type: string
+      use_bm25:
+        description: 'Use BM25 scoring algorithm (default: false)'
+        type: boolean
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.SearchResponse:
+    properties:
+      page:
+        description: 0-based page index.
+        type: integer
+      query:
+        description: Echo of the search query.
+        type: string
+      results:
+        description: List of search results.
+        items:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.SearchResult'
+        type: array
+      total_results:
+        description: Number of results returned.
+        type: integer
+    type: object
+  github_com_MabudAlam_quickcrawl_internal_types.SearchResult:
+    properties:
+      bm25_score:
+        description: BM25 relevance score (set when use_bm25=true)
+        type: number
+      html:
+        type: string
+      links:
+        items:
+          type: string
+        type: array
+      markdown:
+        type: string
+      plain_text:
+        type: string
+      position:
+        description: 1-based position in the result set
+        type: integer
+      published_date:
+        description: ISO 8601 publish date if available.
+        type: string
+      raw_html:
+        type: string
+      raw_json:
+        items:
+          type: integer
+        type: array
+      score:
+        description: Native score from search engine
+        type: number
+      site_name:
+        description: Hostname extracted from URL.
+        type: string
+      snippet:
+        description: Search snippet / description.
+        type: string
+      title:
+        description: Result title
+        type: string
+      url:
+        description: Result URL
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /health:
+    get:
+      description: Returns service health status including available renderers, running
+        browser instances, and active crawl job count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /v1/crawl:
+    post:
+      consumes:
+      - application/json
+      description: Start an async BFS crawl of a website. Returns immediately with
+        a job ID for tracking progress via GET /v1/crawl/:id
+      parameters:
+      - description: Crawl request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.CrawlRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.CrawlStartResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Start an async BFS crawl
+      tags:
+      - crawling
+  /v1/crawl/{id}:
+    delete:
+      description: Cancel a running crawl job by its ID
+      parameters:
+      - description: Crawl job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Cancel a crawl job
+      tags:
+      - crawling
+    get:
+      description: Check the current status and results of a crawl job by its ID
+      parameters:
+      - description: Crawl job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.CrawlState'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get crawl job status
+      tags:
+      - crawling
+  /v1/map:
+    post:
+      consumes:
+      - application/json
+      description: Discover all URLs on a website without scraping content. Uses BFS
+        traversal and optionally sitemap.xml
+      parameters:
+      - description: Map request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.MapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.MapResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Discover URLs on a website
+      tags:
+      - mapping
+  /v1/scrape:
+    post:
+      consumes:
+      - application/json
+      description: Scrape a single URL with one or more output formats. Supports HTTP/browser
+        rendering, content filters, and LLM-based structured extraction.
+      parameters:
+      - description: Scrape request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.ScrapeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Scrape a single URL
+      tags:
+      - scraping
+  /v1/search:
+    post:
+      consumes:
+      - application/json
+      description: Query SearXNG and return search results. Optionally scrape each
+        result URL for content
+      parameters:
+      - description: Search request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_MabudAlam_quickcrawl_internal_types.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Search the web
+      tags:
+      - search
+swagger: "2.0"
