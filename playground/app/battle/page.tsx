@@ -90,7 +90,7 @@ async function fetchWithTimeout(
 async function scrapeWithQuickCrawl(
   url: string,
   sharedStartTime: number,
-  renderMode: "auto" | "browser" | "http" | null = null,
+  renderMode: "auto" | "browser" | "http",
   ttl: number | undefined = undefined,
   formatList: string[] = ["markdown"]
 ): Promise<ScrapeResult> {
@@ -100,9 +100,7 @@ async function scrapeWithQuickCrawl(
     const requestBody: Record<string, unknown> = {
       url,
       formats: formatList,
-    }
-    if (renderMode !== null) {
-      requestBody.renderMode = renderMode
+      renderMode,
     }
     if (ttl !== undefined) {
       requestBody.ttl = ttl
@@ -617,7 +615,7 @@ export default function BattlePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<BattleResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [renderMode, setRenderMode] = useState<"auto" | "browser" | "http" | null>(null)
+  const [renderMode, setRenderMode] = useState<"auto" | "browser" | "http">("auto")
   const [ttl, setTtl] = useState<number | undefined>(undefined)
   const [formats, setFormats] = useState<{
     markdown: boolean
@@ -840,24 +838,21 @@ options={[
                         size="sm"
                         className="h-8 w-[140px] justify-start"
                       >
-                        {renderMode === null
-                          ? "Inherit"
-                          : renderMode === "auto"
-                            ? "Auto"
-                            : renderMode === "browser"
-                              ? "Browser"
-                              : "HTTP"}
+                        {renderMode === "auto"
+                          ? "Auto"
+                          : renderMode === "browser"
+                            ? "Browser"
+                            : "HTTP"}
                         <ChevronDown className="ml-auto h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
                       <DropdownMenuRadioGroup
-                        value={renderMode ?? "inherit"}
+                        value={renderMode}
                         onValueChange={(v) =>
-                          setRenderMode(v === "inherit" ? null : (v as "auto" | "browser" | "http"))
+                          setRenderMode(v as "auto" | "browser" | "http")
                         }
                       >
-                        <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                         <DropdownMenuRadioItem value="auto">
                           Auto
                         </DropdownMenuRadioItem>
