@@ -121,7 +121,7 @@ export default function PlaygroundPage({
 
   const [scrapeOptions, setScrapeOptions] = useState<ScrapeOptions>({
     formats: ["markdown"] as Format[],
-    renderMode: null,
+    renderMode: "auto",
     waitFor: 0,
     headers: "",
     cssSelector: "",
@@ -175,7 +175,7 @@ export default function PlaygroundPage({
     maxDepth: 2,
     maxPages: 100,
     formats: ["markdown"] as Format[],
-    renderMode: null,
+    renderMode: "auto",
     waitFor: 0,
     includeTags: "",
     excludeTags: "",
@@ -192,7 +192,7 @@ export default function PlaygroundPage({
   const [searchRegion, setSearchRegion] = useState("us-en")
   const [searchTimeRange, setSearchTimeRange] = useState<SearchTimeRange>("")
   const [searchFormats, setSearchFormats] = useState<Format[]>(["markdown"])
-  const [searchRenderMode, setSearchRenderMode] = useState<RenderMode | null>(null)
+  const [searchRenderMode, setSearchRenderMode] = useState<RenderMode>("auto")
   const [searchScrape, setSearchScrape] = useState(false)
   const [searchUseBM25, setSearchUseBM25] = useState(false)
   const [searchPage, setSearchPage] = useState(1)
@@ -257,9 +257,7 @@ export default function PlaygroundPage({
           formats: scrapeOptions.formats.length
             ? scrapeOptions.formats
             : ["markdown"],
-          ...(scrapeOptions.renderMode !== null && {
-            renderMode: scrapeOptions.renderMode,
-          }),
+          renderMode: scrapeOptions.renderMode,
           waitFor: scrapeOptions.waitFor || undefined,
           headers: scrapeOptions.headers || undefined,
           cssSelector: scrapeOptions.cssSelector || undefined,
@@ -282,9 +280,7 @@ export default function PlaygroundPage({
           formats: crawlOptions.formats.length
             ? crawlOptions.formats
             : ["markdown"],
-          ...(crawlOptions.renderMode !== null && {
-            renderMode: crawlOptions.renderMode,
-          }),
+          renderMode: crawlOptions.renderMode,
           waitFor: crawlOptions.waitFor || undefined,
           maxMarkdownChars: crawlOptions.maxMarkdownChars || undefined,
         } as CrawlRequest
@@ -301,7 +297,7 @@ export default function PlaygroundPage({
           query: searchQuery,
           region: searchRegion,
           ...(searchTimeRange && { timeRange: searchTimeRange }),
-          ...(searchRenderMode !== null && { renderMode: searchRenderMode }),
+          renderMode: searchRenderMode,
           formats: searchFormats,
           scrape: searchScrape,
         } as SearchRequest
@@ -472,7 +468,7 @@ export default function PlaygroundPage({
     setSchemaFields([{ name: "title", type: "string", description: "" }])
     setScrapeOptions({
       formats: ["markdown"] as Format[],
-      renderMode: null,
+      renderMode: "auto",
       waitFor: 0,
       headers: "",
       cssSelector: "",
@@ -488,7 +484,7 @@ export default function PlaygroundPage({
       maxDepth: 2,
       maxPages: 100,
       formats: ["markdown"] as Format[],
-      renderMode: null,
+      renderMode: "auto",
       waitFor: 0,
       includeTags: "",
       excludeTags: "",
@@ -889,27 +885,24 @@ export default function PlaygroundPage({
                 size="sm"
                 className="h-8 w-[140px] justify-start"
               >
-                {scrapeOptions.renderMode === null
-                  ? "Inherit"
-                  : scrapeOptions.renderMode === "auto"
-                    ? "Auto"
-                    : scrapeOptions.renderMode === "browser"
-                      ? "Browser"
-                      : "HTTP"}
+                {scrapeOptions.renderMode === "auto"
+                  ? "Auto"
+                  : scrapeOptions.renderMode === "browser"
+                    ? "Browser"
+                    : "HTTP"}
                 <ChevronDown className="ml-auto h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={scrapeOptions.renderMode ?? "inherit"}
+                value={scrapeOptions.renderMode}
                 onValueChange={(v) =>
                   setScrapeOptions({
                     ...scrapeOptions,
-                    renderMode: v === "inherit" ? null : (v as RenderMode),
+                    renderMode: v as RenderMode,
                   })
                 }
               >
-                <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="browser">
@@ -1130,27 +1123,24 @@ export default function PlaygroundPage({
                 size="sm"
                 className="h-8 w-[140px] justify-start"
               >
-                {crawlOptions.renderMode === null
-                  ? "Inherit"
-                  : crawlOptions.renderMode === "auto"
-                    ? "Auto"
-                    : crawlOptions.renderMode === "browser"
-                      ? "Browser"
-                      : "HTTP"}
+                {crawlOptions.renderMode === "auto"
+                  ? "Auto"
+                  : crawlOptions.renderMode === "browser"
+                    ? "Browser"
+                    : "HTTP"}
                 <ChevronDown className="ml-auto h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={crawlOptions.renderMode ?? "inherit"}
+                value={crawlOptions.renderMode}
                 onValueChange={(v) =>
                   setCrawlOptions({
                     ...crawlOptions,
-                    renderMode: v === "inherit" ? null : (v as RenderMode),
+                    renderMode: v as RenderMode,
                   })
                 }
               >
-                <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="browser">
@@ -1408,26 +1398,21 @@ export default function PlaygroundPage({
                   size="sm"
                   className="h-8 w-[140px] justify-start"
                 >
-                  {searchRenderMode === null
-                    ? "Inherit"
-                    : searchRenderMode === "auto"
-                      ? "Auto"
-                      : searchRenderMode === "browser"
-                        ? "Browser"
-                        : "HTTP"}
+                  {searchRenderMode === "auto"
+                    ? "Auto"
+                    : searchRenderMode === "browser"
+                      ? "Browser"
+                      : "HTTP"}
                   <ChevronDown className="ml-auto h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuRadioGroup
-                  value={searchRenderMode ?? "inherit"}
+                  value={searchRenderMode}
                   onValueChange={(v) =>
-                    setSearchRenderMode(v === "inherit" ? null : (v as RenderMode))
+                    setSearchRenderMode(v as RenderMode)
                   }
                 >
-                  <DropdownMenuRadioItem value="inherit">
-                    Inherit (server default)
-                  </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="auto">
                     Auto
                   </DropdownMenuRadioItem>

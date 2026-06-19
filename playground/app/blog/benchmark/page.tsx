@@ -358,7 +358,7 @@ export default function BenchmarkBlogPage() {
       <footer className="border-t-2 border-border bg-background px-4 py-8">
         <div className="mx-auto max-w-7xl text-center">
           <p className="text-sm text-foreground/50">
-            &copy; 2026 QuickCrawl. AGPL-3.0 Licensed.
+            &copy; 2026 QuickCrawl.
           </p>
         </div>
       </footer>

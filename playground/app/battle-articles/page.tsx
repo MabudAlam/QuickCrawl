@@ -428,7 +428,7 @@ export default function BattleArticlesPage() {
   const [results, setResults] = useState<ArticleResult[]>([])
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [error, setError] = useState<string | null>(null)
-  const [renderMode, setRenderMode] = useState<"auto" | "browser" | "http" | null>(null)
+  const [renderMode, setRenderMode] = useState<"auto" | "browser" | "http">("auto")
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [selectedResult, setSelectedResult] = useState<ArticleResult | null>(null)
@@ -539,16 +539,15 @@ export default function BattleArticlesPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="default" size="sm" className="h-8 w-[140px] justify-start">
-                      {renderMode === null ? "Inherit" : renderMode === "auto" ? "Auto" : renderMode === "browser" ? "Browser" : "HTTP"}
+                      {renderMode === "auto" ? "Auto" : renderMode === "browser" ? "Browser" : "HTTP"}
                       <ChevronDown className="ml-auto h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuRadioGroup
-                      value={renderMode ?? "inherit"}
-                      onValueChange={(v) => setRenderMode(v === "inherit" ? null : (v as "auto" | "browser" | "http"))}
+                      value={renderMode}
+                      onValueChange={(v) => setRenderMode(v as "auto" | "browser" | "http")}
                     >
-                      <DropdownMenuRadioItem value="inherit">Inherit (server default)</DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="http">HTTP</DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="browser">Browser</DropdownMenuRadioItem>
