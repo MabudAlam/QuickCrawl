@@ -895,7 +895,7 @@ export default function PlaygroundPage({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={scrapeOptions.renderMode}
+                value={scrapeOptions.renderMode ?? "auto"}
                 onValueChange={(v) =>
                   setScrapeOptions({
                     ...scrapeOptions,
@@ -1133,7 +1133,7 @@ export default function PlaygroundPage({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={crawlOptions.renderMode}
+                value={crawlOptions.renderMode ?? "auto"}
                 onValueChange={(v) =>
                   setCrawlOptions({
                     ...crawlOptions,
