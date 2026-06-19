@@ -21,6 +21,23 @@ import (
 // and implements every endpoint in the API: /health, /v1/scrape, /v1/crawl,
 // /v1/crawl/:id, /v1/map, /v1/search. All endpoints route through the
 // shared *core.Scraper so there is exactly one render path.
+//
+// @title           QuickCrawl API
+// @version         1.0
+// @description     Web Scraping API for AI Agents — Scrape, crawl, and map websites with a single binary.
+// @termsOfService  https://github.com/MabudAlam/QuickCrawl
+
+// @contact.name   Mabud Alam
+// @contact.url    https://github.com/MabudAlam/QuickCrawl
+// @contact.email  mabudalam1234@gmail.com
+
+// @license.name    MIT
+// @license.url    https://opensource.org/licenses/MIT
+
+// @host      localhost:3000
+// @BasePath  /
+
+// @schemes http https
 type Handler struct {
 	State *api.AppState
 }
@@ -30,8 +47,13 @@ func NewHandler(state *api.AppState) *Handler {
 	return &Handler{State: state}
 }
 
-// Health returns the service health status including available renderers,
-// running browser instances, and the count of active crawl jobs.
+// Health godoc
+// @Summary      Health check
+// @Description  Returns service health status including available renderers, running browser instances, and active crawl job count
+// @Tags         health
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Router       /health [get]
 func (h *Handler) Health(c *gin.Context) {
 	renderers := h.State.CheckHealth()
 	browsersInfo := []map[string]string{}
@@ -56,9 +78,18 @@ func (h *Handler) Health(c *gin.Context) {
 	})
 }
 
-// Scrape handles POST /v1/scrape - the single canonical scrape endpoint.
-// It uses the chromedp-based *core.Scraper for both the HTTP and browser
-// paths and the shared *extractor for content transformation.
+// Scrape godoc
+// @Summary      Scrape a single URL
+// @Description  Scrape a single URL with one or more output formats. Supports HTTP/browser rendering, content filters, and LLM-based structured extraction.
+// @Tags         scraping
+// @Accept       json
+// @Produce      json
+// @Param        request body types.ScrapeRequest true "Scrape request"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]interface{}
+// @Failure      403 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /v1/scrape [post]
 func (h *Handler) Scrape(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -184,10 +215,17 @@ func (h *Handler) Scrape(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// StartCrawl handles POST /v1/crawl - starts an async BFS crawl of a website.
-// Returns immediately with a job ID that can be used to track progress via
-// GetCrawlStatus. The actual crawling is performed by crawler.RunCrawl which
-// uses the shared *core.Scraper for every page fetch.
+// StartCrawl godoc
+// @Summary      Start an async BFS crawl
+// @Description  Start an async BFS crawl of a website. Returns immediately with a job ID for tracking progress via GET /v1/crawl/:id
+// @Tags         crawling
+// @Accept       json
+// @Produce      json
+// @Param        request body types.CrawlRequest true "Crawl request"
+// @Success      200 {object} types.CrawlStartResponse
+// @Failure      400 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /v1/crawl [post]
 func (h *Handler) StartCrawl(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -218,10 +256,6 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 	if req.MaxPages == nil {
 		pages := uint32(h.State.Config.Crawler.DefaultMaxPages)
 		req.MaxPages = &pages
-	}
-
-	if req.Browser != nil && *req.Browser != "" {
-		utils.Log.Warn("deprecated 'browser' field ignored for crawl", "value", *req.Browser)
 	}
 
 	id := h.State.StartCrawlJob(&req)
@@ -268,7 +302,16 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 	})
 }
 
-// GetCrawlStatus handles GET /v1/crawl/:id - returns the current state of a crawl job.
+// GetCrawlStatus godoc
+// @Summary      Get crawl job status
+// @Description  Check the current status and results of a crawl job by its ID
+// @Tags         crawling
+// @Produce      json
+// @Param        id path string true "Crawl job ID"
+// @Success      200 {object} types.CrawlState
+// @Failure      400 {object} map[string]interface{}
+// @Failure      404 {object} map[string]interface{}
+// @Router       /v1/crawl/{id} [get]
 func (h *Handler) GetCrawlStatus(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -285,7 +328,14 @@ func (h *Handler) GetCrawlStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, state)
 }
 
-// CancelCrawl handles DELETE /v1/crawl/:id - cancels a running crawl job.
+// CancelCrawl godoc
+// @Summary      Cancel a crawl job
+// @Description  Cancel a running crawl job by its ID
+// @Tags         crawling
+// @Param        id path string true "Crawl job ID"
+// @Success      204 "No Content"
+// @Failure      400 {object} map[string]interface{}
+// @Router       /v1/crawl/{id} [delete]
 func (h *Handler) CancelCrawl(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -298,10 +348,18 @@ func (h *Handler) CancelCrawl(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Map handles POST /v1/map - discovers all URLs on a website without scraping
-// content. Uses BFS traversal and optionally sitemap.xml to find URLs.
-// The actual URL discovery is performed by crawler.DiscoverUrls which uses
-// the shared *core.Scraper for HTML fetches.
+// Map godoc
+// @Summary      Discover URLs on a website
+// @Description  Discover all URLs on a website without scraping content. Uses BFS traversal and optionally sitemap.xml
+// @Tags         mapping
+// @Accept       json
+// @Produce      json
+// @Param        request body types.MapRequest true "Map request"
+// @Success      200 {object} types.MapResponse
+// @Failure      400 {object} map[string]interface{}
+// @Failure      403 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /v1/map [post]
 func (h *Handler) Map(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -382,9 +440,17 @@ func (h *Handler) Map(c *gin.Context) {
 	})
 }
 
-// Search handles POST /v1/search - queries SearXNG and returns flat results.
-// When Scrape is true each URL is fetched via the shared *core.Scraper so the
-// search path uses the same rendering code as /v1/scrape.
+// Search godoc
+// @Summary      Search the web
+// @Description  Query SearXNG and return search results. Optionally scrape each result URL for content
+// @Tags         search
+// @Accept       json
+// @Produce      json
+// @Param        request body types.SearchRequest true "Search request"
+// @Success      200 {object} types.SearchResponse
+// @Failure      400 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /v1/search [post]
 func (h *Handler) Search(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
