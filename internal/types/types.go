@@ -136,10 +136,7 @@ type ScrapeRequest struct {
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
-	TTL                 *int64            `json:"ttl,omitempty"`                 // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
-	// Deprecated: Browser is accepted for backward compatibility but ignored.
-	// The new scraper uses chromedp only — there is a single render path.
-	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
+	TTL *int64 `json:"ttl,omitempty"` // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
 }
 
 // Defaults sets default values for optional fields.
@@ -255,9 +252,6 @@ type CrawlRequest struct {
 
 	RenderMode *RenderMode `json:"renderMode,omitempty"` // Per-request override: "auto" | "browser" | "http". nil = inherit server default.
 	WaitFor    *int64      `json:"waitFor,omitempty"`    // Wait time in ms
-	// Deprecated: Browser is accepted for backward compatibility but ignored.
-	// The new scraper uses chromedp only.
-	Browser *string `json:"browser,omitempty"` // Browser to use (lightpanda, chrome)
 }
 
 // Defaults sets default values for optional fields.
