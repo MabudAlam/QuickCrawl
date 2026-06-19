@@ -7,6 +7,10 @@ import (
 	"github.com/MabudAlam/quickcrawl/internal/api/handlers"
 	"github.com/MabudAlam/quickcrawl/internal/api/middleware"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "github.com/MabudAlam/quickcrawl/internal/api/docs"
 )
 
 // Router holds the Gin engine and application state for setting up HTTP routes.
@@ -59,6 +63,9 @@ func (r *Router) setupGlobalMiddleware(engine *gin.Engine) {
 // setupRoutes registers all API route handlers.
 func (r *Router) setupRoutes(engine *gin.Engine) {
 	h := handlers.NewHandler(r.State)
+
+	// Swagger docs
+	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Health check endpoint - returns renderer/browser availability and active job count
 	engine.GET("/health", h.Health)
