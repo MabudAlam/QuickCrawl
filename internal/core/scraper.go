@@ -238,16 +238,12 @@ func (s *Scraper) BrowsersInfo() []types.BrowserInfo {
 // mode=browser  → chromedp-based browser fetch (full JavaScript).
 // mode=http     → HTTP-only fetch via the shared *renderer.HTTPFetcher.
 //
-// The preferredBrowser parameter is accepted for backwards compatibility
-// with the legacy FallbackRenderer.Fetch signature. The new model has a
-// single browser backend, so this argument is ignored.
 func (s *Scraper) FetchHTML(
 	ctx context.Context,
 	rawURL string,
 	headers map[string]string,
 	mode *types.RenderMode,
 	waitMs int64,
-	preferredBrowser *string,
 ) (*types.FetchResult, *QuickCrawlError) {
 	result, err := s.renderer.FetchOrchestrator(ctx, rawURL, headers, mode, waitMs)
 	if err != nil {
