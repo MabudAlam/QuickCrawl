@@ -19,6 +19,7 @@ import {
   MoonIcon,
   SearchIcon,
   SunIcon,
+  ExternalLinkIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
@@ -155,6 +156,23 @@ export function AppSidebar({
             <span className="group-data-[collapsible=icon]:hidden">
               {mounted && resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}
             </span>
+          </Button>
+          <Button
+            variant="noShadow"
+            size="sm"
+            className="w-full justify-center border-2 border-border shadow-shadow group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0"
+            asChild
+          >
+            <a
+              href={process.env.NEXT_PUBLIC_DOCS_URL || "https://quickcrawl.dev"}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLinkIcon className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
+              <span className="group-data-[collapsible=icon]:hidden">
+                Docs
+              </span>
+            </a>
           </Button>
           <Button
             variant="noShadow"

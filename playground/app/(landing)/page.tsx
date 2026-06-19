@@ -417,10 +417,14 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-10 md:mb-16 w-full sm:w-auto">
             <Button size="lg" className="text-sm sm:text-base px-6 sm:px-8 py-4 sm:py-6 w-full sm:w-auto" asChild>
-              <Link href="/playground">
-                Start Free
+              <a
+                href={process.env.NEXT_PUBLIC_DOCS_URL || "https://quickcrawl.dev"}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Docs
                 <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-              </Link>
+              </a>
             </Button>
             <Button variant="neutral" size="lg" className="text-sm sm:text-base px-6 sm:px-8 py-4 sm:py-6 w-full sm:w-auto" asChild>
               <Link href="#cli">
@@ -779,10 +783,14 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
             <Button size="lg" asChild>
-              <Link href="/playground">
-                Start Free
+              <a
+                href={process.env.NEXT_PUBLIC_DOCS_URL || "https://quickcrawl.dev"}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Docs
                 <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
+              </a>
             </Button>
             <Button variant="neutral" size="lg" asChild>
               <Link href="https://github.com/MabudAlam/quickcrawl">
