@@ -16,7 +16,6 @@ CMD [ -d "node_modules" ] && npm run start -- --host 0.0.0.0 --poll 1000 -- -p 9
 FROM base AS prod
 WORKDIR /opt/docusaurus
 COPY docs/package*.json ./
-COPY docs/.docusaurus ./.docusaurus
 COPY docs/src ./src
 COPY docs/docusaurus.config.ts .
 COPY docs/sidebars.ts .
