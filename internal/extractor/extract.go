@@ -89,7 +89,9 @@ func extractContent(opts ExtractOptions) contentResult {
 
 func extractWithTrafilatura(opts ExtractOptions) contentResult {
 	tOpts := trafilatura.Options{
-		Config: trafilatura.DefaultConfig(),
+
+		EnableFallback: true,
+		Config:         trafilatura.DefaultConfig(),
 	}
 	if opts.SourceURL != "" {
 		if u, err := url.Parse(opts.SourceURL); err == nil {
