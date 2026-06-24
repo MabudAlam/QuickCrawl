@@ -1,0 +1,42 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "name": "quickcrawl",
+  "description": "Web scraping and crawling API with interactive playground",
+  "services": [
+    {
+      "name": "cloakbrowser",
+      "dockerfilePath": "infra/cloakbrowser/Dockerfile.cloak",
+      "port": 9222
+    },
+    {
+      "name": "searxng",
+      "dockerfilePath": "infra/SearXNG/Dockerfile.searxng",
+      "port": 8080
+    },
+    {
+      "name": "server",
+      "dockerfilePath": "infra/Dockerfile.server",
+      "port": 3000,
+      "dependsOn": ["searxng", "cloakbrowser"],
+      "variables": {
+        "SEARCH__BASE_URL": "${{ searxng.URL }}/",
+        "RENDERER__CHROME__WS_URL": "${{ cloakbrowser.URL }}"
+      }
+    },
+    {
+      "name": "docs",
+      "dockerfilePath": "infra/Dockerfile.docs",
+      "port": 9009
+    },
+    {
+      "name": "playground",
+      "dockerfilePath": "infra/Dockerfile.playground",
+      "port": 3001,
+      "dependsOn": ["server", "docs"],
+      "variables": {
+        "NEXT_PUBLIC_BASE_URL": "${{ server.URL }}",
+        "NEXT_PUBLIC_DOCS_URL": "${{ docs.URL }}"
+      }
+    }
+  ]
+}
