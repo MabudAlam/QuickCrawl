@@ -15,7 +15,13 @@
     },
     {
       "name": "server",
-      "dockerfilePath": "infra/Dockerfile.server",
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "infra/Dockerfile.server"
+      },
+      "deploy": {
+        "startCommand": "quickcrawl-server"
+      },
       "port": 3000,
       "dependsOn": ["searxng", "cloakbrowser"],
       "variables": {
@@ -25,12 +31,18 @@
     },
     {
       "name": "docs",
-      "dockerfilePath": "infra/Dockerfile.docs",
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "infra/Dockerfile.docs"
+      },
       "port": 9009
     },
     {
       "name": "playground",
-      "dockerfilePath": "infra/Dockerfile.playground",
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "infra/Dockerfile.playground"
+      },
       "port": 3001,
       "dependsOn": ["server", "docs"],
       "variables": {
