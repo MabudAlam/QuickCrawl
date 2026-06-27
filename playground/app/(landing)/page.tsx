@@ -33,6 +33,9 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { BackgroundRippleEffect } from "@/components/ui/background-ripple-effect"
 import { Terminal } from "@/components/ui/terminal"
+import { ShaderGradient, ShaderGradientCanvas, type GradientT } from "@shadergradient/react"
+import { SmoothScrollProvider } from "@/components/ui/smooth-scroll"
+import { AnimatedSection } from "@/components/ui/animated-section"
 
 const features = [
   {
@@ -226,6 +229,7 @@ export default function LandingPage() {
   }, [])
 
   return (
+    <SmoothScrollProvider>
     <div className="min-h-screen bg-background">
       <nav className="fixed top-0 left-0 right-0 z-50 border-b-2 border-border bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
@@ -393,11 +397,43 @@ export default function LandingPage() {
         )}
       </nav>
 
-      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 pt-16">
-        <BackgroundRippleEffect />
+      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-2 pt-24 pb-20 sm:px-4 sm:pt-28 sm:pb-24 lg:px-6 lg:pt-32 lg:pb-32">
+        <div className="absolute inset-0 z-0">
+          <ShaderGradientCanvas style={{ width: "100%", height: "100%" }} pixelDensity={1} pointerEvents="none" lazyLoad={false} preserveDrawingBuffer>
+            <ShaderGradient
+              {...{
+                animate: "on",
+                brightness: 1.2,
+                cAzimuthAngle: 180,
+                cDistance: 3.6,
+                cPolarAngle: 90,
+                color1: "#ff5005",
+                color2: "#dbba95",
+                color3: "#d0bce1",
+                grain: "on",
+                lightType: "3d",
+                positionX: -1.4,
+                positionY: 0,
+                positionZ: 0,
+                rotationX: 0,
+                rotationY: 10,
+                rotationZ: 50,
+                type: "plane",
+                uAmplitude: 1,
+                uDensity: 1.3,
+                uFrequency: 5.5,
+                uSpeed: 0.4,
+                uStrength: 4,
+                uTime: 0,
+                wireframe: false,
+              } as GradientT}
+            />
+          </ShaderGradientCanvas>
+        </div>
 
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/50 to-background z-[1]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/20 to-background/80 z-[1]" />
 
+        <AnimatedSection>
         <div className="relative z-10 flex flex-col items-center text-center max-w-5xl mx-auto px-4">
           <Badge variant="default" className="mb-6 md:mb-8 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-base shadow-shadow">
             <Zap className="mr-1.5 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
@@ -449,12 +485,15 @@ export default function LandingPage() {
             ))}
           </Link>
         </div>
+        </AnimatedSection>
       </section>
 
-      <section id="features" className="border-y-2 border-border bg-secondary-background px-4 py-24 scroll-mt-20">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 font-heading text-4xl font-bold md:text-5xl">
+      <section id="features" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-main/[0.04] px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl w-full">
+          <div className="mb-12 text-center md:mb-20">
+            <h2 className="mb-4 font-heading text-4xl font-bold md:mb-6 md:text-5xl">
               Everything you need to scrape the web
             </h2>
             <p className="mx-auto max-w-2xl text-lg text-foreground/70">
@@ -503,12 +542,15 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
+        </AnimatedSection>
       </section>
 
-      <section id="cli" className="border-y-2 border-border px-4 py-24 scroll-mt-20">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 font-heading text-4xl font-bold md:text-5xl">
+      <section id="cli" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-main/[0.04] px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl w-full">
+          <div className="mb-12 text-center md:mb-20">
+            <h2 className="mb-4 font-heading text-4xl font-bold md:mb-6 md:text-5xl">
               Install the CLI
             </h2>
             <p className="mx-auto max-w-2xl text-lg text-foreground/70">
@@ -545,12 +587,15 @@ export default function LandingPage() {
             </CardContent>
           </Card>
         </div>
+        </AnimatedSection>
       </section>
 
-      <section id="agents" className="border-y-2 border-border bg-secondary-background px-4 py-24 scroll-mt-20">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 font-heading text-4xl font-bold md:text-5xl">
+      <section id="agents" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-main/[0.04] px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl w-full">
+          <div className="mb-12 text-center md:mb-20">
+            <h2 className="mb-4 font-heading text-4xl font-bold md:mb-6 md:text-5xl">
               Works with every major AI agent
             </h2>
             <p className="mx-auto max-w-2xl text-lg text-foreground/70">
@@ -675,12 +720,15 @@ export default function LandingPage() {
             })}
           </div>
         </div>
+        </AnimatedSection>
       </section>
 
-      <section id="skills" className="border-y-2 border-border px-4 py-24 scroll-mt-20">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 font-heading text-4xl font-bold md:text-5xl">
+      <section id="skills" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-main/[0.04] px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl w-full">
+          <div className="mb-12 text-center md:mb-20">
+            <h2 className="mb-4 font-heading text-4xl font-bold md:mb-6 md:text-5xl">
               Teach your agent to use QuickCrawl
             </h2>
             <p className="mx-auto max-w-2xl text-lg text-foreground/70">
@@ -720,18 +768,20 @@ export default function LandingPage() {
             </CardContent>
           </Card>
         </div>
+        </AnimatedSection>
       </section>
 
       <section
         id="pricing"
-        className="border-y-2 border-border bg-secondary-background px-4 py-24 scroll-mt-20"
+        className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-main/[0.04] px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20"
       >
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 font-heading text-4xl font-bold md:text-5xl">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl w-full">
+          <div className="mb-12 text-center md:mb-20">
+            <h2 className="mb-4 font-heading text-4xl font-bold md:mb-6 md:text-5xl">
               Free and open source
             </h2>
-           
           </div>
 
           <div className="flex justify-center">
@@ -771,10 +821,46 @@ export default function LandingPage() {
             </Card>
           </div>
         </div>
+        </AnimatedSection>
       </section>
 
-      <section className="border-y-2 border-border px-4 py-24 scroll-mt-20">
-        <div className="mx-auto max-w-3xl text-center">
+      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-2 py-20 sm:px-4 sm:py-24 lg:px-6 lg:py-32 scroll-mt-20">
+        <div className="absolute inset-0 z-0">
+          <ShaderGradientCanvas style={{ width: "100%", height: "100%" }} pixelDensity={1} pointerEvents="none" lazyLoad={false} preserveDrawingBuffer>
+            <ShaderGradient
+              {...{
+                animate: "on",
+                brightness: 1.2,
+                cAzimuthAngle: 180,
+                cDistance: 3.6,
+                cPolarAngle: 90,
+                color1: "#ff5005",
+                color2: "#dbba95",
+                color3: "#d0bce1",
+                grain: "on",
+                lightType: "3d",
+                positionX: -1.4,
+                positionY: 0,
+                positionZ: 0,
+                rotationX: 0,
+                rotationY: 10,
+                rotationZ: 50,
+                type: "plane",
+                uAmplitude: 1,
+                uDensity: 1.3,
+                uFrequency: 5.5,
+                uSpeed: 0.4,
+                uStrength: 4,
+                uTime: 0,
+                wireframe: false,
+              } as GradientT}
+            />
+          </ShaderGradientCanvas>
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background/90 z-[1]" />
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-3xl text-center">
           <h2 className="mb-6 font-heading text-4xl font-bold md:text-5xl">
             The web scraping API built for AI.
           </h2>
@@ -800,10 +886,13 @@ export default function LandingPage() {
             </Button>
           </div>
         </div>
+        </AnimatedSection>
       </section>
 
-      <footer className="border-t-2 border-border bg-background px-4 py-16">
-        <div className="mx-auto max-w-7xl">
+      <footer className="relative overflow-hidden border-t-2 border-border bg-main/[0.04] px-2 py-12 sm:px-4 sm:py-16 lg:px-6 lg:py-20">
+
+        <AnimatedSection>
+        <div className="relative z-10 mx-auto max-w-7xl">
           <div className="grid gap-8 md:grid-cols-4">
             <div>
               <Link href="/" className="flex items-center gap-2">
@@ -859,7 +948,9 @@ export default function LandingPage() {
             </p>
           </div>
         </div>
+        </AnimatedSection>
       </footer>
-    </div>
+      </div>
+    </SmoothScrollProvider>
   )
 }
