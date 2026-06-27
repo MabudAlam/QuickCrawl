@@ -289,7 +289,6 @@ func visibleTextFromStrippedHTML(stripped string) string {
 
 // extractBodyTextLen returns non-whitespace character count inside <body> of a
 // lowercased HTML doc. Returns 1000 ("probably has content") if no <body> found.
-// Mirrors QuickCrawl's extract_body_text_len.
 func extractBodyTextLen(lower string) int {
 	bodyStart := strings.Index(lower, "<body")
 	if bodyStart == -1 {

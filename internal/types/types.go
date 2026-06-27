@@ -481,6 +481,7 @@ func (r *SearchRequest) Validate() error {
 			}
 		}
 	}
+
 	if r.Page < 0 || r.Page > 1000 {
 		return fmt.Errorf("page %d is out of range; must be between 0 and 1000", r.Page)
 	}
@@ -948,4 +949,196 @@ func DefaultScraperConfig() ScraperConfig {
 			PerHost: 10,
 		},
 	}
+}
+
+type BrandRequest struct {
+	URL string `json:"url"`
+}
+
+type BrandResponse struct {
+	Success bool       `json:"success"`
+	Domain  string    `json:"domain"`
+	Brand   *BrandData `json:"brand,omitempty"`
+}
+
+type BrandData struct {
+	Domain     string           `json:"domain,omitempty"`
+	Title     string           `json:"title,omitempty"`
+	Name      string           `json:"name,omitempty"`
+	Tagline   string           `json:"tagline,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Colors    []BrandColor     `json:"colors,omitempty"`
+	Logos     []BrandLogo      `json:"logos,omitempty"`
+	Backdrops []BrandBackdrop  `json:"backdrops,omitempty"`
+	Address   *BrandAddress    `json:"address,omitempty"`
+	Socials   []SocialLink    `json:"socials,omitempty"`
+	Email     string          `json:"email,omitempty"`
+	IsNSFW    bool            `json:"is_nsfw,omitempty"`
+	Industries *IndustryMap    `json:"industries,omitempty"`
+	Links     *BrandLinks     `json:"links,omitempty"`
+	PrimaryLanguage string    `json:"primary_language,omitempty"`
+	Fonts     *BrandFonts     `json:"fonts,omitempty"`
+	Styleguide *BrandStyleguide `json:"styleguide,omitempty"`
+}
+
+// BrandFonts is the typography signal extracted from a rendered page.
+// Fonts holds per-font usage stats (which elements use the font, how many
+// elements/words, what % of the page). FontLinks maps font display name
+// to the actual woff2/woff/ttf file URLs grouped by weight.
+type BrandFonts struct {
+	Fonts     []BrandFont           `json:"fonts"`
+	FontLinks map[string]BrandFontLink `json:"fontLinks"`
+}
+
+type BrandFont struct {
+	Font           string   `json:"font"`
+	Uses           []string `json:"uses"`
+	Fallbacks      []string `json:"fallbacks"`
+	NumElements    int      `json:"num_elements"`
+	NumWords       int      `json:"num_words"`
+	PercentElements int     `json:"percent_elements"`
+	PercentWords   int      `json:"percent_words"`
+}
+
+type BrandFontLink struct {
+	Type        string            `json:"type"` // "google" | "custom" | "adobe" | "system"
+	Files       map[string]string `json:"files"` // weight -> url
+	DisplayName string            `json:"displayName,omitempty"`
+	Category    string            `json:"category,omitempty"`
+}
+
+// BrandStyleguide captures computed-style design tokens for the page.
+// Typography headings/paragraphs carry real font-family, size, weight,
+// line-height and letter-spacing. Components carry the actual rendered
+// button/card CSS so a downstream style guide can re-use them verbatim.
+type BrandStyleguide struct {
+	Mode            string                  `json:"mode"` // "light" | "dark"
+	Colors          BrandStyleguideColors   `json:"colors"`
+	Typography      BrandStyleguideTypography `json:"typography"`
+	ElementSpacing  map[string]string       `json:"elementSpacing"`
+	Shadows         map[string]string       `json:"shadows"`
+	Components      BrandStyleguideComponents `json:"components"`
+	FontLinks       map[string]BrandFontLink `json:"fontLinks"`
+}
+
+type BrandStyleguideColors struct {
+	Accent     string `json:"accent"`
+	Background string `json:"background"`
+	Text       string `json:"text"`
+}
+
+type BrandStyleguideTypography struct {
+	Headings map[string]BrandTextStyle `json:"headings"`
+	P        BrandTextStyle            `json:"p"`
+}
+
+type BrandTextStyle struct {
+	FontFamily    string   `json:"fontFamily"`
+	FontSize      string   `json:"fontSize"`
+	FontWeight    int      `json:"fontWeight"`
+	LineHeight    string   `json:"lineHeight"`
+	LetterSpacing string   `json:"letterSpacing"`
+	FontFallbacks []string `json:"fontFallbacks"`
+}
+
+type BrandStyleguideComponents struct {
+	Button BrandButtonVariants `json:"button"`
+	Card   BrandCardStyle      `json:"card"`
+}
+
+type BrandButtonVariants struct {
+	Primary   BrandButtonStyle `json:"primary"`
+	Secondary BrandButtonStyle `json:"secondary"`
+	Link      BrandButtonStyle `json:"link"`
+}
+
+type BrandButtonStyle struct {
+	BackgroundColor string   `json:"backgroundColor"`
+	Color           string   `json:"color"`
+	BorderColor     string   `json:"borderColor"`
+	BorderRadius    string   `json:"borderRadius"`
+	BorderWidth     string   `json:"borderWidth"`
+	BorderStyle     string   `json:"borderStyle"`
+	Padding         string   `json:"padding"`
+	FontSize        string   `json:"fontSize"`
+	FontWeight      int      `json:"fontWeight"`
+	MinWidth        string   `json:"minWidth"`
+	MinHeight       string   `json:"minHeight"`
+	TextDecoration  string   `json:"textDecoration"`
+	BoxShadow       string   `json:"boxShadow"`
+	FontFallbacks   []string `json:"fontFallbacks"`
+	FontFamily      string   `json:"fontFamily"`
+	CSS             string   `json:"css"`
+}
+
+type BrandCardStyle struct {
+	BackgroundColor string `json:"backgroundColor"`
+	BorderColor     string `json:"borderColor"`
+	BorderRadius    string `json:"borderRadius"`
+	BorderWidth     string `json:"borderWidth"`
+	BorderStyle     string `json:"borderStyle"`
+	Padding         string `json:"padding"`
+	BoxShadow       string `json:"boxShadow"`
+	TextColor       string `json:"textColor"`
+	CSS             string `json:"css"`
+}
+
+type BrandColor struct {
+	Hex string `json:"hex"`
+	Name string `json:"name"`
+}
+
+type BrandLogo struct {
+	URL        string           `json:"url"`
+	Format     string           `json:"format,omitempty"`
+	Sizes      []int            `json:"sizes,omitempty"`
+	Mode       string           `json:"mode,omitempty"`
+	Colors     []BrandColor     `json:"colors,omitempty"`
+	Resolution *ImageResolution `json:"resolution,omitempty"`
+}
+
+type BrandBackdrop struct {
+	URL        string          `json:"url"`
+	Colors     []BrandColor    `json:"colors,omitempty"`
+	Resolution *ImageResolution `json:"resolution,omitempty"`
+}
+
+type ImageResolution struct {
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	AspectRatio float64 `json:"aspect_ratio"`
+}
+
+type BrandAddress struct {
+	City         string `json:"city,omitempty"`
+	Country      string `json:"country,omitempty"`
+	CountryCode  string `json:"country_code,omitempty"`
+	StateProvince string `json:"state_province,omitempty"`
+	StateCode   string `json:"state_code,omitempty"`
+	PostalCode  string `json:"postal_code,omitempty"`
+}
+
+type SocialLink struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+type IndustryMap struct {
+	EIC []Industry `json:"eic,omitempty"`
+}
+
+type Industry struct {
+	Industry   string `json:"industry,omitempty"`
+	Subindustry string `json:"subindustry,omitempty"`
+}
+
+type BrandLinks struct {
+	Careers  string `json:"careers,omitempty"`
+	Contact  string `json:"contact,omitempty"`
+	Pricing  string `json:"pricing,omitempty"`
+	Terms    string `json:"terms,omitempty"`
+	Privacy  string `json:"privacy,omitempty"`
+	Blog     string `json:"blog,omitempty"`
+	Login    string `json:"login,omitempty"`
+	Signup   string `json:"signup,omitempty"`
 }
