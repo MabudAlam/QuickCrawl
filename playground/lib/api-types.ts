@@ -137,7 +137,7 @@ export interface HealthResponse {
   active_crawl_jobs: number;
 }
 
-export type Endpoint = "scrape" | "crawl" | "map" | "search";
+export type Endpoint = "scrape" | "crawl" | "map" | "search" | "brand";
 
 export interface PlaygroundState {
   endpoint: Endpoint;
@@ -188,4 +188,188 @@ export interface SearchOptions {
   kResults: number;
   timeRange: SearchTimeRange;
   page: number;
+}
+
+export interface BrandRequest {
+  url: string;
+}
+
+export interface BrandResponse {
+  success: boolean;
+  domain: string;
+  brand?: BrandData;
+}
+
+export interface BrandData {
+  domain?: string;
+  title?: string;
+  name?: string;
+  tagline?: string;
+  description?: string;
+  colors?: BrandColor[];
+  logos?: BrandLogo[];
+  backdrops?: BrandBackdrop[];
+  address?: BrandAddress;
+  socials?: SocialLink[];
+  email?: string;
+  is_nsfw?: boolean;
+  industries?: IndustryMap;
+  links?: BrandLinks;
+  primary_language?: string;
+  fonts?: BrandFonts;
+  styleguide?: BrandStyleguide;
+}
+
+export interface BrandFonts {
+  fonts: BrandFont[];
+  fontLinks: Record<string, BrandFontLink>;
+}
+
+export interface BrandFont {
+  font: string;
+  uses: string[];
+  fallbacks: string[];
+  num_elements: number;
+  num_words: number;
+  percent_elements: number;
+  percent_words: number;
+}
+
+export interface BrandFontLink {
+  type: "google" | "custom" | "adobe" | "system";
+  files: Record<string, string>;
+  displayName?: string;
+  category?: string;
+}
+
+export interface BrandStyleguide {
+  mode: "light" | "dark";
+  colors: BrandStyleguideColors;
+  typography: BrandStyleguideTypography;
+  elementSpacing: Record<string, string>;
+  shadows: Record<string, string>;
+  components: BrandStyleguideComponents;
+  fontLinks: Record<string, BrandFontLink>;
+}
+
+export interface BrandStyleguideColors {
+  accent: string;
+  background: string;
+  text: string;
+}
+
+export interface BrandStyleguideTypography {
+  headings: Record<string, BrandTextStyle>;
+  p: BrandTextStyle;
+}
+
+export interface BrandTextStyle {
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: number;
+  lineHeight: string;
+  letterSpacing: string;
+  fontFallbacks: string[];
+}
+
+export interface BrandStyleguideComponents {
+  button: BrandButtonVariants;
+  card: BrandCardStyle;
+}
+
+export interface BrandButtonVariants {
+  primary: BrandButtonStyle;
+  secondary: BrandButtonStyle;
+  link: BrandButtonStyle;
+}
+
+export interface BrandButtonStyle {
+  backgroundColor: string;
+  color: string;
+  borderColor: string;
+  borderRadius: string;
+  borderWidth: string;
+  borderStyle: string;
+  padding: string;
+  fontSize: string;
+  fontWeight: number;
+  minWidth: string;
+  minHeight: string;
+  textDecoration: string;
+  boxShadow: string;
+  fontFallbacks: string[];
+  fontFamily: string;
+  css: string;
+}
+
+export interface BrandCardStyle {
+  backgroundColor: string;
+  borderColor: string;
+  borderRadius: string;
+  borderWidth: string;
+  borderStyle: string;
+  padding: string;
+  boxShadow: string;
+  textColor: string;
+  css: string;
+}
+
+export interface BrandColor {
+  hex: string;
+  name: string;
+}
+
+export interface BrandLogo {
+  url: string;
+  format?: string;
+  sizes?: number[];
+  mode?: string;
+  colors?: BrandColor[];
+  resolution?: ImageResolution;
+}
+
+export interface BrandBackdrop {
+  url: string;
+  colors?: BrandColor[];
+  resolution?: ImageResolution;
+}
+
+export interface ImageResolution {
+  width: number;
+  height: number;
+  aspect_ratio: number;
+}
+
+export interface BrandAddress {
+  city?: string;
+  country?: string;
+  country_code?: string;
+  state_province?: string;
+  state_code?: string;
+  postal_code?: string;
+}
+
+export interface SocialLink {
+  type: string;
+  url: string;
+}
+
+export interface IndustryMap {
+  eic?: Industry[];
+}
+
+export interface Industry {
+  industry?: string;
+  subindustry?: string;
+}
+
+export interface BrandLinks {
+  careers?: string;
+  contact?: string;
+  pricing?: string;
+  terms?: string;
+  privacy?: string;
+  blog?: string;
+  login?: string;
+  signup?: string;
 }

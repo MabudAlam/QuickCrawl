@@ -3,12 +3,14 @@ import type {
   CrawlRequest,
   MapRequest,
   SearchRequest,
+  BrandRequest,
   APIResponse,
   HealthResponse,
   CrawlState,
   ScrapeData,
   MapResponse,
   SearchResponse,
+  BrandResponse,
 } from "./api-types";
 
 function getBaseUrl() {
@@ -106,9 +108,21 @@ export async function search(
   return { success: true, data };
 }
 
+export async function brand(
+  request: BrandRequest,
+): Promise<BrandResponse> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/v1/brand`, {
+    method: "POST",
+    headers: createHeaders(),
+    body: JSON.stringify(request),
+  });
+  return response.json();
+}
+
 export function generateCurlCommand(
-  endpoint: "scrape" | "crawl" | "map" | "search",
-  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest,
+  endpoint: "scrape" | "crawl" | "map" | "search" | "brand",
+  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest | BrandRequest,
   baseUrl?: string,
 ): string {
   const url = baseUrl || getBaseUrl();
@@ -131,8 +145,8 @@ export function generateCurlCommand(
 }
 
 export function generateFetchCode(
-  endpoint: "scrape" | "crawl" | "map" | "search",
-  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest,
+  endpoint: "scrape" | "crawl" | "map" | "search" | "brand",
+  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest | BrandRequest,
   baseUrl?: string,
 ): string {
   const url = baseUrl || getBaseUrl();
@@ -153,8 +167,8 @@ console.log(data);`;
 }
 
 export function generatePythonCode(
-  endpoint: "scrape" | "crawl" | "map" | "search",
-  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest,
+  endpoint: "scrape" | "crawl" | "map" | "search" | "brand",
+  request: ScrapeRequest | CrawlRequest | MapRequest | SearchRequest | BrandRequest,
   baseUrl?: string,
 ): string {
   const url = baseUrl || getBaseUrl();
