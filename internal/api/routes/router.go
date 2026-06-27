@@ -95,5 +95,7 @@ func (r *Router) setupRoutes(engine *gin.Engine) {
 
 		// POST /v1/search - Search SearXNG
 		v1.POST("/search", h.Search)
+
+		v1.POST("/brand", h.Brand)
 	}
 }
