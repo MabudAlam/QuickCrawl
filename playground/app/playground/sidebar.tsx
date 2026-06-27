@@ -20,6 +20,7 @@ import {
   SearchIcon,
   SunIcon,
   ExternalLinkIcon,
+  PaletteIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
@@ -61,6 +62,12 @@ const endpoints: {
     description: "Search and scrape results",
     icon: SearchIcon,
   },
+  {
+    id: "brand",
+    label: "Brand",
+    description: "Extract brand design tokens",
+    icon: PaletteIcon,
+  },
 ]
 
 export function AppSidebar({
@@ -82,13 +89,13 @@ export function AppSidebar({
       : "/qc.svg"
 
   return (
-    <SidebarPrimitive collapsible="icon" className="border-r-2 border-border">
+    <SidebarPrimitive collapsible="icon" className="border-r-2 border-border group/sidebar-wrapper">
       <SidebarHeader className="border-b-2 border-border bg-secondary-background">
-        <div className="flex items-center gap-3 px-3 py-3">
+        <div className="flex items-center gap-3 px-3 py-3 group-data-[collapsible=icon]:justify-center">
           <img
             src={logoSrc}
             alt="QuickCrawl"
-            className="h-10 w-auto object-contain"
+            className="h-10 w-auto object-contain transition-all group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-auto"
           />
         </div>
       </SidebarHeader>
@@ -107,12 +114,12 @@ export function AppSidebar({
                       onEndpointChange(id)
                     }}
                     tooltip={label}
-                    className="h-auto min-h-14 justify-start gap-3 rounded-base border-2 border-border bg-background px-3 py-3 text-left shadow-shadow transition-all data-[active=true]:translate-x-boxShadowX data-[active=true]:translate-y-boxShadowY data-[active=true]:shadow-none data-[active=true]:[&_.sidebar-subtitle]:text-main-foreground/80"
+                    className="h-auto min-h-12 justify-start gap-3 rounded-base border-2 border-border bg-background px-3 py-3 text-left shadow-shadow transition-all group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:!min-h-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:[&_.sidebar-text]:hidden data-[active=true]:translate-x-boxShadowX data-[active=true]:translate-y-boxShadowY data-[active=true]:shadow-none data-[active=true]:[&_.sidebar-subtitle]:text-main-foreground/80"
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-base border-2 border-border bg-secondary-background text-foreground">
-                      <Icon className="h-4 w-4" />
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-base border-2 border-border bg-secondary-background text-foreground group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8">
+                      <Icon className="h-4 w-4 group-data-[collapsible=icon]:!h-5 group-data-[collapsible=icon]:!w-5" />
                     </span>
-                    <span className="flex min-w-0 flex-1 flex-col items-start">
+                    <span className="sidebar-text flex min-w-0 flex-1 flex-col items-start">
                       <span className="truncate text-sm font-bold font-heading">
                         {label}
                       </span>
