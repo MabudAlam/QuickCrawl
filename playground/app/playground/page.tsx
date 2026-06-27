@@ -59,6 +59,7 @@ import {
   cancelCrawl,
   map,
   search,
+  brand,
   checkHealth,
   generateCurlCommand,
   generateFetchCode,
@@ -70,6 +71,7 @@ import type {
   CrawlRequest,
   MapRequest,
   SearchRequest,
+  BrandRequest,
   SearchTimeRange,
   APIResponse,
   CrawlState,
@@ -79,6 +81,7 @@ import type {
   ScrapeData,
   MapResponse,
   SearchResponse,
+  BrandResponse,
   ScrapeOptions,
   CrawlOptions,
 } from "@/lib/api-types"
@@ -87,6 +90,7 @@ import {
   MapResponseViewer,
   SearchResponseViewer,
 } from "@/components/response-viewer"
+import { BrandResponseViewer } from "@/components/brand-response-viewer"
 
 interface PlaygroundPageProps {
   initialBaseUrl?: string
@@ -301,6 +305,8 @@ export default function PlaygroundPage({
           formats: searchFormats,
           scrape: searchScrape,
         } as SearchRequest
+      case "brand":
+        return { url } as BrandRequest
     }
   }, [
     endpoint,
@@ -360,6 +366,16 @@ export default function PlaygroundPage({
           setResponse(res)
           if (!res.success && res.error) {
             setError(res.error)
+          }
+          break
+        }
+        case "brand": {
+          const res = await brand(request as BrandRequest)
+          setTimeTakenMs(Math.round(nowMs() - startTime))
+          setResponse(res as APIResponse<unknown>)
+          if (!res.success) {
+            const errMsg = (res as { error?: string }).error
+            setError(errMsg ?? null)
           }
           break
         }
@@ -620,6 +636,9 @@ export default function PlaygroundPage({
     const isSearchResponse =
       response.success &&
       (response.data as SearchResponse)?.results !== undefined
+    const isBrandResponse = endpoint === "brand"
+
+    const brandData = isBrandResponse ? (response as unknown as BrandResponse) : null
 
     return (
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
@@ -641,6 +660,14 @@ export default function PlaygroundPage({
             <SearchResponseViewer
               data={response.data as SearchResponse}
               rawResponse={response}
+              timeTakenMs={timeTakenMs}
+            />
+          </div>
+        ) : isBrandResponse && brandData ? (
+          <div className="min-h-0 flex-1">
+            <BrandResponseViewer
+              data={brandData}
+              rawResponse={brandData}
               timeTakenMs={timeTakenMs}
             />
           </div>
@@ -1486,6 +1513,36 @@ export default function PlaygroundPage({
     </div>
   )
 
+  const renderBrandForm = () => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Enter a URL to extract brand design tokens</Label>
+        <p className="text-sm text-muted-foreground">
+          Extract colors, typography, spacing, shadows, and brand metadata from any website.
+        </p>
+      </div>
+
+      <Button
+        className="w-full"
+        size="lg"
+        onClick={handleSubmit}
+        disabled={isLoading || !url}
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Extracting brand...
+          </>
+        ) : (
+          <>
+            <Play className="mr-2 h-4 w-4" />
+            Extract Brand
+          </>
+        )}
+      </Button>
+    </div>
+  )
+
   const renderActiveForm = () => {
     switch (endpoint) {
       case "scrape":
@@ -1496,6 +1553,8 @@ export default function PlaygroundPage({
         return renderMapForm()
       case "search":
         return renderSearchForm()
+      case "brand":
+        return renderBrandForm()
     }
   }
 
@@ -1507,7 +1566,7 @@ export default function PlaygroundPage({
         health={health}
       />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b-2 border-border bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b-2 border-border bg-background transition-[width,height] ease-linear group-data-[collapsible=icon]/inset:h-12">
           <div className="flex min-w-0 items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1" />
             <Breadcrumb>
