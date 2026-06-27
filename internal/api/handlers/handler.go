@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/brand"
 	"github.com/MabudAlam/quickcrawl/internal/cache"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
@@ -480,12 +483,12 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 
 	resp, err := search.Search(c.Request.Context(), searxng, h.State.CoreScraper, search.Request{
-		Query:    req.Query,
-		Language: req.Language,
-		TimeRange: req.TimeRange,
+		Query:      req.Query,
+		Language:   req.Language,
+		TimeRange:  req.TimeRange,
 		Categories: req.Categories,
-		Page:     req.Page,
-		UseBM25:  req.UseBM25,
+		Page:       req.Page,
+		UseBM25:    req.UseBM25,
 		BM25FWeights: search.BM25FWeights{
 			Title:   h.State.Config.Search.BM25FTitleWeight,
 			Snippet: h.State.Config.Search.BM25FSnippetWeight,
@@ -501,6 +504,73 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, searchResponseToAPIResponse(resp))
+}
+
+// @Summary      Extract brand identity data
+// @Description  Extract comprehensive brand design tokens (colors, fonts, logos, favicons) and brand metadata (industries, socials, address, links) from a website.
+// @Tags         brand
+// @Accept       json
+// @Produce      json
+// @Param        request body types.BrandRequest true "Brand request"
+// @Success      200 {object} types.BrandResponse
+// @Failure      400 {object} map[string]interface{}
+// @Failure      500 {object} map[string]interface{}
+// @Router       /v1/brand [post]
+func (h *Handler) Brand(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("failed to read request body"))
+		return
+	}
+
+	var req types.BrandRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("invalid JSON request"))
+		return
+	}
+
+	if req.URL == "" {
+		c.JSON(http.StatusBadRequest, types.APIErr[struct{}]("url is required"))
+		return
+	}
+
+	ctx := c.Request.Context()
+	scraper := h.State.CoreScraper
+	if scraper == nil {
+		c.JSON(http.StatusInternalServerError, types.APIErr[struct{}]("core scraper not initialized"))
+		return
+	}
+
+	result, fetchErr := scraper.FetchBrand(ctx, req.URL)
+	if fetchErr != nil {
+		status, code := mapScrapeError(fetchErr)
+		c.JSON(status, types.APIResponse[struct{}]{
+			Success:   false,
+			Error:     &fetchErr.Message,
+			ErrorCode: &code,
+		})
+		return
+	}
+
+	brandData := brand.ExtractMetadataWithTokens(result.HTML, req.URL, result.Tokens)
+
+	domain := extractDomain(req.URL)
+	brandData.Domain = domain
+
+	c.JSON(http.StatusOK, types.BrandResponse{
+		Success: true,
+		Domain:  domain,
+		Brand:   brandData,
+	})
+}
+
+func extractDomain(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := u.Hostname()
+	return strings.TrimPrefix(host, "www.")
 }
 
 // searchResponseToAPIResponse converts the unified search response
