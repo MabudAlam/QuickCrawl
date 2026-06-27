@@ -30,7 +30,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_ICON = "5.5rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
@@ -306,12 +306,16 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 }
 
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+  const { state } = useSidebar()
+
   return (
     <main
       data-slot="sidebar-inset"
+      data-collapsible={state === "collapsed" ? "icon" : undefined}
       className={cn(
-        "bg-secondary-background relative flex w-full flex-1 flex-col",
+        "bg-secondary-background group/inset relative flex w-full flex-1 flex-col",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-base md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "group-data-[collapsible=icon]:md:ml-2",
         className,
       )}
       {...props}
@@ -356,7 +360,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="sidebar-footer"
       data-sidebar="footer"
       className={cn(
-        "flex flex-col gap-2 p-2 border-t-2 border-t-border",
+        "flex flex-col gap-2 p-2 border-t-2 border-t-border group-data-[collapsible=icon]:overflow-hidden",
         className,
       )}
       {...props}
