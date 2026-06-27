@@ -15,7 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import type { ScrapeData, MapResponse, SearchResponse } from "@/lib/api-types"
+import type { ScrapeData, MapResponse, SearchResponse, BrandResponse } from "@/lib/api-types"
 
 interface PageItem {
   index: number
