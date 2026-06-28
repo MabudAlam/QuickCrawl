@@ -309,7 +309,7 @@ func (s *Server) HandleBrand(ctx context.Context, req mcp.CallToolRequest, args 
 		return errorResult(fmt.Sprintf("brand fetch error: %v", fetchErr))
 	}
 
-	brandData := brand.ExtractMetadataWithTokens(result.HTML, args.URL, result.Tokens)
+	brandData := brand.ExtractMetadataWithTokens(result.HTML, args.URL, result.Tokens, result.ScreenshotColors, result.PageTitle)
 	brandData.Domain = extractDomain(args.URL)
 
 	data, _ := json.Marshal(brandData)
