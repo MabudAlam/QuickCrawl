@@ -104,9 +104,6 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
   const primaryColor = brand?.colors?.[0]?.hex || "#f54900"
   const hero = brand?.backdrops?.[0]
   const logo = brand?.logos?.[0]
-  const contentRating = brand?.is_nsfw
-    ? { label: "Not Safe for Work", tone: "nsfw" as const }
-    : { label: "Safe for Work", tone: "sfw" as const }
 
   const linkEntries: { label: string; href?: string }[] = [
     { label: "Terms", href: brand?.links?.terms },
@@ -143,15 +140,6 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
             {brand.domain}
           </span>
         )}
-        <span
-          className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            contentRating.tone === "sfw"
-              ? "bg-green-500/15 text-green-600 dark:text-green-400"
-              : "bg-red-500/15 text-red-600 dark:text-red-400"
-          }`}
-        >
-          {contentRating.tone.toUpperCase()}
-        </span>
       </div>
 
       {/* ── Hero ── */}
@@ -281,25 +269,6 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Industries */}
-        {brand?.industries?.eic && brand.industries.eic.length > 0 && (
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-border bg-secondary-background/50 px-4 py-2.5">
-              <Globe className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Industries
-              </h3>
-            </div>
-            <div className="flex flex-wrap gap-2 p-4">
-              {brand.industries.eic.map((ind, i) => (
-                <Badge key={i} variant="neutral" className="text-xs">
-                  {ind.industry}
-                </Badge>
-              ))}
-            </div>
           </div>
         )}
 
@@ -517,10 +486,10 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
         )}
 
         {/* Contact + Links */}
-        {(brand?.email || (brand?.socials?.length ?? 0) > 0 || linkEntries.length > 0) && (
+        {((brand?.socials?.length ?? 0) > 0 || linkEntries.length > 0) && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Contact */}
-            {(brand?.email || (brand?.socials?.length ?? 0) > 0) && (
+            {(brand?.socials?.length ?? 0) > 0 && (
               <div className="rounded-xl border border-border bg-card overflow-hidden">
                 <div className="flex items-center gap-2 border-b border-border bg-secondary-background/50 px-4 py-2.5">
                   <Globe className="h-4 w-4 text-muted-foreground" />
@@ -529,20 +498,6 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
                   </h3>
                 </div>
                 <div className="divide-y divide-border">
-                  {brand?.email && (
-                    <a
-                      href={`mailto:${brand.email}`}
-                      className="flex items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-secondary-background/50"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary-background">
-                        <span className="text-sm">@</span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] text-muted-foreground">Email</p>
-                        <p className="truncate font-medium">{brand.email}</p>
-                      </div>
-                    </a>
-                  )}
                   {brand?.socials?.map((social, i) => (
                     <a
                       key={i}
