@@ -1,22 +1,58 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"fmt"
+	"image"
+	_ "image/jpeg"
 	"strings"
 	"time"
 
+	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/chromedp/chromedp"
+	"github.com/dayvonjersen/vibrant"
 )
+
+// waitFontsReady polls document.fonts.status until "loaded" or timeout.
+// Replaces a blind 5s sleep: resolves immediately when fonts are already
+// loaded (the common case after WaitForSPAReady), and caps at timeout
+// when a font hangs.
+func waitFontsReady(timeout time.Duration) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		deadline := time.Now().Add(timeout)
+		for {
+			var ready bool
+			_ = chromedp.Evaluate(`!document.fonts || document.fonts.status === 'loaded'`, &ready).Do(ctx)
+			if ready {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	})
+}
 
 // BrandDesignTokens is the result of the in-browser brand design-token
 // extractor. HTML is the full rendered HTML of the page (same payload that
 // the static extractors in internal/brand consume). Tokens is the raw JSON
 // returned by the extractor; it is unmarshalled by
 // brand.ExtractDesignTokens on the Go side. Tokens may be empty when the
-// browser path failed but HTML was still captured.
+// browser path failed but HTML was still captured. ScreenshotColors are
+// BrandColors extracted from a full-page screenshot via the vibrant library.
 type BrandDesignTokens struct {
-	HTML   string
-	Tokens []byte
+	HTML             string
+	Tokens           []byte
+	PageTitle        string             // document.title from browser (set dynamically, not in HTML)
+	Screenshot       string             // base64-encoded full-page PNG screenshot
+	ScreenshotColors []types.BrandColor // colors extracted from screenshot via vibrant
 }
 
 // brandTokenJS is the JavaScript that runs inside the rendered page to
@@ -44,6 +80,30 @@ type BrandDesignTokens struct {
 //
 // The extractor bounds work by capping element iteration and CSS-rule
 // parsing so even very large pages complete quickly.
+
+const dismissOverlaysJS = `
+(function () {
+  var vw = window.innerWidth, vh = window.innerHeight;
+  var els = document.querySelectorAll('body *');
+  var removed = 0;
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var cs = window.getComputedStyle(el);
+    if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+    var rect = el.getBoundingClientRect();
+    if ((rect.width * rect.height) / (vw * vh) < 0.5) continue;
+    var bg = cs.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      el.style.setProperty('display', 'none', 'important');
+      removed++;
+    }
+  }
+  document.documentElement.style.removeProperty('overflow');
+  document.body.style.removeProperty('overflow');
+  return removed;
+})();
+`
+
 const brandTokenJS = `
 (function () {
   'use strict';
@@ -607,33 +667,122 @@ func (renderer *Renderer) fetchBrandDesignTokens(ctx context.Context, rawURL str
 	runCtx, cancel := context.WithTimeout(browserCtx, renderer.cfg.PageTimeout)
 	defer cancel()
 
-	var fullHTML, tokensJSON string
+	var fullHTML, tokensJSON, pageTitle string
+	var screenshotBuf []byte
 
-	// Capture document.documentElement.outerHTML — the complete rendered DOM.
-	// We do this in a single Evaluate so we only do one round-trip for HTML.
 	const captureHTMLJS = `document.documentElement.outerHTML`
 
-	// Use a sub-action to compose: navigate, wait for SPA, then capture both.
 	err := chromedp.Run(runCtx,
 		chromedp.Navigate(rawURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			_, err := WaitForSPAReady(ctx, SPAReadinessOptions{
 				URL:          rawURL,
-				Timeout:      15 * time.Second,
-				PollInterval: 200 * time.Millisecond,
+				Timeout:      10 * time.Second,
+				PollInterval: 150 * time.Millisecond,
 			})
 			return err
 		}),
+		// Wait for web fonts to finish loading so computed styles reflect
+		// the final rendered typography. Typically <1s; replaces a blind
+		// 5s sleep that ran after the page was already ready.
+		waitFontsReady(3*time.Second),
+		dismissCookieBannersFastAction(),
+		chromedp.Evaluate(dismissOverlaysJS, nil),
 		chromedp.Evaluate(captureHTMLJS, &fullHTML),
 		chromedp.Evaluate(brandTokenJS, &tokensJSON),
+		chromedp.Evaluate(`document.title`, &pageTitle),
+		chromedp.FullScreenshot(&screenshotBuf, 75),
 	)
 
 	if err != nil && fullHTML == "" {
 		return nil, err
 	}
 
+	var screenshotColors []types.BrandColor
+	var screenshotB64 string
+	if len(screenshotBuf) > 0 {
+		screenshotColors = extractColorsFromScreenshot(screenshotBuf)
+		screenshotB64 = base64.StdEncoding.EncodeToString(screenshotBuf)
+	}
+
 	return &BrandDesignTokens{
-		HTML:   strings.TrimSpace(fullHTML),
-		Tokens: []byte(strings.TrimSpace(tokensJSON)),
+		HTML:             strings.TrimSpace(fullHTML),
+		Tokens:           []byte(strings.TrimSpace(tokensJSON)),
+		PageTitle:        strings.TrimSpace(pageTitle),
+		Screenshot:       screenshotB64,
+		ScreenshotColors: screenshotColors,
 	}, nil
+}
+
+func extractColorsFromScreenshot(screenshotData []byte) []types.BrandColor {
+	img, _, err := image.Decode(bytes.NewReader(screenshotData))
+	if err != nil {
+		return nil
+	}
+
+	bounds := img.Bounds()
+	if bounds.Dx()*bounds.Dy() == 0 {
+		return nil
+	}
+
+	// Downsample large screenshots before palette extraction — color
+	// extraction only needs representative pixels, and full-page captures
+	// can be 1920x8000+. A 400px-wide thumbnail is plenty and cuts
+	// vibrant's work by 10–50x.
+	img = downsampleImage(img, 400)
+
+	palette, err := vibrant.NewPaletteFromImage(img)
+	if err != nil {
+		return nil
+	}
+
+	var colors []types.BrandColor
+	seen := make(map[string]bool)
+
+	for name, swatch := range palette.ExtractAwesome() {
+		if swatch == nil || swatch.Name == "" {
+			continue
+		}
+		r, g, b := swatch.Color.RGB()
+		hex := rgbToHexBrand(r, g, b)
+		if seen[hex] {
+			continue
+		}
+		seen[hex] = true
+		colors = append(colors, types.BrandColor{
+			Hex:  hex,
+			Name: name,
+		})
+	}
+
+	return colors
+}
+
+// downsampleImage shrinks src to targetWidth using nearest-neighbor sampling.
+// No external dependency — the stdlib image package is sufficient for palette
+// extraction where pixel-perfect interpolation doesn't matter.
+func downsampleImage(src image.Image, targetWidth int) image.Image {
+	bounds := src.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	if w <= targetWidth {
+		return src
+	}
+	scale := float64(w) / float64(targetWidth)
+	newH := int(float64(h) / scale)
+	if newH < 1 {
+		newH = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, targetWidth, newH))
+	for y := 0; y < newH; y++ {
+		sy := int(float64(y) * scale)
+		for x := 0; x < targetWidth; x++ {
+			sx := int(float64(x) * scale)
+			dst.Set(x, y, src.At(bounds.Min.X+sx, bounds.Min.Y+sy))
+		}
+	}
+	return dst
+}
+
+func rgbToHexBrand(r, g, b int) string {
+	return strings.ToUpper(fmt.Sprintf("#%02X%02X%02X", r, g, b))
 }
