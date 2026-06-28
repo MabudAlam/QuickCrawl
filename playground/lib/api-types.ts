@@ -211,9 +211,6 @@ export interface BrandData {
   backdrops?: BrandBackdrop[];
   address?: BrandAddress;
   socials?: SocialLink[];
-  email?: string;
-  is_nsfw?: boolean;
-  industries?: IndustryMap;
   links?: BrandLinks;
   primary_language?: string;
   fonts?: BrandFonts;
@@ -352,15 +349,6 @@ export interface BrandAddress {
 export interface SocialLink {
   type: string;
   url: string;
-}
-
-export interface IndustryMap {
-  eic?: Industry[];
-}
-
-export interface Industry {
-  industry?: string;
-  subindustry?: string;
 }
 
 export interface BrandLinks {
