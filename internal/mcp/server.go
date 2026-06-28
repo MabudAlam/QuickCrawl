@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/brand"
 	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
@@ -38,6 +40,10 @@ type ScrapeArgs struct {
 	CSSSelector *string  `json:"cssSelector,omitempty"`
 }
 
+type BrandArgs struct {
+	URL string `json:"url"`
+}
+
 type SearchArgs struct {
 	Query      string            `json:"query"`
 	Region     string            `json:"region,omitempty"`
@@ -46,7 +52,7 @@ type SearchArgs struct {
 	UseBM25    bool              `json:"use_bm25,omitempty"`
 	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
 	Formats    []string          `json:"formats,omitempty"`
-	Scrape     bool     `json:"scrape,omitempty"`
+	Scrape     bool              `json:"scrape,omitempty"`
 }
 
 func convertFormats(formats []string) []types.OutputFormat {
@@ -282,6 +288,47 @@ func (s *Server) HandleMap(ctx context.Context, req mcp.CallToolRequest, args Ma
 	}, nil
 }
 
+func (s *Server) HandleBrand(ctx context.Context, req mcp.CallToolRequest, args BrandArgs) (*mcp.CallToolResult, error) {
+	if args.URL == "" {
+		return errorResult("url is required")
+	}
+
+	scraper := s.state.CoreScraper
+	if scraper == nil {
+		return errorResult("scraper is not initialized")
+	}
+
+	if s.config.Crawler.RespectRobotsTxt {
+		if err := crawler.CheckRobotsTxt(args.URL, s.config.Crawler.UserAgent); err != nil {
+			return errorResult(err.Message)
+		}
+	}
+
+	result, fetchErr := scraper.FetchBrand(ctx, args.URL)
+	if fetchErr != nil {
+		return errorResult(fmt.Sprintf("brand fetch error: %v", fetchErr))
+	}
+
+	brandData := brand.ExtractMetadataWithTokens(result.HTML, args.URL, result.Tokens)
+	brandData.Domain = extractDomain(args.URL)
+
+	data, _ := json.Marshal(brandData)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(string(data)),
+		},
+	}, nil
+}
+
+func extractDomain(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := u.Hostname()
+	return host
+}
+
 func (s *Server) HandleSearch(ctx context.Context, req mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, error) {
 	formats := convertFormats(args.Formats)
 	if args.Scrape && len(formats) == 0 {
@@ -481,6 +528,11 @@ func AddTools(mcpServer *server.MCPServer, s *Server) {
 			mcp.Min(1), mcp.Max(600000)),
 	), mcp.NewTypedToolHandler[MapArgs](s.HandleMap))
 
+	mcpServer.AddTool(mcp.NewTool("brand",
+		mcp.WithDescription("Extract brand identity data from a website: colors, fonts, logos, social links, og metadata, and styleguide tokens"),
+		mcp.WithString("url", mcp.Required(), mcp.Description("The URL to extract brand data from"), mcp.MinLength(1)),
+	), mcp.NewTypedToolHandler[BrandArgs](s.HandleBrand))
+
 	mcpServer.AddTool(mcp.NewTool("search",
 		mcp.WithDescription("Search SearXNG and scrape results in parallel with 10 concurrent workers"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("The search query"), mcp.MinLength(1)),
@@ -497,7 +549,7 @@ func AddTools(mcpServer *server.MCPServer, s *Server) {
 			mcp.WithStringItems(mcp.Enum("markdown", "html", "links", "json"))),
 	), mcp.NewTypedToolHandler[SearchArgs](s.HandleSearch))
 
-	utils.Log.Info("MCP tools registered", "tools", "scrape, crawl, check_crawl_status, site_map, search")
+	utils.Log.Info("MCP tools registered", "tools", "scrape, crawl, check_crawl_status, site_map, brand, search")
 }
 
 func scrapeInputSchema() map[string]any {
