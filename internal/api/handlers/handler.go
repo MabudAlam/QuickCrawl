@@ -552,15 +552,16 @@ func (h *Handler) Brand(c *gin.Context) {
 		return
 	}
 
-	brandData := brand.ExtractMetadataWithTokens(result.HTML, req.URL, result.Tokens)
+	brandData := brand.ExtractMetadataWithTokens(result.HTML, req.URL, result.Tokens, result.ScreenshotColors, result.PageTitle)
 
 	domain := extractDomain(req.URL)
 	brandData.Domain = domain
 
 	c.JSON(http.StatusOK, types.BrandResponse{
-		Success: true,
-		Domain:  domain,
-		Brand:   brandData,
+		Success:    true,
+		Domain:     domain,
+		Brand:      brandData,
+		Screenshot: result.Screenshot,
 	})
 }
 

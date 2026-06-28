@@ -1,78 +1,58 @@
 package brand
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/PuerkitoBio/goquery"
 )
 
-var socialPatterns = map[string][]string{
-	"linkedin": {
-		"linkedin.com/company/",
-		"linkedin.com/in/",
-	},
-	"x": {
-		"x.com/",
-		"twitter.com/",
-	},
-	"github": {
-		"github.com/",
-	},
-	"discord": {
-		"discord.com/invite/",
-		"discord.com/channels/",
-		"discord.gg/",
-	},
-	"facebook": {
-		"facebook.com/pages/",
-		"facebook.com/",
-	},
-	"instagram": {
-		"instagram.com/",
-	},
-	"youtube": {
-		"youtube.com/channel/",
-		"youtube.com/c/",
-		"youtube.com/@",
-	},
-	"tiktok": {
-		"tiktok.com/@",
-		"tiktok.com/channel/",
-	},
-}
-
 var excludePatterns = []string{
 	"status=",
 	"share=",
 	"intent/tweet",
-	"followers",
-	"following",
-	"profile",
-	"photos",
-	"posts",
-	"tagged",
-	"explore",
-	"notifications",
-	"settings",
-	"messages",
-	"search",
 	"/status/",
 	"facebook.com/photo",
 	"facebook.com/event",
 	"facebook.com/groups",
 	"facebook.com/plugins",
+	"facebook.com/sharer",
 	"instagram.com/explore",
 	"instagram.com/direct",
 	"youtube.com/watch",
 	"youtube.com/playlist",
 	"youtube.com/shorts",
 	"tiktok.com/discover",
+	"tiktok.com/tag",
 	"github.com/issues",
 	"github.com/pulls",
 	"github.com/notifications",
+	"github.com/settings",
+	"github.com/sponsors",
 	"linkedin.com/feed",
 	"linkedin.com/messaging",
+	"linkedin.com/notifications",
+	"linkedin.com/posts/",
+	"linkedin.com/pulse/",
+}
+
+type platform struct {
+	socialType string
+	hosts      []string
+	matcher    func(path string) (string, bool)
+}
+
+var platforms = []platform{
+	{"linkedin", []string{"linkedin.com"}, matchLinkedIn},
+	{"x", []string{"x.com", "twitter.com"}, matchX},
+	{"github", []string{"github.com"}, matchGitHub},
+	{"discord", []string{"discord.com"}, matchDiscordCom},
+	{"discord", []string{"discord.gg"}, matchFlat(nil)},
+	{"facebook", []string{"facebook.com"}, matchFacebook},
+	{"instagram", []string{"instagram.com"}, matchInstagram},
+	{"youtube", []string{"youtube.com"}, matchYouTube},
+	{"tiktok", []string{"tiktok.com"}, matchTikTok},
 }
 
 func extractSocials(doc *goquery.Document) []types.SocialLink {
@@ -93,101 +73,221 @@ func extractSocials(doc *goquery.Document) []types.SocialLink {
 
 	doc.Find(strings.Join(socialSelectors, ", ")).Each(func(i int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
+		href = strings.TrimSpace(href)
 		if href == "" {
 			return
 		}
 
 		hrefLower := strings.ToLower(href)
-
 		for _, exclude := range excludePatterns {
 			if strings.Contains(hrefLower, exclude) {
 				return
 			}
 		}
 
-		for socialType, patterns := range socialPatterns {
-			for _, pattern := range patterns {
-				if strings.Contains(hrefLower, pattern) {
-					normalizedURL := normalizeSocialURL(href, socialType)
-					if normalizedURL != "" && !seen[normalizedURL] {
-						seen[normalizedURL] = true
-						socials = append(socials, types.SocialLink{
-							Type: socialType,
-							URL:  normalizedURL,
-						})
-					}
-					break
-				}
-			}
+		socialType, normalizedURL := matchSocialURL(href)
+		if socialType == "" || normalizedURL == "" {
+			return
+		}
+		if !seen[normalizedURL] {
+			seen[normalizedURL] = true
+			socials = append(socials, types.SocialLink{
+				Type: socialType,
+				URL:  normalizedURL,
+			})
 		}
 	})
 
 	return socials
 }
 
-func normalizeSocialURL(href, socialType string) string {
-	switch socialType {
-	case "linkedin":
-		if strings.Contains(href, "linkedin.com/company/") || strings.Contains(href, "linkedin.com/in/") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
+func matchSocialURL(href string) (socialType, normalizedURL string) {
+	parsed, ok := parseHrefURL(href)
+	if !ok {
+		return "", ""
+	}
+	host := strings.ToLower(strings.TrimPrefix(parsed.Host, "www."))
+	path := strings.TrimSuffix(parsed.Path, "/")
+	if path == "" {
+		path = "/"
+	}
+
+	for _, p := range platforms {
+		hostOK := false
+		for _, h := range p.hosts {
+			if hostMatches(host, h) {
+				hostOK = true
+				break
 			}
-			return href
 		}
-	case "x":
-		if strings.Contains(href, "x.com/") || strings.Contains(href, "twitter.com/") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
+		if !hostOK {
+			continue
 		}
-	case "github":
-		if strings.Contains(href, "github.com/") && !strings.Contains(href, "github.com/settings") {
-			githubURL := href
-			if !strings.HasPrefix(href, "http") {
-				githubURL = "https://" + href
-			}
-			parts := strings.Split(strings.TrimPrefix(githubURL, "https://github.com/"), "/")
-			if len(parts) >= 1 && parts[0] != "" {
-				return "https://github.com/" + parts[0]
-			}
-			return githubURL
-		}
-	case "discord":
-		if strings.Contains(href, "discord.com/invite/") || strings.Contains(href, "discord.com/channels/") || strings.Contains(href, "discord.gg/") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
-		}
-	case "facebook":
-		if strings.Contains(href, "facebook.com/pages/") || strings.Contains(href, "facebook.com/") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
-		}
-	case "instagram":
-		if strings.Contains(href, "instagram.com/") && !strings.Contains(href, "instagram.com/explore") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
-		}
-	case "youtube":
-		if strings.Contains(href, "youtube.com/channel/") || strings.Contains(href, "youtube.com/c/") || strings.Contains(href, "youtube.com/@") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
-		}
-	case "tiktok":
-		if strings.Contains(href, "tiktok.com/@") || strings.Contains(href, "tiktok.com/channel/") {
-			if !strings.HasPrefix(href, "http") {
-				return "https://" + href
-			}
-			return href
+		if account, ok := p.matcher(path); ok && account != "" {
+			return p.socialType, "https://" + p.hosts[0] + "/" + account
 		}
 	}
-	return ""
+	return "", ""
+}
+
+func parseHrefURL(href string) (*url.URL, bool) {
+	candidate := href
+	switch {
+	case strings.HasPrefix(candidate, "//"):
+		candidate = "https:" + candidate
+	case !strings.Contains(candidate, "://"):
+		candidate = "https://" + candidate
+	}
+	parsed, err := url.Parse(candidate)
+	if err != nil || parsed.Host == "" {
+		return nil, false
+	}
+	return parsed, true
+}
+
+func hostMatches(host, domain string) bool {
+	return host == domain || strings.HasSuffix(host, "."+domain)
+}
+
+func firstSegment(s string) string {
+	if idx := strings.IndexByte(s, '/'); idx != -1 {
+		return s[:idx]
+	}
+	return s
+}
+
+func stripPrefixCI(path, prefix string) (string, bool) {
+	if len(path) < len(prefix) {
+		return "", false
+	}
+	if strings.EqualFold(path[:len(prefix)], prefix) {
+		return path[len(prefix):], true
+	}
+	return "", false
+}
+
+func matchFlat(excluded map[string]bool) func(string) (string, bool) {
+	return func(path string) (string, bool) {
+		trimmed := strings.TrimPrefix(path, "/")
+		if trimmed == "" {
+			return "", false
+		}
+		account := firstSegment(trimmed)
+		if account == "" || excluded[strings.ToLower(account)] {
+			return "", false
+		}
+		return account, true
+	}
+}
+
+func matchLinkedIn(path string) (string, bool) {
+	for _, prefix := range []string{"/company/", "/in/", "/school/", "/showcase/"} {
+		if rest, ok := stripPrefixCI(path, prefix); ok && rest != "" {
+			return strings.TrimPrefix(prefix, "/") + firstSegment(rest), true
+		}
+	}
+	return "", false
+}
+
+func matchX(path string) (string, bool) {
+	trimmed := strings.TrimPrefix(path, "/")
+	if trimmed == "" {
+		return "", false
+	}
+	account := firstSegment(trimmed)
+	switch strings.ToLower(account) {
+	case "i", "home", "explore", "notifications", "messages", "settings", "search", "compose":
+		return "", false
+	}
+	return account, true
+}
+
+func matchGitHub(path string) (string, bool) {
+	trimmed := strings.TrimPrefix(path, "/")
+	if trimmed == "" {
+		return "", false
+	}
+	account := firstSegment(trimmed)
+	switch strings.ToLower(account) {
+	case "settings", "issues", "pulls", "notifications", "sponsors", "marketplace":
+		return "", false
+	}
+	return account, true
+}
+
+func matchDiscordCom(path string) (string, bool) {
+	if rest, ok := stripPrefixCI(path, "/invite/"); ok && rest != "" {
+		return "invite/" + firstSegment(rest), true
+	}
+	if rest, ok := stripPrefixCI(path, "/channels/"); ok && rest != "" {
+		segs := strings.SplitN(rest, "/", 3)
+		if len(segs) >= 2 && segs[1] != "" {
+			return "channels/" + segs[0] + "/" + segs[1], true
+		}
+		return "channels/" + segs[0], true
+	}
+	return "", false
+}
+
+func matchFacebook(path string) (string, bool) {
+	if rest, ok := stripPrefixCI(path, "/pages/"); ok && rest != "" {
+		segs := strings.SplitN(rest, "/", 3)
+		if len(segs) >= 2 && segs[1] != "" {
+			return "pages/" + segs[0] + "/" + segs[1], true
+		}
+		return "pages/" + segs[0], true
+	}
+	trimmed := strings.TrimPrefix(path, "/")
+	if trimmed == "" {
+		return "", false
+	}
+	account := firstSegment(trimmed)
+	switch strings.ToLower(account) {
+	case "groups", "marketplace", "watch", "gaming", "events":
+		return "", false
+	}
+	return account, true
+}
+
+func matchInstagram(path string) (string, bool) {
+	trimmed := strings.TrimPrefix(path, "/")
+	if trimmed == "" {
+		return "", false
+	}
+	account := firstSegment(trimmed)
+	switch strings.ToLower(account) {
+	case "explore", "direct", "accounts":
+		return "", false
+	}
+	return account, true
+}
+
+func matchYouTube(path string) (string, bool) {
+	for _, prefix := range []string{"/channel/", "/c/", "/user/"} {
+		if rest, ok := stripPrefixCI(path, prefix); ok && rest != "" {
+			return strings.TrimPrefix(prefix, "/") + firstSegment(rest), true
+		}
+	}
+	trimmed := strings.TrimPrefix(path, "/")
+	if strings.HasPrefix(trimmed, "@") {
+		account := firstSegment(trimmed)
+		if account != "@" {
+			return account, true
+		}
+	}
+	return "", false
+}
+
+func matchTikTok(path string) (string, bool) {
+	if rest, ok := stripPrefixCI(path, "/channel/"); ok && rest != "" {
+		return "channel/" + firstSegment(rest), true
+	}
+	trimmed := strings.TrimPrefix(path, "/")
+	if strings.HasPrefix(trimmed, "@") {
+		account := firstSegment(trimmed)
+		if account != "@" {
+			return account, true
+		}
+	}
+	return "", false
 }
