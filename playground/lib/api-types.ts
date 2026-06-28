@@ -198,6 +198,7 @@ export interface BrandResponse {
   success: boolean;
   domain: string;
   brand?: BrandData;
+  screenshot?: string; // base64-encoded full-page PNG/JPEG
 }
 
 export interface BrandData {
