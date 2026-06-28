@@ -4,7 +4,7 @@ description: "Scrape URLs, crawl sites, map pages, and search the web using the 
 license: AGPL-3.0
 metadata:
   author: MabudAlam
-  version: "0.3.0"
+  version: "0.3.1"
   homepage: https://github.com/MabudAlam/quickcrawl
 allowed-tools: Bash(quickcrawl:*) Read
 ---
@@ -53,6 +53,7 @@ cp -r skills/quickcrawl-cli ~/.claude/skills/quickcrawl-cli
 | `quickcrawl crawl` | BFS crawl a site, returns a job ID to poll | Yes |
 | `quickcrawl check-crawl-status <id>` | Poll a crawl job for results | No |
 | `quickcrawl map` | Discover all URLs on a site without scraping content | No |
+| `quickcrawl brand` | Extract brand identity data from a website | No |
 | `quickcrawl search` | Search SearXNG, optionally scrape result pages | No |
 
 ## Quick Examples
@@ -68,6 +69,9 @@ quickcrawl check-crawl-status "$JOB"
 # Discover all URLs before crawling
 quickcrawl map https://example.com
 
+# Extract brand identity (colors, fonts, logos, social links, styleguide)
+quickcrawl brand https://example.com
+
 # Search the web and get results
 quickcrawl search "golang web scraping frameworks"
 
@@ -80,6 +84,7 @@ quickcrawl search "golang" --scrape --page 1
 - [scrape](skills/quickcrawl-cli/references/scrape.md) — all flags, formats, CSS selectors, JSON schema
 - [crawl](skills/quickcrawl-cli/references/crawl.md) — maxDepth, maxPages, async job flow, output format
 - [map](skills/quickcrawl-cli/references/map.md) — sitemap discovery, timeout, output format
+- [brand](skills/quickcrawl-cli/references/brand.md) — colors, fonts, logos, social links, styleguide, output format
 - [search](skills/quickcrawl-cli/references/search.md) — timeRange, page, region, scraping results
 
 ## Validation Rules
@@ -97,7 +102,7 @@ Know these before calling — invalid values return errors:
 | `--render` | scrape, crawl | `auto`, `http`, `browser` |
 | `--formats` | scrape, crawl, search | Allowlist per command (`json` rejected on crawl) |
 | `query` | search | Required, non-empty |
-| `url` | scrape, crawl, map | Required, must be valid URL |
+| `url` | scrape, crawl, map, brand | Required, must be valid URL |
 
 ## Output
 

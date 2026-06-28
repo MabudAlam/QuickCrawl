@@ -4,7 +4,7 @@ description: "Scrape URLs, crawl sites, map pages, and search the web via the Qu
 license: AGPL-3.0
 metadata:
   author: MabudAlam
-  version: "0.3.0"
+  version: "0.3.1"
   homepage: https://github.com/MabudAlam/quickcrawl
 ---
 
@@ -74,6 +74,7 @@ Restart the agent. The following tools should be available:
 - `quickcrawl_crawl` — start an async site crawl
 - `quickcrawl_check_crawl_status` — poll a crawl job for results
 - `quickcrawl_map` — discover URLs without scraping
+- `quickcrawl_brand` — extract brand identity data from a website
 - `quickcrawl_search` — web search via SearXNG
 
 ## Tools Reference
@@ -84,6 +85,7 @@ Restart the agent. The following tools should be available:
 | `quickcrawl_crawl` | Start a BFS crawl of a site; returns job ID | No (returns immediately) |
 | `quickcrawl_check_crawl_status` | Poll a running/completed crawl job | Yes |
 | `quickcrawl_map` | Discover all URLs on a site (no content scraping) | Yes |
+| `quickcrawl_brand` | Extract brand identity data: colors, fonts, logos, social links, styleguide | Yes |
 | `quickcrawl_search` | Search SearXNG, optionally scrape result pages | Yes |
 
 See [references/tools.md](skills/quickcrawl-mcp/references/tools.md) for full parameter schemas with defaults and ranges.
@@ -103,7 +105,7 @@ All parameters validated server-side. Know these before calling:
 | `renderMode` | scrape, crawl, search | `auto`, `browser`, `http` |
 | `formats` | scrape, crawl, search | Per-tool allowlist (`json` rejected on crawl) |
 | `query` | search | Required, non-empty |
-| `url` | scrape, crawl, map | Required, valid URL |
+| `url` | scrape, crawl, map, brand | Required, valid URL |
 
 ## Quick Examples
 
@@ -119,6 +121,9 @@ All parameters validated server-side. Know these before calling:
 
 // Map a site
 { "tool": "quickcrawl_map", "params": { "url": "https://example.com", "maxDepth": 3 } }
+
+// Extract brand identity (colors, fonts, logos, socials, styleguide)
+{ "tool": "quickcrawl_brand", "params": { "url": "https://example.com" } }
 
 // Search and scrape results
 { "tool": "quickcrawl_search", "params": { "query": "golang web scraping", "page": 1, "scrape": true, "timeRange": "month" } }

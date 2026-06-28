@@ -8,6 +8,7 @@
 | `quickcrawl_crawl` | Start a BFS crawl of a site | Async (returns job ID immediately) |
 | `quickcrawl_check_crawl_status` | Poll a crawl job for results | Synchronous (poll until done) |
 | `quickcrawl_map` | Discover all URLs on a site | Synchronous |
+| `quickcrawl_brand` | Extract brand identity data | Synchronous |
 | `quickcrawl_search` | Search SearXNG, optionally scrape | Synchronous |
 
 ---
@@ -152,6 +153,121 @@ Discover all URLs on a website via sitemap + BFS link extraction, without scrapi
   "count": 42
 }
 ```
+
+---
+
+## quickcrawl_brand
+
+Extract comprehensive brand identity signals from a website: colors, fonts, logos, social links, OG metadata, and styleguide tokens. Uses headless Chrome when available for rich font and styleguide data; falls back to HTTP.
+
+**Parameters:**
+
+```json
+{ "url": "https://example.com" }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | Yes | The URL to extract brand data from |
+
+**Returns:**
+```json
+{
+  "domain": "example.com",
+  "title": "Example Domain",
+  "name": "Example",
+  "tagline": "Example tagline",
+  "description": "Example description from og:description or meta",
+  "primary_language": "en",
+  "colors": [
+    { "hex": "#ff6700", "name": "Blaze Orange" },
+    { "hex": "#0a0a0a", "name": "Rich Black" }
+  ],
+  "logos": [
+    { "url": "https://example.com/icon.svg", "format": "svg", "mode": "icon" }
+  ],
+  "backdrops": [
+    { "url": "https://example.com/og-image.png" }
+  ],
+  "address": {
+    "street": "123 Main St",
+    "city": "San Francisco",
+    "state": "CA",
+    "postalCode": "94102",
+    "country": "United States"
+  },
+  "socials": [
+    { "type": "linkedin", "url": "https://linkedin.com/company/example" }
+  ],
+  "links": {
+    "privacy": "https://example.com/privacy",
+    "terms": "https://example.com/terms"
+  },
+  "fonts": {
+    "fonts": [
+      {
+        "font": "Inter",
+        "uses": ["h1", "h2", "p"],
+        "fallbacks": ["Helvetica Neue"],
+        "num_elements": 142,
+        "percent_elements": 38
+      }
+    ],
+    "fontLinks": {
+      "Inter": {
+        "type": "google",
+        "files": { "variable": "https://fonts.gstatic.com/s/inter/v18/inter.woff2" }
+      }
+    }
+  },
+  "styleguide": {
+    "mode": "light",
+    "colors": {
+      "accent": "#ff6700",
+      "background": "#ffffff",
+      "text": "#0a0a0a"
+    },
+    "typography": {
+      "headings": {
+        "h1": { "fontFamily": "Inter", "fontSize": "48px", "fontWeight": 700 }
+      },
+      "p": { "fontFamily": "Inter", "fontSize": "16px", "fontWeight": 400 }
+    },
+    "elementSpacing": { "xs": "4px", "sm": "12px", "md": "24px" },
+    "shadows": { "sm": "0 1px 3px rgba(0,0,0,0.12)" },
+    "components": {
+      "button": {
+        "primary": { "backgroundColor": "#ff6700", "color": "#ffffff", "css": "..." }
+      },
+      "card": { "backgroundColor": "#ffffff", "borderRadius": "8px", "css": "..." }
+    }
+  }
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `domain` | string | Domain name from URL |
+| `title` | string | `<title>` or `og:title` |
+| `name` | string | `og:site_name` or domain |
+| `tagline` | string | `og:description` |
+| `description` | string | `og:description` or `<meta name="description">` |
+| `primary_language` | string | Detected language code |
+| `colors` | array | CSS hex colors with human-readable names |
+| `logos` | array | Favicons, apple-touch-icons, SVG icons |
+| `backdrops` | array | Open Graph image URLs |
+| `address` | object | Physical address from footer |
+| `socials` | array | LinkedIn, X, GitHub, YouTube, Instagram, etc. |
+| `links` | object | `privacy_url`, `terms_url`, `cookies_url` |
+| `fonts` | object | Font usage stats + font file URLs |
+| `styleguide` | object | Typography, colors, spacing, shadows, buttons, cards |
+
+**Notes:**
+- If CloakBrowser is configured, fonts and styleguide are extracted via headless Chrome
+- Without a browser, HTTP-only extraction runs (fonts and styleguide will be minimal)
+- Returns an error if `url` is missing or unparseable
 
 ---
 
