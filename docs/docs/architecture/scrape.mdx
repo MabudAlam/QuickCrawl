@@ -128,15 +128,9 @@ For each browser request, chromedp runs this action chain:
    → Single Evaluate: returns [headHTML, bodyHTML, window.location.href]
 ```
 
-### CloakBrowser
+### Browser WS URL resolution
 
-When `browser = "cloak"` in config, a fresh Chrome instance is created per-request:
-
-```
-Each request → discoverCloakBrowserWSURL() → new Chrome instance → CDP
-```
-
-This prevents cookie/state sharing between requests and is useful for anti-bot avoidance.
+The browser's `webSocketDebuggerUrl` is resolved once at server startup via `GET /json/version` (`core.GetCDPURL`) and cached on the `Renderer`. Every `/v1/scrape` request reuses the same persistent `RemoteAllocator` — no per-request discovery, no per-request HTTP call.
 
 ### Per-Host Concurrency Limiting
 

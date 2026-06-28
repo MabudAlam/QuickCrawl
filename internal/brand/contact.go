@@ -52,17 +52,6 @@ func containsAddressKeyword(text string) bool {
 	return false
 }
 
-func extractEmail(doc *goquery.Document) string {
-	emailRegex := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	matches := emailRegex.FindAllString(doc.Text(), -1)
-	for _, match := range matches {
-		if !strings.Contains(match, "example") && !strings.Contains(match, "test") {
-			return match
-		}
-	}
-	return ""
-}
-
 func extractLinks(doc *goquery.Document, domain string) *types.BrandLinks {
 	links := &types.BrandLinks{}
 
