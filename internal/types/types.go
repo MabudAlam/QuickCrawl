@@ -911,9 +911,10 @@ type BrandRequest struct {
 }
 
 type BrandResponse struct {
-	Success bool       `json:"success"`
-	Domain  string    `json:"domain"`
-	Brand   *BrandData `json:"brand,omitempty"`
+	Success    bool       `json:"success"`
+	Domain     string     `json:"domain"`
+	Brand      *BrandData `json:"brand,omitempty"`
+	Screenshot string     `json:"screenshot,omitempty"` // base64-encoded full-page PNG
 }
 
 type BrandData struct {
