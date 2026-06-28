@@ -72,7 +72,7 @@ func runBrand(cmd *cobra.Command, args []string) error {
 		return handleBrandError(fetchErr)
 	}
 
-	brandData := brand.ExtractMetadataWithTokens(result.HTML, targetURL, result.Tokens)
+	brandData := brand.ExtractMetadataWithTokens(result.HTML, targetURL, result.Tokens, result.ScreenshotColors, result.PageTitle)
 
 	domain := extractDomain(targetURL)
 	brandData.Domain = domain
