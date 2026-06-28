@@ -254,27 +254,13 @@ func (s *Scraper) FetchForBrand(ctx context.Context, rawURL string) (*FetchResul
 	return s.renderer.FetchOrchestrator(ctx, rawURL, nil, nil, 0)
 }
 
-// FetchBrand returns the rendered HTML for a URL plus, when a browser is
-// available, the raw JSON design-token payload (fonts + styleguide) extracted
-// from the live DOM.
-//
-// When no browser is configured the call falls back to HTTP fetching: HTML is
-// still returned, but Tokens is empty. This lets the brand handler always
-// receive a usable HTML payload even on lightweight deployments, while
-// surfacing the rich tokens when a browser is reachable.
+// FetchBrand returns the rendered HTML for a URL plus the raw JSON
+// design-token payload (fonts + styleguide) extracted from the live DOM.
+// Always uses the browser path — no HTTP fallback.
 func (s *Scraper) FetchBrand(ctx context.Context, rawURL string) (*BrandDesignTokens, *QuickCrawlError) {
-	if s.renderer.allocCtx != nil {
-		tokens, err := s.renderer.fetchBrandDesignTokens(ctx, rawURL)
-		if err == nil {
-			return tokens, nil
-		}
-		// Browser failed (timeout, navigation error, etc.). Fall through
-		// to HTTP so the caller still gets usable HTML.
+	tokens, err := s.renderer.fetchBrandDesignTokens(ctx, rawURL)
+	if err != nil {
+		return nil, ErrBrowserNotAvailable.Wrap(err)
 	}
-
-	result, ferr := s.renderer.FetchOrchestrator(ctx, rawURL, nil, nil, 0)
-	if ferr != nil {
-		return nil, ferr
-	}
-	return &BrandDesignTokens{HTML: result.HTML}, nil
+	return tokens, nil
 }
