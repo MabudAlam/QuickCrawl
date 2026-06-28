@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react"
+import ShapeGrid from "@/components/ShapeGrid"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -1611,8 +1612,16 @@ export default function PlaygroundPage({
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto [background-color:var(--secondary-background)] bg-[linear-gradient(90deg,var(--border)_1px,transparent_1px),linear-gradient(var(--border)_1px,transparent_1px)] bg-[size:28px_28px] bg-fixed p-3 sm:p-4">
-          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+        <main className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-3 sm:p-4">
+          <ShapeGrid
+            direction="diagonal"
+            speed={0.5}
+            squareSize={40}
+            shape="square"
+            hoverTrailAmount={0}
+            className="absolute inset-0 z-0"
+          />
+          <div className="relative z-10 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
             <Card className="h-[520px] min-w-0 gap-0 overflow-hidden bg-background/95 py-0 sm:h-[620px] xl:h-[calc(100vh-6.5rem)]">
               <CardHeader className="shrink-0 border-b-2 border-border bg-main px-4 py-4 text-main-foreground sm:px-5">
                 <div className="flex items-center justify-between gap-3">

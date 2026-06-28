@@ -43,6 +43,7 @@
     "next-themes": "^0.4.6",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
+    "react-bits": "^1.0.5",
     "react-dom": "^19.2.4",
     "react-hook-form": "^7.74.0",
     "react-markdown": "^10.1.0",
