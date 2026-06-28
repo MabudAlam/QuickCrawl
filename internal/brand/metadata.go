@@ -32,11 +32,8 @@ func ExtractMetadataWithTokens(html string, pageURL string, tokens []byte) *type
 		Backdrops:       extractBackdrops(doc, pageURL),
 		Address:         extractAddress(doc),
 		Socials:         extractSocials(doc),
-		Email:           extractEmail(doc),
-		Industries:      extractIndustries(doc),
 		Links:           extractLinks(doc, domain),
 		PrimaryLanguage: detectLanguage(doc),
-		IsNSFW:          false,
 	}
 
 	if brand.Title == "" {
@@ -55,12 +52,11 @@ func ExtractMetadataWithTokens(html string, pageURL string, tokens []byte) *type
 func defaultBrandData(pageURL string) *types.BrandData {
 	domain := getDomain(pageURL)
 	return &types.BrandData{
-		Domain:     domain,
-		Colors:     []types.BrandColor{},
-		Logos:      []types.BrandLogo{},
-		Backdrops:  []types.BrandBackdrop{},
-		Socials:    []types.SocialLink{},
-		Industries: &types.IndustryMap{},
-		Links:      &types.BrandLinks{},
+		Domain:    domain,
+		Colors:    []types.BrandColor{},
+		Logos:     []types.BrandLogo{},
+		Backdrops: []types.BrandBackdrop{},
+		Socials:   []types.SocialLink{},
+		Links:     &types.BrandLinks{},
 	}
 }

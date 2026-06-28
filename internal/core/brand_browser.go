@@ -599,18 +599,7 @@ func (renderer *Renderer) fetchBrandDesignTokens(ctx context.Context, rawURL str
 	release := renderer.pool.Acquire(host)
 	defer release()
 
-	var allocCtx context.Context
-	var allocCancel context.CancelFunc
-	if renderer.cfg.BrowserType == "cloak" {
-		wsURL := discoverCloakBrowserWSURL(renderer.cfg.WSURL)
-		if wsURL == "" {
-			return nil, ErrBrowserNotAvailable.New("cloak browser discovery failed")
-		}
-		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), wsURL, chromedp.NoModifyURL)
-		defer allocCancel()
-	} else {
-		allocCtx = renderer.allocCtx
-	}
+	allocCtx := renderer.allocCtx
 
 	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()

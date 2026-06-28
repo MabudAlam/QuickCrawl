@@ -4,15 +4,10 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
-
-	"github.com/MabudAlam/quickcrawl/internal/utils"
 )
 
 // VersionResponse is the JSON shape returned by a browser's
@@ -26,11 +21,11 @@ type VersionResponse struct {
 	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
 }
 
-// GetCDPURL resolves a Chrome DevTools Protocol endpoint URL. Given a
-// ws:// or wss:// URL, it queries the browser's /json/version and
-// returns the live webSocketDebuggerUrl. Browserless v2 / commercial
-// CDP endpoints that serve a WebSocket directly (token= query param
-// or /chromium|/firefox|/webkit path) are passed through unchanged.
+// GetCDPURL resolves a Chrome DevTools Protocol endpoint URL. Given any of
+// ws://, wss://, http://, or https://, it queries the browser's
+// /json/version and returns the live webSocketDebuggerUrl. Browserless v2
+// / commercial CDP endpoints that serve a WebSocket directly (token= query
+// param or /chromium|/firefox|/webkit path) are passed through unchanged.
 func GetCDPURL(baseURL string) (string, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -40,9 +35,9 @@ func GetCDPURL(baseURL string) (string, error) {
 		return baseURL, nil
 	}
 
-	httpBase, ok := wsURLToHTTPBase(baseURL)
+	httpBase, ok := httpBaseFor(baseURL)
 	if !ok {
-		return "", fmt.Errorf("invalid ws URL: %s", baseURL)
+		return "", fmt.Errorf("invalid base URL: %s", baseURL)
 	}
 
 	resp, err := http.Get(httpBase + "/json/version")
@@ -67,57 +62,6 @@ func GetCDPURL(baseURL string) (string, error) {
 	return version.WebSocketDebuggerURL, nil
 }
 
-// discoverCloakBrowserWSURL queries the CloakBrowser /json/version endpoint to
-// recover the current browser WebSocket URL. CloakBrowser creates a new Chrome
-// instance for each new WebSocket connection, so the URL must be discovered
-// fresh for each request. This function is called per-request, not at startup.
-func discoverCloakBrowserWSURL(baseURL string) string {
-	baseURL = strings.TrimRight(baseURL, "/")
-	httpBase, ok := wsURLToHTTPBase(baseURL)
-	if !ok {
-		return baseURL
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpBase+"/json/version", nil)
-	if err != nil {
-		utils.Log.Info("cloak discovery: failed to build request", "base", httpBase, "error", err)
-		return baseURL
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		utils.Log.Info("cloak discovery: failed to reach /json/version", "base", httpBase, "error", err)
-		return baseURL
-	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		utils.Log.Info("cloak discovery: /json/version returned non-200", "base", httpBase, "status", resp.StatusCode)
-		return baseURL
-	}
-
-	var payload struct {
-		WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		utils.Log.Info("cloak discovery: failed to decode response", "base", httpBase, "error", err)
-		return baseURL
-	}
-
-	if payload.WebSocketDebuggerURL == "" {
-		utils.Log.Info("cloak discovery: response missing webSocketDebuggerUrl", "base", httpBase)
-		return baseURL
-	}
-
-	return payload.WebSocketDebuggerURL
-}
-
 // isBrowserlessDirectWS returns true for commercial / browserless-style CDP
 // endpoints that serve a WebSocket directly and don't expose /json/version.
 // Such URLs either carry a token= query parameter or use a browser-named path.
@@ -128,26 +72,31 @@ func isBrowserlessDirectWS(url string) bool {
 	return strings.Contains(url, "/chromium") || strings.Contains(url, "/firefox") || strings.Contains(url, "/webkit")
 }
 
-// wsURLToHTTPBase converts a ws:// or wss:// URL to its http:// or
-// https:// counterpart, stripping any path. Returns ("", false) if
-// the input is not a ws/wss URL.
-func wsURLToHTTPBase(wsURL string) (string, bool) {
-	lower := strings.ToLower(wsURL)
-	var schemeLen int
-	var httpScheme string
+// httpBaseFor returns the HTTP base URL to query for /json/version.
+// Accepts http://, https:// (returned as-is), ws:// (→ http://),
+// and wss:// (→ https://). Path is stripped.
+func httpBaseFor(rawURL string) (string, bool) {
+	lower := strings.ToLower(rawURL)
 	switch {
+	case strings.HasPrefix(lower, "http://"),
+		strings.HasPrefix(lower, "https://"):
+		schemeEnd := strings.Index(lower, "://") + 3
+		idx := strings.Index(rawURL[schemeEnd:], "/")
+		if idx == -1 {
+			return rawURL, true
+		}
+		return rawURL[:schemeEnd+idx], true
 	case strings.HasPrefix(lower, "ws://"):
-		schemeLen = len("ws://")
-		httpScheme = "http://"
+		return "http://" + stripPath(rawURL[len("ws://"):]), true
 	case strings.HasPrefix(lower, "wss://"):
-		schemeLen = len("wss://")
-		httpScheme = "https://"
-	default:
-		return "", false
+		return "https://" + stripPath(rawURL[len("wss://"):]), true
 	}
-	rest := wsURL[schemeLen:]
-	if i := strings.Index(rest, "/"); i != -1 {
-		rest = rest[:i]
+	return "", false
+}
+
+func stripPath(hostAndPath string) string {
+	if i := strings.Index(hostAndPath, "/"); i != -1 {
+		return hostAndPath[:i]
 	}
-	return httpScheme + rest, true
+	return hostAndPath
 }

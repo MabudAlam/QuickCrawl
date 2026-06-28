@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/api"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/crawler"
 	"github.com/MabudAlam/quickcrawl/internal/search"
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -35,8 +36,6 @@ type ScrapeArgs struct {
 	IncludeTags []string `json:"includeTags,omitempty"`
 	ExcludeTags []string `json:"excludeTags,omitempty"`
 	CSSSelector *string  `json:"cssSelector,omitempty"`
-	// Renderer is deprecated: the new scraper uses chromedp only.
-	Renderer *string `json:"renderer,omitempty"`
 }
 
 type SearchArgs struct {
@@ -62,10 +61,6 @@ func convertFormats(formats []string) []types.OutputFormat {
 }
 
 func (s *Server) HandleScrape(ctx context.Context, req mcp.CallToolRequest, args ScrapeArgs) (*mcp.CallToolResult, error) {
-	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
-		utils.Log.Warn("deprecated renderer field ignored for scrape", "renderer", strVal(args.Renderer))
-	}
-
 	coreReq := &types.ScrapeRequest{
 		URL:         args.URL,
 		Formats:     convertFormats(args.Formats),
@@ -115,15 +110,9 @@ type CrawlArgs struct {
 	Formats    []string          `json:"formats,omitempty"`
 	RenderMode *types.RenderMode `json:"renderMode,omitempty"`
 	WaitFor    *int64            `json:"waitFor,omitempty"`
-	// Renderer is deprecated: the new scraper uses chromedp only.
-	Renderer *string `json:"renderer,omitempty"`
 }
 
 func (s *Server) HandleCrawl(ctx context.Context, req mcp.CallToolRequest, args CrawlArgs) (*mcp.CallToolResult, error) {
-	if args.Renderer != nil && *args.Renderer != "" && *args.Renderer != "auto" {
-		utils.Log.Warn("deprecated renderer field ignored for crawl", "renderer", strVal(args.Renderer))
-	}
-
 	maxDepth := uint32(s.config.Crawler.DefaultMaxDepth)
 	if args.MaxDepth != nil {
 		maxDepth = *args.MaxDepth
@@ -274,7 +263,7 @@ func (s *Server) HandleMap(ctx context.Context, req mcp.CallToolRequest, args Ma
 	)
 
 	if discoverErr != nil {
-		if discoverErr.Code == types.CodeForbidden {
+		if discoverErr.Code == core.CodeForbidden {
 			return errorResult("access denied by robots.txt")
 		}
 		return errorResult(fmt.Sprintf("map error: %v", discoverErr.Message))
@@ -509,13 +498,6 @@ func AddTools(mcpServer *server.MCPServer, s *Server) {
 	), mcp.NewTypedToolHandler[SearchArgs](s.HandleSearch))
 
 	utils.Log.Info("MCP tools registered", "tools", "scrape, crawl, check_crawl_status, site_map, search")
-}
-
-func strVal(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
 }
 
 func scrapeInputSchema() map[string]any {

@@ -828,51 +828,6 @@ type HTTPClientConfig struct {
 	UserAgent      string        // User agent string
 }
 
-// =============================================================================
-// Error Type Aliases (re-exported from common)
-// =============================================================================
-
-// Error codes (alias from common).
-const (
-	CodeHttp              = utils.CodeHttp
-	CodeTargetUnreachable = utils.CodeTargetUnreachable
-	CodeInvalidURL        = utils.CodeInvalidURL
-	CodeInvalidRequest    = utils.CodeInvalidRequest
-	CodeRendererError     = utils.CodeRendererError
-	CodeExtractionErr     = utils.CodeExtractionErr
-	CodeCrawlError        = utils.CodeCrawlError
-	CodeTimeout           = utils.CodeTimeout
-	CodeConfigError       = utils.CodeConfigError
-	CodeNotFound          = utils.CodeNotFound
-	CodeRateLimited       = utils.CodeRateLimited
-	CodeInternalErr       = utils.CodeInternalErr
-	CodeForbidden         = utils.CodeForbidden
-)
-
-// Error factories (alias from common).
-var (
-	ErrHttp              = utils.ErrHttp
-	ErrTargetUnreachable = utils.ErrTargetUnreachable
-	ErrInvalidURL        = utils.ErrInvalidURL
-	ErrInvalidRequest    = utils.ErrInvalidRequest
-	ErrRendererError     = utils.ErrRendererError
-	ErrExtraction        = utils.ErrExtraction
-	ErrCrawl             = utils.ErrCrawl
-	ErrTimeout           = utils.ErrTimeout
-	ErrConfig            = utils.ErrConfig
-	ErrNotFound          = utils.ErrNotFound
-	ErrRateLimited       = utils.ErrRateLimited
-	ErrInternal          = utils.ErrInternal
-	ErrForbidden         = utils.ErrForbidden
-)
-
-// Type aliases for utils types.
-type (
-	QuickCrawlError        = utils.QuickCrawlError
-	QuickCrawlErrorFactory = utils.QuickCrawlErrorFactory
-	ErrorCode              = utils.ErrorCode
-)
-
 // ValidateSafeURL checks if a URL is safe for crawling.
 func ValidateSafeURL(u *url.URL) error {
 	return utils.ValidateSafeURL(u)
@@ -972,9 +927,6 @@ type BrandData struct {
 	Backdrops []BrandBackdrop  `json:"backdrops,omitempty"`
 	Address   *BrandAddress    `json:"address,omitempty"`
 	Socials   []SocialLink    `json:"socials,omitempty"`
-	Email     string          `json:"email,omitempty"`
-	IsNSFW    bool            `json:"is_nsfw,omitempty"`
-	Industries *IndustryMap    `json:"industries,omitempty"`
 	Links     *BrandLinks     `json:"links,omitempty"`
 	PrimaryLanguage string    `json:"primary_language,omitempty"`
 	Fonts     *BrandFonts     `json:"fonts,omitempty"`
@@ -1121,15 +1073,6 @@ type BrandAddress struct {
 type SocialLink struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
-}
-
-type IndustryMap struct {
-	EIC []Industry `json:"eic,omitempty"`
-}
-
-type Industry struct {
-	Industry   string `json:"industry,omitempty"`
-	Subindustry string `json:"subindustry,omitempty"`
 }
 
 type BrandLinks struct {

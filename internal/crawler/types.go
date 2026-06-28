@@ -80,8 +80,8 @@ type pendingCrawlItem struct {
 
 // crawlPageResult represents the result of crawling a single URL.
 type crawlPageResult struct {
-	item  pendingCrawlItem       // The URL that was crawled
-	data  *types.ScrapeData      // Extracted page data
-	links []string               // Discovered links on the page
-	err   *types.QuickCrawlError // Error if crawl failed
+	item  pendingCrawlItem    // The URL that was crawled
+	data  *types.ScrapeData   // Extracted page data
+	links []string            // Discovered links on the page
+	err   *core.QuickCrawlError // Error if crawl failed
 }
