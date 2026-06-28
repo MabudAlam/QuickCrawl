@@ -132,7 +132,7 @@ func RunCrawl(opts CrawlOptions) {
 				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs)
 				cancel()
 				if fetchErr != nil {
-					resultsCh <- crawlPageResult{item: item, err: convertCoreCrawlError(fetchErr)}
+					resultsCh <- crawlPageResult{item: item, err: fetchErr}
 					return
 				}
 
@@ -247,20 +247,6 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 	}
 }
 
-// convertCoreCrawlError maps a *core.QuickCrawlError into the
-// *types.QuickCrawlError used by the rest of the crawl pipeline. The two
-// types are structurally identical but live in different packages so
-// the rest of the pipeline keeps a single error type.
-func convertCoreCrawlError(e *core.QuickCrawlError) *types.QuickCrawlError {
-	if e == nil {
-		return nil
-	}
-	return &types.QuickCrawlError{
-		Message: e.Message,
-		Code:    types.ErrorCode(string(e.Code)),
-	}
-}
-
 // DiscoverUrls performs URL discovery starting from a base URL using BFS traversal.
 // It discovers URLs up to maxDepth levels deep, optionally using sitemaps as seeds.
 // Returns a sorted list of unique URLs discovered (excluding the seed URL).
@@ -268,13 +254,13 @@ func convertCoreCrawlError(e *core.QuickCrawlError) *types.QuickCrawlError {
 // The discovery respects robots.txt rules and uses rate limiting per domain.
 // It does NOT scrape content - only collects URLs for later crawling.
 // If ctx is provided and has a deadline, the operation will respect that timeout.
-func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *types.QuickCrawlError) {
+func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *core.QuickCrawlError) {
 	parsed, err := utils.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
-		return nil, types.ErrInvalidRequest.New("Only http/https URLs are allowed")
+		return nil, core.ErrInvalidRequest.New("Only http/https URLs are allowed")
 	}
 	if parsed.Host == "" {
-		return nil, types.ErrInvalidRequest.New("URL has no host")
+		return nil, core.ErrInvalidRequest.New("URL has no host")
 	}
 
 	// Create deadline if none provided, otherwise use existing
@@ -299,7 +285,7 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 		robots = FetchRobotsTxt(origin, userAgent)
 		// Check if the base URL itself is allowed
 		if robots != nil && !robots.IsAllowed(parsed.Path) {
-			return nil, types.ErrForbidden.New("access denied by robots.txt")
+			return nil, core.ErrForbidden.New("access denied by robots.txt")
 		}
 	}
 

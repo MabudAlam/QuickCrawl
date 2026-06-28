@@ -84,15 +84,15 @@ func isRetriableErrStr(errStr string) bool {
 		strings.Contains(errStr, "connection reset")
 }
 
-func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs *int64) (*types.FetchResult, *types.QuickCrawlError) {
+func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs *int64) (*types.FetchResult, *QuickCrawlError) {
 	start := time.Now()
 
 	deadline := start.Add(utils.HTTPRequestTimeout)
 
-	buildRequest := func() (*http.Request, *types.QuickCrawlError) {
+	buildRequest := func() (*http.Request, *QuickCrawlError) {
 		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 		if err != nil {
-			return nil, types.ErrInvalidURL.New(fmt.Sprintf("Invalid URL: %v", err))
+			return nil, ErrInvalidURL.New(fmt.Sprintf("Invalid URL: %v", err))
 		}
 
 		if f.stealthProfile != nil {
@@ -115,7 +115,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 	for attempt := 0; attempt <= utils.HTTPMaxRetries; attempt++ {
 		remaining := deadline.Sub(time.Now())
 		if remaining <= 0 {
-			return nil, types.ErrHttp.New(fmt.Sprintf("deadline exceeded before HTTP fetch of %s", rawURL))
+			return nil, ErrHttp.New(fmt.Sprintf("deadline exceeded before HTTP fetch of %s", rawURL))
 		}
 
 		if attempt > 0 {
@@ -147,9 +147,9 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 
 			if strings.Contains(lastErrStr, "connection refused") ||
 				strings.Contains(lastErrStr, "no such host") {
-				return nil, types.ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s: %v", rawURL, err))
+				return nil, ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s: %v", rawURL, err))
 			}
-			return nil, types.ErrHttp.New(err.Error())
+			return nil, ErrHttp.New(err.Error())
 		}
 		defer resp.Body.Close()
 
@@ -165,7 +165,7 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 		if cl := resp.Header.Get("Content-Length"); cl != "" {
 			if contentLength, err := strconv.ParseInt(cl, 10, 64); err == nil {
 				if contentLength > utils.MaxResponseBytes {
-					return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", contentLength, utils.MaxResponseBytes))
+					return nil, ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", contentLength, utils.MaxResponseBytes))
 				}
 			}
 		}
@@ -180,11 +180,11 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 
 		body, err := io.ReadAll(io.LimitReader(resp.Body, utils.MaxResponseBytes+1))
 		if err != nil {
-			return nil, types.ErrHttp.New(err.Error())
+			return nil, ErrHttp.New(err.Error())
 		}
 
 		if len(body) > utils.MaxResponseBytes {
-			return nil, types.ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", len(body), utils.MaxResponseBytes))
+			return nil, ErrHttp.New(fmt.Sprintf("Response too large: %d bytes (max %d)", len(body), utils.MaxResponseBytes))
 		}
 
 		var html string
@@ -233,9 +233,9 @@ func (f *HTTPFetcher) Fetch(rawURL string, headers map[string]string, waitForMs 
 
 	if strings.Contains(lastErrStr, "connection refused") ||
 		strings.Contains(lastErrStr, "no such host") {
-		return nil, types.ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s after %d attempts: %v", rawURL, utils.HTTPMaxRetries+1, lastErr))
+		return nil, ErrTargetUnreachable.New(fmt.Sprintf("Could not reach %s after %d attempts: %v", rawURL, utils.HTTPMaxRetries+1, lastErr))
 	}
-	return nil, types.ErrHttp.New(fmt.Sprintf("failed after %d attempts: %v", utils.HTTPMaxRetries+1, lastErr))
+	return nil, ErrHttp.New(fmt.Sprintf("failed after %d attempts: %v", utils.HTTPMaxRetries+1, lastErr))
 }
 
 func canonicalStatusText(code uint16) string {

@@ -3,63 +3,8 @@ package core
 import (
 	"strings"
 
-	"github.com/MabudAlam/quickcrawl/internal/extractor"
 	"github.com/MabudAlam/quickcrawl/internal/types"
 )
-
-type Extractor struct{}
-
-func NewExtractor() *Extractor {
-	return &Extractor{}
-}
-
-func (e *Extractor) Extract(opts extractor.ExtractOptions) *types.ScrapeData {
-	internalOpts := extractor.ExtractOptions{
-		RawHTML:       opts.RawHTML,
-		RawBytes:      opts.RawBytes,
-		SourceURL:     opts.SourceURL,
-		StatusCode:    opts.StatusCode,
-		RenderedMode:  opts.RenderedMode,
-		Formats:       opts.Formats,
-		IncludeTags:   opts.IncludeTags,
-		ExcludeTags:   opts.ExcludeTags,
-		CSSSelector:   opts.CSSSelector,
-		ExtractorType: extractor.ExtractorTrafilatura,
-	}
-
-	data := extractor.Extract(internalOpts)
-	if data == nil {
-		return &types.ScrapeData{
-			Metadata: types.PageMetadata{
-				SourceURL:  opts.SourceURL,
-				StatusCode: uint16(opts.StatusCode),
-			},
-		}
-	}
-
-	return &types.ScrapeData{
-		Markdown:   data.Markdown,
-		HTML:       data.HTML,
-		RawHTML:    data.RawHTML,
-		PlainText:  data.PlainText,
-		Links:      data.Links,
-		ImageLinks: data.ImageLinks,
-		JSON:       data.JSON,
-		Warning:    data.Warning,
-		Metadata: types.PageMetadata{
-			Title:         data.Metadata.Title,
-			Description:   data.Metadata.Description,
-			OGTitle:       data.Metadata.OGTitle,
-			OGDescription: data.Metadata.OGDescription,
-			OGImage:       data.Metadata.OGImage,
-			CanonicalURL:  data.Metadata.CanonicalURL,
-			SourceURL:     data.Metadata.SourceURL,
-			Language:      data.Metadata.Language,
-			StatusCode:    data.Metadata.StatusCode,
-			RenderedMode:  data.Metadata.RenderedMode,
-		},
-	}
-}
 
 func containsFormat(formats []types.OutputFormat, target types.OutputFormat) bool {
 	for _, f := range formats {

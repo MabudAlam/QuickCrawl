@@ -28,7 +28,7 @@ type MapOptions struct {
 // HTTP-only (no JavaScript rendering) — sitemap crawling and link
 // extraction do not benefit from a browser, so we use the same
 // *renderer.HTTPFetcher the scraper delegates to internally.
-func Map(opts MapOptions) (*types.MapData, *types.QuickCrawlError) {
+func Map(opts MapOptions) (*types.MapData, *core.QuickCrawlError) {
 	maxDepth := uint32(2)
 	if opts.MaxDepth > 0 {
 		maxDepth = opts.MaxDepth

@@ -245,10 +245,8 @@ func formatCoreScrapeData(data *types.ScrapeData) string {
 	return string(encoded)
 }
 
-// loadConfig loads application configuration from file and environment variables.
-// It's a thin wrapper around the internal config loader that handles errors.
 func loadConfig() (*types.AppConfig, error) {
-	return configLoadAppConfig()
+	return config.LoadAppConfig()
 }
 
 func handleScrapeError(err *core.QuickCrawlError, mode *types.RenderMode) error {

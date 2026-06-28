@@ -111,7 +111,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
 			Error:     stringPtr(err.Error()),
-			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
+			ErrorCode: stringPtr(string(core.CodeInvalidRequest)),
 		})
 		return
 	}
@@ -201,7 +201,7 @@ func (h *Handler) Scrape(c *gin.Context) {
 			}
 			resp.Success = false
 			resp.Error = &errorMsg
-			code := string(types.CodeHttp)
+			code := string(core.CodeHttp)
 			resp.ErrorCode = &code
 			resp.Warning = nil
 		}
@@ -247,7 +247,7 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
 			Error:     stringPtr(err.Error()),
-			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
+			ErrorCode: stringPtr(string(core.CodeInvalidRequest)),
 		})
 		return
 	}
@@ -268,7 +268,7 @@ func (h *Handler) StartCrawl(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, types.APIResponse[struct{}]{
 			Success:   false,
 			Error:     stringPtr("scraper is not initialized"),
-			ErrorCode: stringPtr(string(types.CodeInternalErr)),
+			ErrorCode: stringPtr(string(core.CodeInternalErr)),
 		})
 		return
 	}
@@ -381,7 +381,7 @@ func (h *Handler) Map(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, types.APIResponse[struct{}]{
 			Success:   false,
 			Error:     stringPtr(err.Error()),
-			ErrorCode: stringPtr(string(types.CodeInvalidRequest)),
+			ErrorCode: stringPtr(string(core.CodeInvalidRequest)),
 		})
 		return
 	}
@@ -423,11 +423,11 @@ func (h *Handler) Map(c *gin.Context) {
 	)
 
 	if discoverErr != nil {
-		if discoverErr.Code == types.CodeForbidden {
+		if discoverErr.Code == core.CodeForbidden {
 			c.JSON(http.StatusForbidden, types.APIResponse[struct{}]{
 				Success:   false,
 				Error:     stringPtr("access denied by robots.txt"),
-				ErrorCode: stringPtr(string(types.CodeForbidden)),
+				ErrorCode: stringPtr(string(core.CodeForbidden)),
 			})
 			return
 		}
@@ -608,20 +608,20 @@ func searchResponseToAPIResponse(resp *search.Response) types.SearchResponse {
 // the (HTTP status, API error code) pair to return to the caller.
 func mapScrapeError(scrapeErr *core.QuickCrawlError) (int, string) {
 	status := http.StatusInternalServerError
-	code := string(types.CodeInternalErr)
+	code := string(core.CodeInternalErr)
 	switch scrapeErr.Code {
 	case core.CodeInvalidURL, core.CodeInvalidRequest:
 		status = http.StatusBadRequest
-		code = string(types.CodeInvalidRequest)
+		code = string(core.CodeInvalidRequest)
 	case core.CodeExtractionError:
 		status = http.StatusUnprocessableEntity
-		code = string(types.CodeExtractionErr)
+		code = string(core.CodeExtractionError)
 	case core.CodeTimeout:
 		status = http.StatusGatewayTimeout
-		code = string(types.CodeTimeout)
+		code = string(core.CodeTimeout)
 	case core.CodeRateLimited:
 		status = http.StatusTooManyRequests
-		code = string(types.CodeRateLimited)
+		code = string(core.CodeRateLimited)
 	}
 	return status, code
 }

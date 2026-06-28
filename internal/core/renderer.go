@@ -246,7 +246,7 @@ func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, 
 		waitForMs := waitMs
 		typesResult, typesErr := renderer.http.Fetch(rawURL, headers, &waitForMs)
 		if typesErr != nil {
-			return nil, convertTypesError(typesErr)
+			return nil, typesErr
 		}
 		return toCoreFetchResult(typesResult, rawURL), nil
 	}
@@ -263,7 +263,7 @@ func (renderer *Renderer) FetchOrchestrator(ctx context.Context, rawURL string, 
 		if renderer.allocCtx != nil {
 			return renderer.fetchWithCDPBrowser(ctx, rawURL, headers, waitMs)
 		}
-		return nil, convertTypesError(typesErr)
+		return nil, typesErr
 	}
 
 	result := toCoreFetchResult(typesResult, rawURL)
@@ -356,18 +356,6 @@ func toCoreFetchResult(r *types.FetchResult, rawURL string) *FetchResult {
 	return out
 }
 
-// convertTypesError maps a *types.QuickCrawlError into the local *core.QuickCrawlError
-// so the public surface of this package keeps its own error type.
-func convertTypesError(e *types.QuickCrawlError) *QuickCrawlError {
-	if e == nil {
-		return nil
-	}
-	return &QuickCrawlError{
-		Message: e.Message,
-		Code:    ErrorCode(string(e.Code)),
-	}
-}
-
 // toTypesFetchResult is the inverse of toCoreFetchResult: it adapts a
 // *core.FetchResult back into a *types.FetchResult for the legacy crawl
 // pipeline (and any other consumer that expects the types shape). Fields
@@ -437,21 +425,7 @@ func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string
 	release := renderer.pool.Acquire(host)
 	defer release()
 
-	// Step 3: For CloakBrowser, discover a fresh WS URL per request.
-	// CloakBrowser creates a new Chrome instance for each WebSocket connection,
-	// so the URL from startup would be stale.
-	var allocCtx context.Context
-	var allocCancel context.CancelFunc
-	if renderer.cfg.BrowserType == "cloak" {
-		wsURL := discoverCloakBrowserWSURL(renderer.cfg.WSURL)
-		if wsURL == "" {
-			return nil, ErrBrowserNotAvailable.New("cloak browser discovery failed")
-		}
-		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), wsURL, chromedp.NoModifyURL)
-		defer allocCancel()
-	} else {
-		allocCtx = renderer.allocCtx
-	}
+	allocCtx := renderer.allocCtx
 
 	// Step 4: Create a new chromedp context.
 	// chromedp.NewContext creates a new browser tab (target) from the allocator.

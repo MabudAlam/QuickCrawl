@@ -40,7 +40,7 @@ type CrawlJob struct {
 // NewAppState creates a new application state instance with the given configuration.
 // It initializes the crawl job map and starts a background goroutine to clean up
 // expired jobs. Returns the initialized state or an error if configuration fails.
-func NewAppState(cfg *types.AppConfig) (*AppState, *types.QuickCrawlError) {
+func NewAppState(cfg *types.AppConfig) (*AppState, *core.QuickCrawlError) {
 	if cfg == nil {
 		cfg = &types.AppConfig{}
 	}

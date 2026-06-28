@@ -1,65 +1,72 @@
 package crawler
 
 import (
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
+// urlset and sitemapindex match the sitemap.org 0.9 schema. Both carry
+// <loc>...</loc> entries; <sitemap> wraps a nested sitemap in an index file.
+type sitemapURLSet struct {
+	XMLName xml.Name    `xml:"urlset"`
+	URLs    []sitemapURL `xml:"url"`
+	Sitemaps []sitemapURL `xml:"sitemap"`
+}
+
+type sitemapURL struct {
+	Loc string `xml:"loc"`
+}
+
+// sitemapIndex wraps <sitemapindex><sitemap><loc></loc></sitemap>...</sitemapindex>.
+type sitemapIndex struct {
+	XMLName   xml.Name      `xml:"sitemapindex"`
+	Sitemaps  []sitemapURL `xml:"sitemap"`
+}
+
 // ParseSitemap parses a sitemap XML string and returns all URLs found.
-func ParseSitemap(xml string) []string {
+// Handles both <urlset> (regular sitemap) and <sitemapindex> (index of sitemaps).
+func ParseSitemap(xmlStr string) []string {
 	var urls []string
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(xml))
-	if err != nil {
-		return parseSitemapWithRegex(xml)
-	}
-
-	// Extract URLs from <url><loc>...</loc></url> entries
-	doc.Find("url > loc").Each(func(i int, s *goquery.Selection) {
-		text := strings.TrimSpace(s.Text())
-		if text != "" {
-			urls = append(urls, text)
-		}
-	})
-
-	// If no URLs found, try sitemap entries (for sitemap index files)
-	if len(urls) == 0 {
-		doc.Find("sitemap > loc").Each(func(i int, s *goquery.Selection) {
-			text := strings.TrimSpace(s.Text())
-			if text != "" {
-				urls = append(urls, text)
+	if doc := tryParse[sitemapURLSet](xmlStr); doc != nil {
+		for _, u := range doc.URLs {
+			if u.Loc != "" {
+				urls = append(urls, strings.TrimSpace(u.Loc))
 			}
-		})
+		}
+		for _, s := range doc.Sitemaps {
+			if s.Loc != "" {
+				urls = append(urls, strings.TrimSpace(s.Loc))
+			}
+		}
+		return urls
 	}
 
-	if len(urls) == 0 {
-		return parseSitemapWithRegex(xml)
+	if doc := tryParse[sitemapIndex](xmlStr); doc != nil {
+		for _, s := range doc.Sitemaps {
+			if s.Loc != "" {
+				urls = append(urls, strings.TrimSpace(s.Loc))
+			}
+		}
+		return urls
 	}
 
 	return urls
 }
 
-// parseSitemapWithRegex uses regex to extract URLs when XML parsing fails.
-func parseSitemapWithRegex(xml string) []string {
-	var urls []string
-	re := regexp.MustCompile(`<loc[^>]*>([^<]+)</loc>`)
-	matches := re.FindAllStringSubmatch(xml, -1)
-	for _, m := range matches {
-		if len(m) > 1 {
-			trimmed := strings.TrimSpace(m[1])
-			if trimmed != "" {
-				urls = append(urls, trimmed)
-			}
-		}
+func tryParse[T any](xmlStr string) *T {
+	var doc T
+	dec := xml.NewDecoder(strings.NewReader(xmlStr))
+	dec.Strict = false
+	if err := dec.Decode(&doc); err != nil {
+		return nil
 	}
-	return urls
+	return &doc
 }
 
 // FetchSitemap fetches and parses a sitemap from a URL.

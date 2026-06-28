@@ -15,11 +15,10 @@ import (
 )
 
 type Scraper struct {
-	renderer  *Renderer
-	extractor *Extractor
-	llm       *llmExtractor
-	llmCfg    *types.LLMConfig
-	cfg       types.ScraperConfig
+	renderer *Renderer
+	llm      *llmExtractor
+	llmCfg   *types.LLMConfig
+	cfg      types.ScraperConfig
 }
 
 // NewScraper builds a Scraper that delegates HTTP fetching to the shared
@@ -36,11 +35,10 @@ func NewScraper(cfg types.ScraperConfig, httpFetcher *HTTPFetcher, llmConfig *ty
 	}
 
 	return &Scraper{
-		renderer:  r,
-		extractor: NewExtractor(),
-		llm:       newLLMExtractor(),
-		llmCfg:    llmConfig,
-		cfg:       cfg,
+		renderer: r,
+		llm:      newLLMExtractor(),
+		llmCfg:   llmConfig,
+		cfg:      cfg,
 	}, nil
 }
 
@@ -99,7 +97,7 @@ func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.
 		ExtractorType: extractor.ExtractorTrafilatura,
 	}
 
-	data := s.extractor.Extract(extractOpts)
+	data := extractor.Extract(extractOpts)
 
 	data.Metadata.SourceURL = result.URL
 	data.Metadata.StatusCode = result.StatusCode

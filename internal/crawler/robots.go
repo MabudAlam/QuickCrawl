@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/MabudAlam/quickcrawl/internal/core"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
 	"github.com/temoto/robotstxt"
 )
@@ -86,7 +86,7 @@ func FetchRobotsTxt(origin, userAgent string) *RobotsTxt {
 	return ParseRobotsTxt(string(body), userAgent)
 }
 
-func CheckRobotsTxt(rawURL, userAgent string) *types.QuickCrawlError {
+func CheckRobotsTxt(rawURL, userAgent string) *core.QuickCrawlError {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || parsedURL == nil {
 		return nil
@@ -102,9 +102,9 @@ func CheckRobotsTxt(rawURL, userAgent string) *types.QuickCrawlError {
 
 	if !robots.IsAllowed(parsedURL.Path) {
 		utils.Log.Warn("robots.txt denied", "path", parsedURL.Path)
-		return &types.QuickCrawlError{
+		return &core.QuickCrawlError{
 			Message: "access denied by robots.txt",
-			Code:    types.CodeForbidden,
+			Code:    core.CodeForbidden,
 		}
 	}
 
