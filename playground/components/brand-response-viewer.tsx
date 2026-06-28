@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ExternalLink, Copy, Check, Palette, Type, Square, Layers, Globe, Component, Ruler } from "lucide-react"
+import { ExternalLink, Copy, Check, Palette, Type, Square, Layers, Globe, Component, Ruler, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -69,16 +69,24 @@ export function BrandResponseViewer({ data, rawResponse, timeTakenMs }: BrandRes
           <TabsList className="h-auto bg-transparent p-0 gap-1">
             <TabsTrigger
               value="preview"
-              className="rounded-base data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-1.5 text-xs font-medium"
+              className="rounded-base data-[state=active]:shadow-sm px-4 py-1.5 text-xs font-medium"
             >
               Preview
             </TabsTrigger>
             <TabsTrigger
               value="json"
-              className="rounded-base data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-1.5 text-xs font-medium"
+              className="rounded-base data-[state=active]:shadow-sm px-4 py-1.5 text-xs font-medium"
             >
               JSON
             </TabsTrigger>
+            {data.screenshot && (
+              <TabsTrigger
+                value="screenshot"
+                className="rounded-base data-[state=active]:shadow-sm px-4 py-1.5 text-xs font-medium"
+              >
+                Screenshot
+              </TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
       </div>
@@ -94,8 +102,38 @@ export function BrandResponseViewer({ data, rawResponse, timeTakenMs }: BrandRes
             </pre>
           </div>
         )}
+        {activeTab === "screenshot" && data.screenshot && (
+          <ScreenshotTab screenshot={data.screenshot} />
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+function ScreenshotTab({ screenshot }: { screenshot: string }) {
+  const downloadScreenshot = () => {
+    const link = document.createElement("a")
+    link.href = `data:image/jpeg;base64,${screenshot}`
+    link.download = `screenshot-${Date.now()}.jpg`
+    link.click()
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/30 shrink-0">
+        <Button variant="neutral" size="sm" onClick={downloadScreenshot} className="h-7 px-3 gap-1.5">
+          <Download className="h-3.5 w-3.5" />
+          <span className="text-xs">Download</span>
+        </Button>
+      </div>
+      <div className="flex-1 overflow-auto p-4 bg-muted/10">
+        <img
+          src={`data:image/jpeg;base64,${screenshot}`}
+          alt="Full page screenshot"
+          className="w-full rounded-base border-2 border-border shadow-2xl"
+        />
+      </div>
+    </div>
   )
 }
 
@@ -189,12 +227,12 @@ function PreviewTab({ data, isDark }: { data: BrandResponse; isDark: boolean }) 
         <div className="relative z-10 px-5 pb-4 pt-1">
           <div className="ml-25 flex min-h-[4.5rem] flex-col justify-end">
             {brand?.title || brand?.name ? (
-              <h1 className="text-2xl font-bold leading-tight text-white drop-shadow-md">
+              <h1 className={`text-2xl font-bold leading-tight drop-shadow-md ${isDark ? "text-white" : "text-foreground"}`}>
                 {brand.title || brand.name}
               </h1>
             ) : null}
             {brand?.tagline && (
-              <p className="mt-1 text-sm font-medium text-white/80 drop-shadow-md line-clamp-1">
+              <p className={`mt-1 text-sm font-medium drop-shadow-md line-clamp-1 ${isDark ? "text-white/80" : "text-foreground/80"}`}>
                 {brand.tagline}
               </p>
             )}
