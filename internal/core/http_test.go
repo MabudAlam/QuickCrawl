@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -93,7 +94,7 @@ func TestHTTPFetcher_Fetch_BasicHTML(t *testing.T) {
 	defer server.Close()
 
 	fetcher := NewHTTPFetcher("", nil)
-	result, err := fetcher.Fetch(server.URL, nil, nil)
+	result, err := fetcher.Fetch(context.Background(), server.URL, nil, nil)
 
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -111,7 +112,7 @@ func TestHTTPFetcher_Fetch_BasicHTML(t *testing.T) {
 
 func TestHTTPFetcher_Fetch_InvalidURL(t *testing.T) {
 	fetcher := NewHTTPFetcher("", nil)
-	result, err := fetcher.Fetch("http://invalid-url-that-does-not-exist", nil, nil)
+	result, err := fetcher.Fetch(context.Background(), "http://invalid-url-that-does-not-exist", nil, nil)
 
 	if err == nil {
 		t.Errorf("expected error for invalid URL")
@@ -133,7 +134,7 @@ func TestHTTPFetcher_Fetch_SetsCustomHeaders(t *testing.T) {
 
 	fetcher := NewHTTPFetcher("", nil)
 	customHeaders := map[string]string{"X-Custom-Header": "test-value"}
-	_, _ = fetcher.Fetch(server.URL, customHeaders, nil)
+	_, _ = fetcher.Fetch(context.Background(), server.URL, customHeaders, nil)
 
 	if receivedHeaders.Get("X-Custom-Header") != "test-value" {
 		t.Errorf("expected X-Custom-Header 'test-value', got %q", receivedHeaders.Get("X-Custom-Header"))
