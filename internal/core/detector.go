@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -234,6 +235,79 @@ func isSoftBlockStatus(statusCode uint16) bool {
 // isPDFContentType returns true for PDF content type.
 func isPDFContentType(ct string) bool {
 	return ct == "application/pdf"
+}
+
+// isAntiBotPage checks page HTML for generic anti-bot challenge markers.
+// This includes Cloudflare "Just a Moment" pages, CAPTCHA pages, and generic
+// access denied messages. It is a simple string search and does not detect
+// vendor-specific blocks (Akamai, PerimeterX, Datadome, etc. are only in
+// the original renderer).
+//
+// The marker set is intentionally broad — false positives are cheap (a
+// block page is returned with a warning instead of waiting 15s for the
+// SPA poll to time out and 3s for autoscroll to give up). Real content
+// pages very rarely contain these substrings in their first 1KB of
+// body text.
+func isAntiBotPage(html string) bool {
+	html = strings.ToLower(html)
+	markers := []string{
+		// Cloudflare variants — covers "Just a Moment" challenges,
+		// generic blocks, and the per-incident "Ray ID" error pages.
+		"just a moment",
+		"attention required",
+		"cf-browser-verification",
+		"cf-challenge",
+		"checking your browser before accessing",
+		"this site is using a security service to protect itself",
+		"ray id",                      // Cloudflare incident id on error pages
+		"cloudflare",                  // generic CF identifier
+		"blocked by network security", // Reddit's Cloudflare-block text
+		"your request has been blocked",
+		// Generic / vendor-agnostic. We intentionally omit the
+		// very common word "forbidden" — it false-positives on
+		// book titles and code comments, and 403 status codes
+		// already cover the legitimate-block case at the HTTP
+		// level. "captcha" is kept because it is a strong
+		// anti-bot signal and rarely appears in regular content.
+		"captcha",
+		"access denied",
+	}
+	for _, m := range markers {
+		if strings.Contains(html, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// escalationReason is the preflight check for deciding whether an HTTP-fetched
+// page must be re-fetched in a real browser (JS rendering). It returns a human
+// reason when escalation is warranted, or "" when the HTTP result is fine as-is.
+// The first matching trigger wins; ordering and status gating mirror the
+// original auto-mode logic (soft-block applies on any status, thin-content and
+// anti-bot detection only on 2xx).
+func escalationReason(html string, statusCode uint16) string {
+	if needsJSRendering(html) {
+		return "SPA shell detected"
+	}
+	if isSoftBlockStatus(statusCode) {
+		return fmt.Sprintf("soft-block status HTTP %d", statusCode)
+	}
+	if statusCode >= 200 && statusCode < 300 {
+		if looksLikeThinHTML(html) {
+			return "thin HTML content"
+		}
+		if looksLikeCloudflareChallenge(html) {
+			return "Cloudflare challenge detected"
+		}
+		if looksLikeGenericBotWall(html) {
+			return "generic anti-bot wall detected"
+		}
+		if vendor := looksLikeVendorBlock(html); vendor != "" {
+			return "anti-bot vendor block: " + vendor
+		}
+	}
+	return ""
 }
 
 // bodyHTMLWithoutScriptsLower returns the <body> content of a lowercased HTML doc
