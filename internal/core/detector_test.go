@@ -311,9 +311,9 @@ func TestLooksLikeThinHTML(t *testing.T) {
 
 func TestExtractBodyTextLen(t *testing.T) {
 	cases := []struct {
-		name  string
-		html  string
-		want  int
+		name string
+		html string
+		want int
 	}{
 		{"no body tag", `<html><head></head>`, 1000},
 		{"empty body", `<html><body></body></html>`, 0},
@@ -408,5 +408,48 @@ func TestNeedsJSRendering_Storybook(t *testing.T) {
 	html := `<html><body><div id="storybook-root"></div></body></html>`
 	if !needsJSRendering(html) {
 		t.Error("expected needsJSRendering to return true for Storybook indicator")
+	}
+}
+
+func TestEscalationReason_SpaShell(t *testing.T) {
+	html := `<html><head></head><body><div id="root"></div><script src="/app.js"></script></body></html>`
+	if got := escalationReason(html, 200); got != "SPA shell detected" {
+		t.Errorf("escalationReason = %q, want %q", got, "SPA shell detected")
+	}
+}
+
+func TestEscalationReason_SoftBlockStatus(t *testing.T) {
+	html := `<html><body><p>` + strings.Repeat("real content here. ", 30) + `</p></body></html>`
+	if got := escalationReason(html, 403); got != "soft-block status HTTP 403" {
+		t.Errorf("escalationReason = %q, want %q", got, "soft-block status HTTP 403")
+	}
+}
+
+func TestEscalationReason_ThinContent(t *testing.T) {
+	html := `<html><body></body></html>`
+	if got := escalationReason(html, 200); got != "thin HTML content" {
+		t.Errorf("escalationReason = %q, want %q", got, "thin HTML content")
+	}
+}
+
+func TestEscalationReason_CloudflareChallenge(t *testing.T) {
+	html := `<html><body><title>Just a moment...</title><div>Checking your browser before accessing. ` + strings.Repeat("verifying you are human, please stand by. ", 15) + `</div></body></html>`
+	if got := escalationReason(html, 200); got != "Cloudflare challenge detected" {
+		t.Errorf("escalationReason = %q, want %q", got, "Cloudflare challenge detected")
+	}
+}
+
+func TestEscalationReason_NoEscalation(t *testing.T) {
+	html := `<html><body><article><p>` + strings.Repeat("lorem ipsum dolor sit amet consectetur. ", 20) + `</p></article></body></html>`
+	if got := escalationReason(html, 200); got != "" {
+		t.Errorf("escalationReason = %q, want %q", got, "")
+	}
+}
+
+func TestEscalationReason_OrderingSpaWinsOverThin(t *testing.T) {
+	// An SPA shell (empty body) must report SPA before the thin-content trigger.
+	html := `<html><body><div id="app"></div></body></html>`
+	if got := escalationReason(html, 200); got != "SPA shell detected" {
+		t.Errorf("escalationReason = %q, want %q", got, "SPA shell detected")
 	}
 }
