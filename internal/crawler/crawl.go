@@ -136,6 +136,12 @@ func RunCrawl(opts CrawlOptions) {
 					return
 				}
 
+				// Non-text asset (image, video, font…): skip this page but keep
+				// crawling the rest of the site.
+				if fetchResult.ContentType != nil && core.IsBinaryContentType(*fetchResult.ContentType) {
+					return
+				}
+
 				data := extractor.Extract(extractor.ExtractOptions{
 					RawHTML:       fetchResult.HTML,
 					RawBytes:      fetchResult.RawBytes,

@@ -15,13 +15,13 @@ import (
 // It includes the position in the result set, the title, URL, snippet,
 // engine, and (optionally) a published date string.
 type SearXNGResult struct {
-	Position   int
-	Title      string
-	URL        string
-	Snippet    string
-	Engine     string
-	Published  string
-	Score      float64 // Relevance score 0-100 derived from position (100 = most relevant)
+	Position  int
+	Title     string
+	URL       string
+	Snippet   string
+	Engine    string
+	Published string
+	Score     float64 // Relevance score 0-100 derived from position (100 = most relevant)
 }
 
 // SearXNGSearcher queries a SearXNG /search?format=json endpoint and
@@ -141,10 +141,10 @@ func (s *SearXNGSearcher) Search(ctx context.Context, opts Options) ([]SearXNGRe
 // searxngResponse mirrors the JSON shape returned by SearXNG with
 // format=json. Only the fields we need are decoded.
 type searxngResponse struct {
-	Query    string         `json:"query"`
-	Results  []searxngEntry `json:"results"`
-	Answers  []any          `json:"answers"`
-	Infoboxes []any         `json:"infoboxes"`
+	Query     string         `json:"query"`
+	Results   []searxngEntry `json:"results"`
+	Answers   []any          `json:"answers"`
+	Infoboxes []any          `json:"infoboxes"`
 }
 
 type searxngEntry struct {

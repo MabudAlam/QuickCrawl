@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/MabudAlam/quickcrawl/internal/types"
+	"github.com/gin-gonic/gin"
 )
 
 func CORSMiddlewareGin() gin.HandlerFunc {

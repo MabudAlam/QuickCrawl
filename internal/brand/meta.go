@@ -41,17 +41,3 @@ func extractDescription(doc *goquery.Document) string {
 	})
 	return strings.TrimSpace(description)
 }
-
-func extractTagline(doc *goquery.Document) string {
-	var tagline string
-	doc.Find("meta").Each(func(i int, s *goquery.Selection) {
-		if tagline != "" {
-			return
-		}
-		property, _ := s.Attr("property")
-		if property == "og:description" {
-			tagline, _ = s.Attr("content")
-		}
-	})
-	return strings.TrimSpace(tagline)
-}

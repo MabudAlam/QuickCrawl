@@ -546,9 +546,9 @@ func TestAutoScroll_MaxHeightGrowth(t *testing.T) {
 	// path to exit is the growth cap.
 	const cap = 300
 	result := runAutoScroll(t, ctx, chromeURL(t, srv), AutoScrollOptions{
-		MaxSteps:       20, // would be 20 iterations otherwise
-		PauseMs:        50,
-		StagnantLimit:  99, // never fires (page keeps growing)
+		MaxSteps:        20, // would be 20 iterations otherwise
+		PauseMs:         50,
+		StagnantLimit:   99, // never fires (page keeps growing)
 		MaxHeightGrowth: cap,
 	})
 
@@ -580,11 +580,11 @@ func TestAutoScroll_MaxDuration(t *testing.T) {
 	const budget = 1500 // ms
 	start := time.Now()
 	result := runAutoScroll(t, ctx, chromeURL(t, srv), AutoScrollOptions{
-		MaxSteps:       20, // would be 20 iterations otherwise
-		PauseMs:        200,
-		StagnantLimit:  99, // never fires
+		MaxSteps:        20, // would be 20 iterations otherwise
+		PauseMs:         200,
+		StagnantLimit:   99,     // never fires
 		MaxHeightGrowth: 100000, // effectively unlimited
-		MaxDurationMs:  budget,
+		MaxDurationMs:   budget,
 	})
 	elapsed := time.Since(start)
 
@@ -613,8 +613,8 @@ func TestAutoScroll_LazyImagePreload(t *testing.T) {
 	// Run with a tiny MaxSteps so the scroll loop barely runs
 	// and the test isolates the pre-load pass.
 	_ = runAutoScroll(t, ctx, chromeURL(t, srv), AutoScrollOptions{
-		MaxSteps:    1,
-		PauseMs:     10,
+		MaxSteps:       1,
+		PauseMs:        10,
 		LoadLazyImages: true,
 	})
 
@@ -658,9 +658,9 @@ func TestAutoScroll_ContainerSelector(t *testing.T) {
 	preRun := measureElementHeight(t, ctx, "#pane-content")
 
 	result := runAutoScroll(t, ctx, chromeURL(t, srv), AutoScrollOptions{
-		MaxSteps:         20,
-		PauseMs:          100,
-		StagnantLimit:    3,
+		MaxSteps:          20,
+		PauseMs:           100,
+		StagnantLimit:     3,
 		ContainerSelector: "#pane",
 	})
 

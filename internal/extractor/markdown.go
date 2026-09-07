@@ -2,7 +2,6 @@ package extractor
 
 import (
 	"regexp"
-	"strings"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2"
 )
@@ -61,76 +60,4 @@ func postProcessMarkdown(md string) string {
 // FilterMarkdownImages removes all markdown images `![alt](url)` from the markdown text.
 func FilterMarkdownImages(md string) string {
 	return markdownImgRe.ReplaceAllString(md, "")
-}
-
-func convertIndentedToFencedCode(md string) string {
-	var result strings.Builder
-	var codeLines []string
-	inFenced := false
-
-	for _, line := range strings.Split(md, "\n") {
-		if strings.TrimLeft(line, " \t") == "" {
-			continue
-		}
-
-		trimmed := strings.TrimLeft(line, " \t")
-
-		if strings.HasPrefix(trimmed, "```") {
-			if inFenced {
-				appendCodeBlock(&result, &codeLines)
-				inFenced = false
-			} else {
-				if len(codeLines) > 0 {
-					appendCodeBlock(&result, &codeLines)
-				}
-				inFenced = true
-			}
-			result.WriteString(line)
-			result.WriteString("\n")
-			continue
-		}
-
-		if inFenced {
-			result.WriteString(line)
-			result.WriteString("\n")
-			continue
-		}
-
-		isCodeIndent := strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t")
-
-		if isCodeIndent {
-			stripped := strings.TrimLeft(line, " \t")
-			codeLines = append(codeLines, stripped)
-		} else {
-			if len(codeLines) > 0 {
-				appendCodeBlock(&result, &codeLines)
-			}
-			result.WriteString(line)
-			result.WriteString("\n")
-		}
-	}
-
-	if len(codeLines) > 0 {
-		appendCodeBlock(&result, &codeLines)
-	}
-
-	return result.String()
-}
-
-func appendCodeBlock(result *strings.Builder, codeLines *[]string) {
-	for len(*codeLines) > 0 && (*codeLines)[len(*codeLines)-1] == "" {
-		*codeLines = (*codeLines)[:len(*codeLines)-1]
-	}
-
-	if len(*codeLines) == 0 {
-		return
-	}
-
-	result.WriteString("```\n")
-	for _, line := range *codeLines {
-		result.WriteString(line)
-		result.WriteString("\n")
-	}
-	result.WriteString("```\n")
-	*codeLines = nil
 }

@@ -57,6 +57,13 @@ func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.
 		return nil, err
 	}
 
+	// Fail fast on obvious binary asset URLs (e.g. .svg, .png) regardless of
+	// render mode, so we never spend a browser render on them. PDFs are allowed.
+	if isBinaryURLPath(req.URL) {
+		return nil, ErrUnsupportedContent.New(
+			"URL appears to be a binary asset (e.g. image/video/font), not a web page; only HTML/text/JSON/PDF can be scraped")
+	}
+
 	//If the renderMode field is not specified in the request, leave it nil
 	//so the orchestrator inherits the server-wide default. If it is set,
 	//the orchestrator honors it as the per-request override.
@@ -78,6 +85,15 @@ func (s *Scraper) Scrape(ctx context.Context, req *types.ScrapeRequest) (*types.
 		} else {
 			result.Warning = warning
 		}
+	}
+
+	// A response with no extractable text (image, video, font…) is an error, not
+	// an empty scrape. Detected from the authoritative response Content-Type
+	// (catches binary responses whose URLs carry no obvious extension). PDFs are
+	// allowed and extracted separately.
+	if IsBinaryContentType(result.ContentType) {
+		return nil, ErrUnsupportedContent.New(
+			"target returned non-text content (Content-Type: " + result.ContentType + "); only HTML/text/JSON/PDF can be scraped")
 	}
 
 	formats := req.Formats
@@ -165,17 +181,6 @@ func resolveWaitMs(waitFor *int64, defaultVal int64) int64 {
 		return *waitFor
 	}
 	return defaultVal
-}
-
-func resolveFormats(formats []string) []types.OutputFormat {
-	if len(formats) == 0 {
-		return []types.OutputFormat{types.FormatMarkdown}
-	}
-	out := make([]types.OutputFormat, len(formats))
-	for i, f := range formats {
-		out[i] = types.OutputFormat(f)
-	}
-	return out
 }
 
 func (s *Scraper) Close() error {

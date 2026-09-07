@@ -49,7 +49,7 @@ import (
 //     stringification of our overrides would reveal that navigator.webdriver
 //     was monkey-patched.
 //   - WebGLRenderingContext.getParameter (and WebGL2) → returns "Intel Inc."
-//     + "Intel Iris OpenGL Engine" for UNMASKED_VENDOR_WEBGL (37445) and
+//   - "Intel Iris OpenGL Engine" for UNMASKED_VENDOR_WEBGL (37445) and
 //     UNMASKED_RENDERER_WEBGL (37446). Headless Chrome returns "Google
 //     Inc." / "ANGLE (...)" which is a known bot signal.
 //

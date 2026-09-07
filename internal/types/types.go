@@ -136,7 +136,7 @@ type ScrapeRequest struct {
 	Extract             *ExtractOptions   `json:"extract,omitempty"`             // LLM extraction options
 	LLMExtractionPrompt *string           `json:"llmExtractionPrompt,omitempty"` // LLM extraction prompt override
 	LLMResponseFormat   *string           `json:"llmResponseFormat,omitempty"`   // LLM response format name override
-	TTL *int64 `json:"ttl,omitempty"` // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
+	TTL                 *int64            `json:"ttl,omitempty"`                 // Cache TTL in seconds (0 = bypass cache, >0 = accept cached if younger)
 }
 
 // Defaults sets default values for optional fields.
@@ -159,6 +159,7 @@ func (r *ScrapeRequest) Validate() error {
 	if strings.TrimSpace(r.URL) == "" {
 		return fmt.Errorf("url is required")
 	}
+
 	if _, err := ValidateURL(r.URL); err != nil {
 		return fmt.Errorf("invalid url: %w", err)
 	}
@@ -421,7 +422,7 @@ func (r *SearchRequest) Defaults() {
 
 // Valid SearXNG time_range values. Empty string is treated as "no filter".
 var validTimeRanges = map[string]struct{}{
-	"":     {},
+	"":      {},
 	"day":   {},
 	"week":  {},
 	"month": {},
@@ -443,20 +444,12 @@ var validCategories = map[string]struct{}{
 	"code":         {},
 }
 
-// Valid SearXNG safesearch levels.
-var validSafesearch = map[string]struct{}{
-	"":  {},
-	"0": {},
-	"1": {},
-	"2": {},
-}
-
 // Valid SearXNG render mode overrides accepted by the API.
 var validRenderModes = map[RenderMode]struct{}{
-	"":            {},
-	RenderModeAuto:   {},
+	"":                {},
+	RenderModeAuto:    {},
 	RenderModeBrowser: {},
-	RenderModeHTTP:   {},
+	RenderModeHTTP:    {},
 }
 
 // Validate returns an error if any field holds a value outside the allowed
@@ -495,15 +488,15 @@ func (r *SearchRequest) Validate() error {
 
 // SearchResult represents a single search result with optional scraped content.
 type SearchResult struct {
-	Position  int      `json:"position"`                   // 1-based position in the result set
-	Score     float64  `json:"score"`                       // Native score from search engine
-	BM25Score float64  `json:"bm25_score,omitempty"`       // BM25 relevance score (set when use_bm25=true)
-	Title     string   `json:"title"`                      // Result title
-	URL       string   `json:"url"`                        // Result URL
-	SiteName  string   `json:"site_name,omitempty"`        // Hostname extracted from URL.
-	Snippet   string   `json:"snippet,omitempty"`           // Search snippet / description.
-	Engine    string   `json:"-"`                          // Internal only, not exposed in API response
-	Published string   `json:"published_date,omitempty"`   // ISO 8601 publish date if available.
+	Position  int      `json:"position"`                 // 1-based position in the result set
+	Score     float64  `json:"score"`                    // Native score from search engine
+	BM25Score float64  `json:"bm25_score,omitempty"`     // BM25 relevance score (set when use_bm25=true)
+	Title     string   `json:"title"`                    // Result title
+	URL       string   `json:"url"`                      // Result URL
+	SiteName  string   `json:"site_name,omitempty"`      // Hostname extracted from URL.
+	Snippet   string   `json:"snippet,omitempty"`        // Search snippet / description.
+	Engine    string   `json:"-"`                        // Internal only, not exposed in API response
+	Published string   `json:"published_date,omitempty"` // ISO 8601 publish date if available.
 	Markdown  *string  `json:"markdown,omitempty"`
 	HTML      *string  `json:"html,omitempty"`
 	RawHTML   *string  `json:"raw_html,omitempty"`
@@ -520,10 +513,10 @@ type SearchData struct {
 // SearchResponse is returned by the search endpoint. Matches the public
 // "firecrawl-style" flat shape: {query, results, total_results, page}.
 type SearchResponse struct {
-	Query        string         `json:"query"`        // Echo of the search query.
-	Results      []SearchResult `json:"results"`      // List of search results.
-	TotalResults int            `json:"total_results"`// Number of results returned.
-	Page         int            `json:"page"`         // 0-based page index.
+	Query        string         `json:"query"`         // Echo of the search query.
+	Results      []SearchResult `json:"results"`       // List of search results.
+	TotalResults int            `json:"total_results"` // Number of results returned.
+	Page         int            `json:"page"`          // 0-based page index.
 }
 
 // =============================================================================
@@ -574,11 +567,11 @@ type BrowserInfo struct {
 
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
-	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"`  // Page load timeout
-	PoolSize      int          `toml:"pool_size" json:"poolSize"`             // Browser pool size
-	RenderMode    RenderMode   `toml:"render_mode" json:"renderMode"`         // Render mode: auto, http, browser (empty = inherit)
-	Browser       string       `toml:"browser" json:"browser"`                // Browser: cloak, browserless, lightpanda
-	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                  // Chrome config
+	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
+	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
+	RenderMode    RenderMode   `toml:"render_mode" json:"renderMode"`        // Render mode: auto, http, browser (empty = inherit)
+	Browser       string       `toml:"browser" json:"browser"`               // Browser: cloak, browserless, lightpanda
+	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
 }
 
 // Defaults sets default values for unset fields.
@@ -600,8 +593,8 @@ func (c *RendererConfig) Defaults() {
 type StealthConfig struct {
 	Enabled       bool    `toml:"enabled" json:"enabled"`              // Enable stealth mode
 	JitterFactor  float64 `toml:"jitter_factor" json:"jitterFactor"`   // Random delay factor
-	InjectHeaders bool   `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
-	Strategy      string `toml:"strategy" json:"strategy"`             // Header strategy: modern_browser, mobile_device, bot_friendly
+	InjectHeaders bool    `toml:"inject_headers" json:"injectHeaders"` // Inject browser headers
+	Strategy      string  `toml:"strategy" json:"strategy"`            // Header strategy: modern_browser, mobile_device, bot_friendly
 }
 
 // Defaults sets default values for unset fields.
@@ -685,11 +678,11 @@ func (e *ExtractionConfig) Defaults() {
 
 // CacheConfig configures the Redis cache.
 type CacheConfig struct {
-	Enabled      bool   `toml:"enabled" json:"enabled"`             // Enable/disable caching
-	RedisURL     string `toml:"redis_url" json:"redisUrl"`           // Redis connection URL
-	Password    string `toml:"password" json:"password"`             // Redis password
-	DB           int    `toml:"db" json:"db"`                       // Redis database number
-	TTLDefaultSecs int64 `toml:"ttl_default_secs" json:"ttlDefaultSecs"` // Default TTL in seconds (0 = no cache)
+	Enabled        bool   `toml:"enabled" json:"enabled"`                 // Enable/disable caching
+	RedisURL       string `toml:"redis_url" json:"redisUrl"`              // Redis connection URL
+	Password       string `toml:"password" json:"password"`               // Redis password
+	DB             int    `toml:"db" json:"db"`                           // Redis database number
+	TTLDefaultSecs int64  `toml:"ttl_default_secs" json:"ttlDefaultSecs"` // Default TTL in seconds (0 = no cache)
 }
 
 // ParseRedisURL populates RedisURL, Password, and DB from a standard redis:// URI.
@@ -918,20 +911,20 @@ type BrandResponse struct {
 }
 
 type BrandData struct {
-	Domain     string           `json:"domain,omitempty"`
-	Title     string           `json:"title,omitempty"`
-	Name      string           `json:"name,omitempty"`
-	Tagline   string           `json:"tagline,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Colors    []BrandColor     `json:"colors,omitempty"`
-	Logos     []BrandLogo      `json:"logos,omitempty"`
-	Backdrops []BrandBackdrop  `json:"backdrops,omitempty"`
-	Address   *BrandAddress    `json:"address,omitempty"`
-	Socials   []SocialLink    `json:"socials,omitempty"`
-	Links     *BrandLinks     `json:"links,omitempty"`
-	PrimaryLanguage string    `json:"primary_language,omitempty"`
-	Fonts     *BrandFonts     `json:"fonts,omitempty"`
-	Styleguide *BrandStyleguide `json:"styleguide,omitempty"`
+	Domain          string           `json:"domain,omitempty"`
+	Title           string           `json:"title,omitempty"`
+	Name            string           `json:"name,omitempty"`
+	Tagline         string           `json:"tagline,omitempty"`
+	Description     string           `json:"description,omitempty"`
+	Colors          []BrandColor     `json:"colors,omitempty"`
+	Logos           []BrandLogo      `json:"logos,omitempty"`
+	Backdrops       []BrandBackdrop  `json:"backdrops,omitempty"`
+	Address         *BrandAddress    `json:"address,omitempty"`
+	Socials         []SocialLink     `json:"socials,omitempty"`
+	Links           *BrandLinks      `json:"links,omitempty"`
+	PrimaryLanguage string           `json:"primary_language,omitempty"`
+	Fonts           *BrandFonts      `json:"fonts,omitempty"`
+	Styleguide      *BrandStyleguide `json:"styleguide,omitempty"`
 }
 
 // BrandFonts is the typography signal extracted from a rendered page.
@@ -939,22 +932,22 @@ type BrandData struct {
 // elements/words, what % of the page). FontLinks maps font display name
 // to the actual woff2/woff/ttf file URLs grouped by weight.
 type BrandFonts struct {
-	Fonts     []BrandFont           `json:"fonts"`
+	Fonts     []BrandFont              `json:"fonts"`
 	FontLinks map[string]BrandFontLink `json:"fontLinks"`
 }
 
 type BrandFont struct {
-	Font           string   `json:"font"`
-	Uses           []string `json:"uses"`
-	Fallbacks      []string `json:"fallbacks"`
-	NumElements    int      `json:"num_elements"`
-	NumWords       int      `json:"num_words"`
-	PercentElements int     `json:"percent_elements"`
-	PercentWords   int      `json:"percent_words"`
+	Font            string   `json:"font"`
+	Uses            []string `json:"uses"`
+	Fallbacks       []string `json:"fallbacks"`
+	NumElements     int      `json:"num_elements"`
+	NumWords        int      `json:"num_words"`
+	PercentElements int      `json:"percent_elements"`
+	PercentWords    int      `json:"percent_words"`
 }
 
 type BrandFontLink struct {
-	Type        string            `json:"type"` // "google" | "custom" | "adobe" | "system"
+	Type        string            `json:"type"`  // "google" | "custom" | "adobe" | "system"
 	Files       map[string]string `json:"files"` // weight -> url
 	DisplayName string            `json:"displayName,omitempty"`
 	Category    string            `json:"category,omitempty"`
@@ -965,13 +958,13 @@ type BrandFontLink struct {
 // line-height and letter-spacing. Components carry the actual rendered
 // button/card CSS so a downstream style guide can re-use them verbatim.
 type BrandStyleguide struct {
-	Mode            string                  `json:"mode"` // "light" | "dark"
-	Colors          BrandStyleguideColors   `json:"colors"`
-	Typography      BrandStyleguideTypography `json:"typography"`
-	ElementSpacing  map[string]string       `json:"elementSpacing"`
-	Shadows         map[string]string       `json:"shadows"`
-	Components      BrandStyleguideComponents `json:"components"`
-	FontLinks       map[string]BrandFontLink `json:"fontLinks"`
+	Mode           string                    `json:"mode"` // "light" | "dark"
+	Colors         BrandStyleguideColors     `json:"colors"`
+	Typography     BrandStyleguideTypography `json:"typography"`
+	ElementSpacing map[string]string         `json:"elementSpacing"`
+	Shadows        map[string]string         `json:"shadows"`
+	Components     BrandStyleguideComponents `json:"components"`
+	FontLinks      map[string]BrandFontLink  `json:"fontLinks"`
 }
 
 type BrandStyleguideColors struct {
@@ -1037,7 +1030,7 @@ type BrandCardStyle struct {
 }
 
 type BrandColor struct {
-	Hex string `json:"hex"`
+	Hex  string `json:"hex"`
 	Name string `json:"name"`
 }
 
@@ -1051,24 +1044,24 @@ type BrandLogo struct {
 }
 
 type BrandBackdrop struct {
-	URL        string          `json:"url"`
-	Colors     []BrandColor    `json:"colors,omitempty"`
+	URL        string           `json:"url"`
+	Colors     []BrandColor     `json:"colors,omitempty"`
 	Resolution *ImageResolution `json:"resolution,omitempty"`
 }
 
 type ImageResolution struct {
-	Width      int     `json:"width"`
-	Height     int     `json:"height"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
 	AspectRatio float64 `json:"aspect_ratio"`
 }
 
 type BrandAddress struct {
-	City         string `json:"city,omitempty"`
-	Country      string `json:"country,omitempty"`
-	CountryCode  string `json:"country_code,omitempty"`
+	City          string `json:"city,omitempty"`
+	Country       string `json:"country,omitempty"`
+	CountryCode   string `json:"country_code,omitempty"`
 	StateProvince string `json:"state_province,omitempty"`
-	StateCode   string `json:"state_code,omitempty"`
-	PostalCode  string `json:"postal_code,omitempty"`
+	StateCode     string `json:"state_code,omitempty"`
+	PostalCode    string `json:"postal_code,omitempty"`
 }
 
 type SocialLink struct {
@@ -1077,12 +1070,12 @@ type SocialLink struct {
 }
 
 type BrandLinks struct {
-	Careers  string `json:"careers,omitempty"`
-	Contact  string `json:"contact,omitempty"`
-	Pricing  string `json:"pricing,omitempty"`
-	Terms    string `json:"terms,omitempty"`
-	Privacy  string `json:"privacy,omitempty"`
-	Blog     string `json:"blog,omitempty"`
-	Login    string `json:"login,omitempty"`
-	Signup   string `json:"signup,omitempty"`
+	Careers string `json:"careers,omitempty"`
+	Contact string `json:"contact,omitempty"`
+	Pricing string `json:"pricing,omitempty"`
+	Terms   string `json:"terms,omitempty"`
+	Privacy string `json:"privacy,omitempty"`
+	Blog    string `json:"blog,omitempty"`
+	Login   string `json:"login,omitempty"`
+	Signup  string `json:"signup,omitempty"`
 }

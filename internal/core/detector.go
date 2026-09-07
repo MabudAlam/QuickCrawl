@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -235,6 +236,68 @@ func isSoftBlockStatus(statusCode uint16) bool {
 // isPDFContentType returns true for PDF content type.
 func isPDFContentType(ct string) bool {
 	return ct == "application/pdf"
+}
+
+// binaryPathSuffixes lists file extensions that almost always carry binary,
+// non-scrapeable content. PDF is intentionally excluded (handled separately).
+var binaryPathSuffixes = []string{
+	".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".avif", ".bmp",
+	".woff", ".woff2", ".ttf", ".otf", ".eot",
+	".mp4", ".webm", ".mov", ".avi", ".mkv", ".mp3", ".wav", ".ogg", ".m4a", ".flac",
+	".zip", ".gz", ".tar", ".7z", ".rar", ".bin",
+}
+
+// isBinaryURLPath reports whether the URL's path ends in a known binary asset
+// extension. It is used only as a fallback when the response Content-Type is
+// unknown (the browser render path doesn't surface it) — the Content-Type is
+// otherwise the authoritative signal.
+func isBinaryURLPath(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Path == "" {
+		return false
+	}
+	lower := strings.ToLower(u.Path)
+	for _, ext := range binaryPathSuffixes {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsBinaryContentType reports whether a response Content-Type is a binary
+// format with no extractable text (images, fonts, video, audio, archives).
+// PDF is treated as supported (the extractor handles it separately). Empty and
+// unknown values are allowed through — the browser render path doesn't capture
+// Content-Type, and we don't want to guess on unknown application/* types.
+// ct is the lowercased, charset-stripped header value from cleanContentType.
+func IsBinaryContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if ct == "" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(ct, "text/"),
+		ct == "application/xhtml+xml",
+		ct == "application/xml",
+		ct == "application/json",
+		ct == "application/ld+json",
+		ct == "application/rss+xml",
+		ct == "application/atom+xml",
+		ct == "application/pdf":
+		return false
+	}
+	if strings.HasPrefix(ct, "image/") ||
+		strings.HasPrefix(ct, "video/") ||
+		strings.HasPrefix(ct, "audio/") ||
+		strings.HasPrefix(ct, "font/") {
+		return true
+	}
+	switch ct {
+	case "application/octet-stream", "application/zip", "application/gzip", "application/x-tar":
+		return true
+	}
+	return false
 }
 
 // isAntiBotPage checks page HTML for generic anti-bot challenge markers.

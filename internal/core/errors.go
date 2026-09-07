@@ -7,19 +7,20 @@ import (
 type ErrorCode string
 
 const (
-	CodeHttp              ErrorCode = "http_error"
-	CodeTargetUnreachable ErrorCode = "target_unreachable"
-	CodeInvalidURL        ErrorCode = "invalid_url"
-	CodeInvalidRequest    ErrorCode = "invalid_request"
-	CodeRendererError     ErrorCode = "renderer_error"
-	CodeExtractionError   ErrorCode = "extraction_error"
-	CodeCrawlError        ErrorCode = "crawl_error"
-	CodeTimeout           ErrorCode = "timeout"
-	CodeConfigError       ErrorCode = "config_error"
-	CodeNotFound          ErrorCode = "not_found"
-	CodeRateLimited       ErrorCode = "rate_limited"
-	CodeInternalErr       ErrorCode = "internal_error"
-	CodeForbidden         ErrorCode = "forbidden"
+	CodeHttp               ErrorCode = "http_error"
+	CodeTargetUnreachable  ErrorCode = "target_unreachable"
+	CodeInvalidURL         ErrorCode = "invalid_url"
+	CodeInvalidRequest     ErrorCode = "invalid_request"
+	CodeRendererError      ErrorCode = "renderer_error"
+	CodeExtractionError    ErrorCode = "extraction_error"
+	CodeCrawlError         ErrorCode = "crawl_error"
+	CodeTimeout            ErrorCode = "timeout"
+	CodeConfigError        ErrorCode = "config_error"
+	CodeNotFound           ErrorCode = "not_found"
+	CodeRateLimited        ErrorCode = "rate_limited"
+	CodeInternalErr        ErrorCode = "internal_error"
+	CodeForbidden          ErrorCode = "forbidden"
+	CodeUnsupportedContent ErrorCode = "unsupported_content_type"
 )
 
 type QuickCrawlError struct {
@@ -55,20 +56,21 @@ func (f ErrorFactory) Wrap(err error) *QuickCrawlError {
 }
 
 var (
-	ErrHttp              = NewErrorFactory(CodeHttp)
-	ErrTargetUnreachable = NewErrorFactory(CodeTargetUnreachable)
-	ErrInvalidURL        = NewErrorFactory(CodeInvalidURL)
-	ErrInvalidRequest    = NewErrorFactory(CodeInvalidRequest)
-	ErrRendererError      = NewErrorFactory(CodeRendererError)
-	ErrExtraction         = NewErrorFactory(CodeExtractionError)
-	ErrCrawl              = NewErrorFactory(CodeCrawlError)
-	ErrTimeout            = NewErrorFactory(CodeTimeout)
-	ErrConfig             = NewErrorFactory(CodeConfigError)
+	ErrHttp                = NewErrorFactory(CodeHttp)
+	ErrTargetUnreachable   = NewErrorFactory(CodeTargetUnreachable)
+	ErrInvalidURL          = NewErrorFactory(CodeInvalidURL)
+	ErrInvalidRequest      = NewErrorFactory(CodeInvalidRequest)
+	ErrRendererError       = NewErrorFactory(CodeRendererError)
+	ErrExtraction          = NewErrorFactory(CodeExtractionError)
+	ErrCrawl               = NewErrorFactory(CodeCrawlError)
+	ErrTimeout             = NewErrorFactory(CodeTimeout)
+	ErrConfig              = NewErrorFactory(CodeConfigError)
 	ErrBrowserNotAvailable = NewErrorFactory(CodeRendererError)
-	ErrNotFound          = NewErrorFactory(CodeNotFound)
-	ErrRateLimited       = NewErrorFactory(CodeRateLimited)
-	ErrInternal          = NewErrorFactory(CodeInternalErr)
-	ErrForbidden         = NewErrorFactory(CodeForbidden)
+	ErrNotFound            = NewErrorFactory(CodeNotFound)
+	ErrRateLimited         = NewErrorFactory(CodeRateLimited)
+	ErrInternal            = NewErrorFactory(CodeInternalErr)
+	ErrForbidden           = NewErrorFactory(CodeForbidden)
+	ErrUnsupportedContent  = NewErrorFactory(CodeUnsupportedContent)
 )
 
 func NewQuickCrawlError(message string, code ErrorCode) *QuickCrawlError {

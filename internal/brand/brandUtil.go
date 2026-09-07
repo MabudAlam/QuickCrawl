@@ -4,8 +4,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
 func resolveURL(src string, baseURL string) string {
@@ -40,8 +38,4 @@ func getDomain(pageURL string) string {
 		return ""
 	}
 	return strings.TrimPrefix(parsedURL.Hostname(), "www.")
-}
-
-func newDocumentFromHTML(html string) (*goquery.Document, error) {
-	return goquery.NewDocumentFromReader(strings.NewReader(html))
 }

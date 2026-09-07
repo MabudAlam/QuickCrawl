@@ -182,15 +182,6 @@ func hasAttribute(node *html.Node, attrName string) bool {
 	return false
 }
 
-// outerHTML returns an HTML serialization of the element and its descendants.
-func outerHTML(node *html.Node) string {
-	var buffer bytes.Buffer
-	if err := html.Render(&buffer, node); err != nil {
-		return ""
-	}
-	return buffer.String()
-}
-
 // innerHTML returns the HTML content (inner HTML) of an element.
 func innerHTML(node *html.Node) string {
 	var err error
@@ -1648,20 +1639,6 @@ func (r *Readability) isStoryContentNode(node *html.Node, combined string) bool 
 	return false
 }
 
-func (r *Readability) isDescendantOf(parent *html.Node, target *html.Node) bool {
-	if parent == nil || target == nil {
-		return false
-	}
-	current := target.Parent
-	for current != nil {
-		if current == parent {
-			return true
-		}
-		current = current.Parent
-	}
-	return false
-}
-
 func (r *Readability) isProbablyVisible(node *html.Node) bool {
 	nodeStyle := getAttribute(node, "style")
 	nodeAriaHidden := getAttribute(node, "aria-hidden")
@@ -1731,35 +1708,6 @@ func (r *Readability) clearReadabilityAttr(node *html.Node) {
 	for child := firstElementChild(node); child != nil; child = nextElementSibling(child) {
 		r.clearReadabilityAttr(child)
 	}
-}
-
-func (r *Readability) isSingleImage(node *html.Node) bool {
-	if tagName(node) == "img" {
-		return true
-	}
-	children := children(node)
-	textContent := textContent(node)
-	if len(children) != 1 || strings.TrimSpace(textContent) != "" {
-		return false
-	}
-	return r.isSingleImage(children[0])
-}
-
-func (r *Readability) removeComments(doc *html.Node) {
-	var comments []*html.Node
-	var finder func(*html.Node)
-	finder = func(node *html.Node) {
-		if node.Type == html.CommentNode {
-			comments = append(comments, node)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			finder(child)
-		}
-	}
-	for child := doc.FirstChild; child != nil; child = child.NextSibling {
-		finder(child)
-	}
-	r.removeNodes(comments, nil)
 }
 
 func (r *Readability) postProcessContent(articleContent *html.Node) {
@@ -1941,16 +1889,6 @@ var noisePrefixesTags = []string{"ad-", "ads-"}
 var (
 	scriptRegex         = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
 	styleRegex          = regexp.MustCompile(`(?i)<style[^>]*>.*?</style>`)
-	noScriptRegex       = regexp.MustCompile(`(?i)<noscript[^>]*>.*?</noscript>`)
-	iframeRegex         = regexp.MustCompile(`(?i)<iframe[^>]*>.*?</iframe>`)
-	svgRegex            = regexp.MustCompile(`(?i)<svg[^>]*>.*?</svg>`)
-	dataImgRegex        = regexp.MustCompile(`(?i)<img[^>]*src=["']data:[^"']*["'][^>]*>`)
-	urlTextRegex        = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s<>"']+\.[a-z]{2,}[^\s<>"']*`)
-	buttonRegex         = regexp.MustCompile(`(?si)<button[^>]*>.*?</button>`)
-	whitespaceRegex     = regexp.MustCompile(`[ \t]{2,}`)
-	newlineRegex        = regexp.MustCompile(`\n\s*\n\s*\n+`)
-	emptyDivRegex       = regexp.MustCompile(`(?si)<div[^>]*>\s*</div>`)
-	emptySpanRegex      = regexp.MustCompile(`(?si)<span[^>]*>\s*</span>`)
 	imgRegex            = regexp.MustCompile(`(?i)<img[^>]*>`)
 	anchorRegex         = regexp.MustCompile(`(?i)<a[^>]*>(.*?)</a>`)
 	anchorSelfClosingRe = regexp.MustCompile(`(?i)<a[^>]*>`)

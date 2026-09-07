@@ -9,11 +9,9 @@ import (
 )
 
 var pdfTextRe = regexp.MustCompile(`\(([^()]*)\)\s*T[Jj]`)
-var pdfStreamRe = regexp.MustCompile(`stream\s*\(\s*([^\)]+)\s*\)`)
-var pdfObjRe = regexp.MustCompile(`(\d+)\s+\d+\s+obj`)
 
 const (
-	pdfTypeTextBased  = iota
+	pdfTypeTextBased = iota
 	pdfTypeImageBased
 	pdfTypeScanned
 )

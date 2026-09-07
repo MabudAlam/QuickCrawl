@@ -194,9 +194,7 @@ func TestRerankByBM25(t *testing.T) {
 }
 
 func TestRerankByBM25Empty(t *testing.T) {
-	type doc struct {
-		title string
-	}
+	type doc struct{}
 	sorted := RerankByBM25([]doc{}, func(d doc) float64 { return 0 })
 	if len(sorted) != 0 {
 		t.Errorf("expected empty result, got %d", len(sorted))

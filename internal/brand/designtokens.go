@@ -42,7 +42,7 @@ func parseFonts(raw json.RawMessage) *types.BrandFonts {
 		return &types.BrandFonts{Fonts: asArray}
 	}
 	var asObject struct {
-		Fonts     []types.BrandFont           `json:"fonts"`
+		Fonts     []types.BrandFont              `json:"fonts"`
 		FontLinks map[string]types.BrandFontLink `json:"fontLinks"`
 	}
 	if err := json.Unmarshal(raw, &asObject); err != nil {

@@ -76,4 +76,3 @@ func ExtractMetadata(html string) ExtractedMetadata {
 
 	return meta
 }
-

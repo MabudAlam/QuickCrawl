@@ -152,7 +152,6 @@ func applyEnvOverrides(cfg *types.AppConfig) error {
 	if v := envString("CRAWLER__STEALTH__STRATEGY"); v != "" {
 		cfg.Crawler.Stealth.Strategy = v
 	}
-	
 
 	// Extraction configuration
 	if cfg.Extraction.LLM == nil {

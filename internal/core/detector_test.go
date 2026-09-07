@@ -453,3 +453,27 @@ func TestEscalationReason_OrderingSpaWinsOverThin(t *testing.T) {
 		t.Errorf("escalationReason = %q, want %q", got, "SPA shell detected")
 	}
 }
+
+func TestIsBinaryContentType(t *testing.T) {
+	binary := []string{
+		"image/svg+xml", "image/png", "video/mp4", "audio/mpeg",
+		"font/woff2", "application/octet-stream", "application/zip",
+	}
+	for _, ct := range binary {
+		if !IsBinaryContentType(ct) {
+			t.Errorf("IsBinaryContentType(%q) = false, want true", ct)
+		}
+	}
+
+	texty := []string{
+		"", // unknown/browser path — allowed
+		"text/html", "text/html; charset=utf-8", "text/plain",
+		"application/xhtml+xml", "application/json", "application/xml",
+		"application/pdf", // PDF is extracted separately — allowed
+	}
+	for _, ct := range texty {
+		if IsBinaryContentType(ct) {
+			t.Errorf("IsBinaryContentType(%q) = true, want false", ct)
+		}
+	}
+}

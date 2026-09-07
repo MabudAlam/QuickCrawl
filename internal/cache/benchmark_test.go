@@ -106,10 +106,10 @@ func BenchmarkZstdDecompress(b *testing.B) {
 
 func BenchmarkCacheGet(b *testing.B) {
 	cfg := types.CacheConfig{
-		Enabled:       true,
-		RedisURL:      getRedisURL(),
-		Password:      getRedisPassword(),
-		DB:            0,
+		Enabled:        true,
+		RedisURL:       getRedisURL(),
+		Password:       getRedisPassword(),
+		DB:             0,
 		TTLDefaultSecs: 300,
 	}
 
@@ -158,10 +158,10 @@ func BenchmarkCacheGet(b *testing.B) {
 
 func BenchmarkCacheGetOnlyRedis(b *testing.B) {
 	cfg := types.CacheConfig{
-		Enabled:       true,
-		RedisURL:      getRedisURL(),
-		Password:      getRedisPassword(),
-		DB:            0,
+		Enabled:        true,
+		RedisURL:       getRedisURL(),
+		Password:       getRedisPassword(),
+		DB:             0,
 		TTLDefaultSecs: 300,
 	}
 
@@ -196,10 +196,10 @@ func BenchmarkCacheGetOnlyRedis(b *testing.B) {
 
 func BenchmarkCacheGetWithUnmarshal(b *testing.B) {
 	cfg := types.CacheConfig{
-		Enabled:       true,
-		RedisURL:      getRedisURL(),
-		Password:      getRedisPassword(),
-		DB:            0,
+		Enabled:        true,
+		RedisURL:       getRedisURL(),
+		Password:       getRedisPassword(),
+		DB:             0,
 		TTLDefaultSecs: 300,
 	}
 
@@ -234,12 +234,12 @@ func BenchmarkCacheGetWithUnmarshal(b *testing.B) {
 	cache.Set(ctx, testURL, formats, modePtr(types.RenderModeBrowser), dataBytes)
 
 	type ScrapeData struct {
-		Markdown   *string `json:"markdown,omitempty"`
-		HTML       *string `json:"html,omitempty"`
-		PlainText  *string `json:"plainText,omitempty"`
-		Links      []string `json:"links,omitempty"`
-		ImageLinks []string `json:"imageLinks,omitempty"`
-		RawHTML    *string `json:"rawHtml,omitempty"`
+		Markdown   *string                `json:"markdown,omitempty"`
+		HTML       *string                `json:"html,omitempty"`
+		PlainText  *string                `json:"plainText,omitempty"`
+		Links      []string               `json:"links,omitempty"`
+		ImageLinks []string               `json:"imageLinks,omitempty"`
+		RawHTML    *string                `json:"rawHtml,omitempty"`
 		Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	}
 
@@ -279,12 +279,12 @@ func BenchmarkJSONUnmarshal(b *testing.B) {
 	b.Logf("Payload size: %d bytes", len(dataBytes))
 
 	type ScrapeData struct {
-		Markdown   *string `json:"markdown,omitempty"`
-		HTML       *string `json:"html,omitempty"`
-		PlainText  *string `json:"plainText,omitempty"`
-		Links      []string `json:"links,omitempty"`
-		ImageLinks []string `json:"imageLinks,omitempty"`
-		RawHTML    *string `json:"rawHtml,omitempty"`
+		Markdown   *string                `json:"markdown,omitempty"`
+		HTML       *string                `json:"html,omitempty"`
+		PlainText  *string                `json:"plainText,omitempty"`
+		Links      []string               `json:"links,omitempty"`
+		ImageLinks []string               `json:"imageLinks,omitempty"`
+		RawHTML    *string                `json:"rawHtml,omitempty"`
 		Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	}
 
@@ -328,10 +328,10 @@ func BenchmarkJSONMarshal(b *testing.B) {
 
 func BenchmarkCacheLatencyBreakdown(b *testing.B) {
 	cfg := types.CacheConfig{
-		Enabled:       true,
-		RedisURL:      getRedisURL(),
-		Password:      getRedisPassword(),
-		DB:            0,
+		Enabled:        true,
+		RedisURL:       getRedisURL(),
+		Password:       getRedisPassword(),
+		DB:             0,
 		TTLDefaultSecs: 300,
 	}
 
@@ -366,12 +366,12 @@ func BenchmarkCacheLatencyBreakdown(b *testing.B) {
 	cache.Set(ctx, testURL, formats, modePtr(types.RenderModeBrowser), dataBytes)
 
 	type ScrapeData struct {
-		Markdown   *string `json:"markdown,omitempty"`
-		HTML       *string `json:"html,omitempty"`
-		PlainText  *string `json:"plainText,omitempty"`
-		Links      []string `json:"links,omitempty"`
-		ImageLinks []string `json:"imageLinks,omitempty"`
-		RawHTML    *string `json:"rawHtml,omitempty"`
+		Markdown   *string                `json:"markdown,omitempty"`
+		HTML       *string                `json:"html,omitempty"`
+		PlainText  *string                `json:"plainText,omitempty"`
+		Links      []string               `json:"links,omitempty"`
+		ImageLinks []string               `json:"imageLinks,omitempty"`
+		RawHTML    *string                `json:"rawHtml,omitempty"`
 		Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	}
 

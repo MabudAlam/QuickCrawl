@@ -20,16 +20,16 @@ const maxDiscoveredURLs = 5000
 // It owns the HTTP fetcher and the chromedp-based browser pipeline, so
 // crawl pages use the same code path as the /v1/scrape endpoint.
 type CrawlOptions struct {
-	ID                string                 // Unique crawl job ID
-	Req               *types.CrawlRequest    // Crawl request parameters
-	Scraper           *core.Scraper          // Scraper used to fetch each page
-	MaxConcurrency    int                    // Maximum concurrent page fetches
-	RespectRobots     bool                   // Whether to follow robots.txt rules
-	RequestsPerSecond float64                // Rate limit for requests
-	UserAgent         string                 // User-Agent header for requests
+	ID                string                  // Unique crawl job ID
+	Req               *types.CrawlRequest     // Crawl request parameters
+	Scraper           *core.Scraper           // Scraper used to fetch each page
+	MaxConcurrency    int                     // Maximum concurrent page fetches
+	RespectRobots     bool                    // Whether to follow robots.txt rules
+	RequestsPerSecond float64                 // Rate limit for requests
+	UserAgent         string                  // User-Agent header for requests
 	StateCh           chan<- types.CrawlState // Channel for progress updates
-	JitterFactor      float64                // Random delay factor (0.0 to 1.0)
-	StealthStrategy   utils.HeaderStrategy   // Stealth header strategy
+	JitterFactor      float64                 // Random delay factor (0.0 to 1.0)
+	StealthStrategy   utils.HeaderStrategy    // Stealth header strategy
 }
 
 // RateLimiter implements per-domain rate limiting with configurable RPS.
@@ -80,8 +80,8 @@ type pendingCrawlItem struct {
 
 // crawlPageResult represents the result of crawling a single URL.
 type crawlPageResult struct {
-	item  pendingCrawlItem    // The URL that was crawled
-	data  *types.ScrapeData   // Extracted page data
-	links []string            // Discovered links on the page
+	item  pendingCrawlItem      // The URL that was crawled
+	data  *types.ScrapeData     // Extracted page data
+	links []string              // Discovered links on the page
 	err   *core.QuickCrawlError // Error if crawl failed
 }

@@ -32,10 +32,6 @@ func normalizeURL(raw string) string {
 	return strings.ToLower(trimmed)
 }
 
-func newBool(b bool) *bool {
-	return &b
-}
-
 func maxIntValue(a, b int) int {
 	return utils.MaxInt(a, b)
 }

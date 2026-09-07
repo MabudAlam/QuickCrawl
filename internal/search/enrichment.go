@@ -70,55 +70,6 @@ func termFrequency(term string, document string) int {
 	return tf
 }
 
-// documentFrequency returns the number of documents in the corpus that contain the term.
-func documentFrequency(term string, corpus []string) int {
-	df := 0
-	for _, doc := range corpus {
-		if termFrequency(term, doc) > 0 {
-			df++
-		}
-	}
-	return df
-}
-
-// idf computes the BM25 inverse document frequency.
-func idf(term string, corpus []string) float64 {
-	N := float64(len(corpus))
-	if N == 0 {
-		return 0
-	}
-	df := float64(documentFrequency(term, corpus))
-	if df == 0 {
-		return 0
-	}
-	return math.Log(((N - df + 0.5) / (df + 0.5)) + 1.0)
-}
-
-// bm25TermScore computes the BM25 contribution of a single term for a specific document.
-func bm25TermScore(term string, document string, corpus []string) float64 {
-	tf := float64(termFrequency(term, document))
-	if tf == 0 {
-		return 0
-	}
-
-	dl := float64(documentLength(document))
-	avgdl := averageDocumentLength(corpus)
-
-	numerator := tf * (k1 + 1)
-	denominator := tf + k1*(1-b+b*(dl/avgdl))
-
-	return idf(term, corpus) * (numerator / denominator)
-}
-
-// bm25 computes the total BM25 score for a document against the query.
-func bm25(query string, document string, corpus []string) float64 {
-	score := 0.0
-	for _, term := range tokenize(query) {
-		score += bm25TermScore(term, document, corpus)
-	}
-	return score
-}
-
 // BM25FWeights holds the per-field weights used by BM25F.
 type BM25FWeights struct {
 	Title   float64
@@ -174,9 +125,9 @@ func ComputeBM25FScores(
 
 // bm25fField is one weighted field in a BM25F document.
 type bm25fField struct {
-	text    string
-	weight  float64
-	corpus  []string
+	text   string
+	weight float64
+	corpus []string
 }
 
 // bm25f computes the BM25F score for a document with multiple weighted
@@ -242,16 +193,16 @@ func RerankByBM25[T any](results []T, getBM25Score func(T) float64) []T {
 	}
 
 	type indexedResult struct {
-		index    int
-		result   T
+		index     int
+		result    T
 		bm25Score float64
 	}
 
 	indexed := make([]indexedResult, len(results))
 	for i, r := range results {
 		indexed[i] = indexedResult{
-			index:      i,
-			result:     r,
+			index:     i,
+			result:    r,
 			bm25Score: getBM25Score(r),
 		}
 	}

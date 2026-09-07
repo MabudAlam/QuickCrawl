@@ -13,8 +13,8 @@ import (
 // urlset and sitemapindex match the sitemap.org 0.9 schema. Both carry
 // <loc>...</loc> entries; <sitemap> wraps a nested sitemap in an index file.
 type sitemapURLSet struct {
-	XMLName xml.Name    `xml:"urlset"`
-	URLs    []sitemapURL `xml:"url"`
+	XMLName  xml.Name     `xml:"urlset"`
+	URLs     []sitemapURL `xml:"url"`
 	Sitemaps []sitemapURL `xml:"sitemap"`
 }
 
@@ -24,8 +24,8 @@ type sitemapURL struct {
 
 // sitemapIndex wraps <sitemapindex><sitemap><loc></loc></sitemap>...</sitemapindex>.
 type sitemapIndex struct {
-	XMLName   xml.Name      `xml:"sitemapindex"`
-	Sitemaps  []sitemapURL `xml:"sitemap"`
+	XMLName  xml.Name     `xml:"sitemapindex"`
+	Sitemaps []sitemapURL `xml:"sitemap"`
 }
 
 // ParseSitemap parses a sitemap XML string and returns all URLs found.
@@ -135,11 +135,6 @@ func httpClientForSitemap(client any) *http.Client {
 		return c
 	}
 	return &http.Client{Timeout: 10 * time.Second}
-}
-
-// parseURL parses a URL string.
-func parseURL(raw string) (*url.URL, error) {
-	return url.Parse(raw)
 }
 
 // isValidSitemapURL validates that a sitemap URL is well-formed.

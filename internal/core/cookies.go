@@ -197,31 +197,8 @@ func dismissCookieBanners(ctx context.Context) CookieDismissalResult {
 	return CookieDismissalResult{Clicks: clicks}
 }
 
-// dismissCookieBannersAction returns a chromedp.Action that runs the
-// dismiss pass. Use it inline inside a chromedp.Run call to keep the
-// dismissal in the same CDP roundtrip batch as navigation and HTML
-// extraction:
-//
-//	err := chromedp.Run(ctx,
-//	    chromedp.Navigate(url),
-//	    dismissCookieBannersAction(),   // best-effort
-//	    chromedp.Sleep(2*time.Second),
-//	    chromedp.OuterHTML("body", &html, chromedp.ByQuery),
-//	)
-//
-// The action swallows all errors from the dismiss pass so a banner
-// problem never aborts the surrounding chromedp.Run sequence. This
-// matches the previous renderer's behavior (where both the result and
-// any error from SendRecv are discarded with `_, _ =`).
-func dismissCookieBannersAction() chromedp.Action {
-	return chromedp.ActionFunc(func(ctx context.Context) error {
-		_ = dismissCookieBanners(ctx)
-		return nil
-	})
-}
-
-// dismissCookieBannersFastAction is the optimized version of
-// dismissCookieBannersAction. It first runs a cheap pre-check
+// dismissCookieBannersFastAction is the optimized version of the plain
+// dismiss pass. It first runs a cheap pre-check
 // (cookieBannerPrecheckJS) that returns true only when a high-confidence
 // banner selector matches. On the vast majority of pages — those without
 // any consent banner — the pre-check returns false and the full
@@ -234,8 +211,7 @@ func dismissCookieBannersAction() chromedp.Action {
 // page without a banner, which is the dominant case in production.
 //
 // Both stages swallow errors — a banner problem never aborts the
-// surrounding chromedp.Run sequence, matching the original
-// dismissCookieBannersAction contract.
+// surrounding chromedp.Run sequence.
 func dismissCookieBannersFastAction() chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		var hasBanner bool

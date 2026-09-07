@@ -623,6 +623,9 @@ func mapScrapeError(scrapeErr *core.QuickCrawlError) (int, string) {
 	case core.CodeRateLimited:
 		status = http.StatusTooManyRequests
 		code = string(core.CodeRateLimited)
+	case core.CodeUnsupportedContent:
+		status = http.StatusUnsupportedMediaType
+		code = string(core.CodeUnsupportedContent)
 	}
 	return status, code
 }
