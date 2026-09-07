@@ -26,11 +26,9 @@ func newTestRenderer(t *testing.T, mode types.RenderMode) (*Renderer, *httptest.
 	httpFetcher := NewHTTPFetcher("", nil)
 	cfg := types.ScraperConfig{
 		Browser: types.BrowserConfig{
-			Mode:     mode,
-			WSURL:    "",
-			PoolSize: 4,
+			Mode:  mode,
+			WSURL: "",
 		},
-		Pool: types.PoolConfig{Size: 4, PerHost: 4},
 	}
 	r, err := NewRenderer(cfg, httpFetcher)
 	if err != nil {

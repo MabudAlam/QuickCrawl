@@ -42,8 +42,7 @@ POST /v1/search { query, scrape }
     │       └── Re-rank by relevance score
     │
     ├── [Optional] Scrape each result URL
-    │       └── 10 concurrent workers
-    │             └── Same render path as /v1/scrape
+    │       └── Same render path as /v1/scrape
     │
     └── Return unified response
 ```
@@ -132,20 +131,18 @@ For each result:
     Re-rank descending by score
 ```
 
-## Parallel Result Scraping
+## Result Scraping
 
-When `scrape = true`, each result URL is fetched with 10 concurrent workers:
+When `scrape = true`, each result URL is fetched in order:
 
 ```
-Results [1, 2, 3, ..., 10]
+For each result:
     │
-    ├── Worker 1: Scrape result[1]
-    ├── Worker 2: Scrape result[2]
-    ├── ...
-    └── Worker 10: Scrape result[10]
-                      │
-                      └── Same render path as /v1/scrape
-                          (HTTP or browser auto-escalation)
+    ├── Scrape result[i]
+    │     │
+    │     └── Same render path as /v1/scrape
+    │         (HTTP or browser auto-escalation)
+    └── Next result
 ```
 
 Each scrape:

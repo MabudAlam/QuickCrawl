@@ -13,7 +13,6 @@ func TestScrapeRejectsBinaryAssetURL(t *testing.T) {
 	httpFetcher := NewHTTPFetcher("", nil)
 	cfg := types.ScraperConfig{
 		Browser: types.BrowserConfig{Mode: types.RenderModeAuto, WSURL: ""},
-		Pool:    types.PoolConfig{Size: 4, PerHost: 4},
 	}
 	s, err := NewScraper(cfg, httpFetcher, nil)
 	if err != nil {

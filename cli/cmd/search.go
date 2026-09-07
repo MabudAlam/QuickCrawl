@@ -23,7 +23,7 @@ the content using the in-process chromedp-based scraper. Results include
 title, URL, snippet, and scraped content in requested formats.
 
 Note: Scraping individual results requires a separate fetch, so results
-are processed concurrently with a default of 10 workers.
+are scraped one at a time in order.
 
 Example:
   quickcrawl search "golang web scraping"
@@ -41,7 +41,6 @@ var searchFlags = struct {
 	renderMode string
 	scrape     bool
 	useBM25    bool
-	workers    int
 	renderer   string
 }{}
 
@@ -62,8 +61,6 @@ func init() {
 		"Also scrape content from each result URL")
 	searchCmd.Flags().BoolVar(&searchFlags.useBM25, "use-bm25", false,
 		"Re-rank results using BM25 algorithm (default: false)")
-	searchCmd.Flags().IntVar(&searchFlags.workers, "workers", 10,
-		"Number of concurrent workers for scraping results")
 	searchCmd.Flags().StringVar(&searchFlags.renderer, "renderer", "auto",
 		"Deprecated: ignored. The scraper uses chromedp only.")
 }
@@ -141,11 +138,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	resp, err := search.Search(context.Background(), searxng, scraper, search.Request{
-		Query:    apiReq.Query,
-		Language: apiReq.Language,
+		Query:      apiReq.Query,
+		Language:   apiReq.Language,
 		Categories: apiReq.Categories,
-		TimeRange: apiReq.TimeRange,
-		UseBM25:  apiReq.UseBM25,
+		TimeRange:  apiReq.TimeRange,
+		UseBM25:    apiReq.UseBM25,
 		BM25FWeights: search.BM25FWeights{
 			Title:   cfg.Search.BM25FTitleWeight,
 			Snippet: cfg.Search.BM25FSnippetWeight,
@@ -153,7 +150,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		Scrape:     apiReq.Scrape,
 		Formats:    formatStrs,
 		RenderMode: apiReq.RenderMode,
-		MaxWorkers: searchFlags.workers,
 		Page:       apiReq.Page,
 	})
 	if err != nil {

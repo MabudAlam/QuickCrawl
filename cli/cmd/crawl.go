@@ -117,7 +117,6 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 			ID:                jobID,
 			Req:               crawlReq,
 			Scraper:           scraper,
-			MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 			RespectRobots:     cfg.Crawler.RespectRobotsTxt,
 			RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 			UserAgent:         cfg.Crawler.UserAgent,

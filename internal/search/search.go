@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/core"
@@ -40,10 +39,6 @@ type Request struct {
 	// RenderMode is passed to the scraper for each result URL.
 	// nil = inherit server default.
 	RenderMode *types.RenderMode
-
-	// MaxWorkers controls concurrency when Scrape is true.
-	// 0 means default (10).
-	MaxWorkers int
 }
 
 // Result is a single normalized result in the unified response.
@@ -136,7 +131,7 @@ func Search(
 	}
 
 	if req.Scrape {
-		scrapeAll(ctx, scraper, results, req.Formats, req.RenderMode, req.MaxWorkers)
+		scrapeAll(ctx, scraper, results, req.Formats, req.RenderMode)
 	}
 
 	return &Response{
@@ -203,7 +198,7 @@ func convertFormats(formats []string) []types.OutputFormat {
 	return out
 }
 
-// scrapeAll fetches each result URL in parallel.
+// scrapeAll fetches each result URL in order.
 // On error the result still appears in the output, just without scraped content.
 func scrapeAll(
 	ctx context.Context,
@@ -211,56 +206,35 @@ func scrapeAll(
 	results []Result,
 	formats []string,
 	mode *types.RenderMode,
-	maxWorkers int,
 ) {
-	if maxWorkers <= 0 {
-		maxWorkers = 10
-	}
-	if len(results) < maxWorkers {
-		maxWorkers = len(results)
-	}
-
-	sem := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-
 	for i := range results {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			defer func() { _ = recover() }()
+		if results[i].URL == "" {
+			continue
+		}
 
-			sem <- struct{}{}
-			defer func() { <-sem }()
+		reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 
-			if results[idx].URL == "" {
-				return
-			}
-
-			reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			defer cancel()
-
-			data, err := scraper.Scrape(reqCtx, &types.ScrapeRequest{
-				URL:        results[idx].URL,
-				Formats:    convertFormats(formats),
-				RenderMode: mode,
-			})
-			if err != nil || data == nil {
-				return
-			}
-			results[idx].Markdown = data.Markdown
-			results[idx].HTML = data.HTML
-			results[idx].RawHTML = data.RawHTML
-			results[idx].PlainText = data.PlainText
-			results[idx].Links = data.Links
-			if len(data.JSON) > 0 {
-				results[idx].RawJSON = []byte(data.JSON)
-			}
-			if data.Metadata.SourceURL != "" {
-				results[idx].URL = data.Metadata.SourceURL
-			}
-		}(i)
+		data, err := scraper.Scrape(reqCtx, &types.ScrapeRequest{
+			URL:        results[i].URL,
+			Formats:    convertFormats(formats),
+			RenderMode: mode,
+		})
+		cancel()
+		if err != nil || data == nil {
+			continue
+		}
+		results[i].Markdown = data.Markdown
+		results[i].HTML = data.HTML
+		results[i].RawHTML = data.RawHTML
+		results[i].PlainText = data.PlainText
+		results[i].Links = data.Links
+		if len(data.JSON) > 0 {
+			results[i].RawJSON = []byte(data.JSON)
+		}
+		if data.Metadata.SourceURL != "" {
+			results[i].URL = data.Metadata.SourceURL
+		}
 	}
-	wg.Wait()
 }
 
 // hostname returns the hostname of a URL or an empty string.

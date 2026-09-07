@@ -14,8 +14,8 @@ import (
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
 	"github.com/MabudAlam/quickcrawl/internal/utils"
-	"github.com/redis/go-redis/v9"
 	"github.com/klauspost/compress/zstd"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -47,7 +47,7 @@ func NewRedisCache(cfg types.CacheConfig) (*RedisCache, error) {
 
 	client := redis.NewClient(&redis.Options{
 		Addr:         cfg.RedisURL,
-		Password:     cfg.Password,
+		Password:     cfg.Password, // pragma: allowlist secret
 		DB:           cfg.DB,
 		DialTimeout:  5 * time.Second,
 		ReadTimeout:  10 * time.Second,

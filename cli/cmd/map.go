@@ -86,7 +86,6 @@ func runMap(cmd *cobra.Command, args []string) error {
 		MaxDepth:          uint32(*mapReq.MaxDepth),
 		UseSitemap:        *mapReq.UseSitemap,
 		Scraper:           scraper,
-		MaxConcurrency:    cfg.Crawler.MaxConcurrency,
 		RequestsPerSecond: cfg.Crawler.RequestsPerSecond,
 		UserAgent:         cfg.Crawler.UserAgent,
 		Timeout:           mapReq.Timeout,

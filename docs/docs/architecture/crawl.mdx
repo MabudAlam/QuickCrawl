@@ -37,15 +37,13 @@ Queue = [seedURL at depth 0]
 while queue not empty and results < maxPages:
     Extract all items at current depth as "frontier"
 
-    Process frontier concurrently (up to maxConcurrency):
+    For each item in the frontier (processed in order):
         ├── Check robots.txt ──→ skip if disallowed
         ├── Rate limit sleep (per-domain)
         ├── Fetch via shared *core.Scraper
         │     (same render path: HTTP or browser auto-escalation)
         ├── Extract content (markdown, html, links, etc.)
         └── Send result via StateCh
-
-    Wait for all goroutines to complete
 
     For each discovered link (depth + 1):
         ├── Same origin? ──→ No: skip
@@ -76,17 +74,6 @@ limiter.Sleep()  // blocks until it's time to make the next request
 ```
 
 Also applies optional random jitter (`jitterFactor`) to the sleep duration to avoid uniform request patterns.
-
-### Concurrency Control
-
-Two-level semaphore:
-- **Global**: Max `maxConcurrency` concurrent fetches across all hosts
-- **Per-host**: Max 10 concurrent fetches per individual host
-
-```go
-sem := make(chan struct{}, maxConcurrency)  // global
-hostSem[host] := make(chan struct{}, 10)       // per-host
-```
 
 ### Link Filtering
 

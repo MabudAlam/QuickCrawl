@@ -336,7 +336,6 @@ core.Renderer.FetchOrchestrator()      [internal/core/renderer.go:213]
     └── (renderMode=browser) ── CDP path ───────────────┐
                                                       ▼
 core.Renderer.fetchWithCDPBrowser()   [internal/core/renderer.go:334]
-    │  • Acquire per-host concurrency slot
     │  • Create isolated browser context (chromedp.NewContext)
     │  • Apply page_timeout_ms to chromedp.Run
     │  • Action sequence:
@@ -670,9 +669,9 @@ success, `404 Not Found` if the job ID is unknown.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/search` | Search SearXNG and optionally scrape results in parallel |
+| `POST` | `/v1/search` | Search SearXNG and optionally scrape results |
 
-By default `/v1/search` returns only search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content (markdown/html/etc.) from each result URL — 10 workers in parallel.
+By default `/v1/search` returns only search-result metadata (title, URL, snippet). Set `"scrape": true` to also fetch and extract content (markdown/html/etc.) from each result URL.
 
 **Request body** (`types.SearchRequest`):
 
@@ -795,13 +794,11 @@ rate_limit_rps = 10
 
 [renderer]
 page_timeout_ms = 30000
-pool_size = 4
 
 [renderer.chrome]
 ws_url = ""
 
 [crawler]
-max_concurrency = 40
 requests_per_second = 40.0
 respect_robots_txt = true
 default_max_depth = 2
@@ -821,7 +818,6 @@ Or via environment variables:
 ```bash
 SERVER__PORT=3000
 RENDERER__CHROME__WS_URL=ws://127.0.0.1:9222/devtools/browser/...
-CRAWLER__MAX_CONCURRENCY=40
 EXTRACTION__LLM__API_KEY=your-key
 ```
 

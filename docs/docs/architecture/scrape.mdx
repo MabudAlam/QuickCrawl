@@ -132,18 +132,6 @@ For each browser request, chromedp runs this action chain:
 
 The browser's `webSocketDebuggerUrl` is resolved once at server startup via `GET /json/version` (`core.GetCDPURL`) and cached on the `Renderer`. Every `/v1/scrape` request reuses the same persistent `RemoteAllocator` — no per-request discovery, no per-request HTTP call.
 
-### Per-Host Concurrency Limiting
-
-The `hostPool` semaphore prevents overwhelming any single origin:
-
-```
-Global pool (maxConcurrency)
-    │
-    └── Per-host slot (10 per host)
-         │
-         └── Browser tab (chromedp context)
-```
-
 ## Auto Mode — Escalation Triggers
 
 In `auto` mode, QuickCrawl tries HTTP first, then checks for these triggers:

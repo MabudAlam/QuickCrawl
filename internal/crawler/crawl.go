@@ -3,7 +3,6 @@ package crawler
 import (
 	"context"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/MabudAlam/quickcrawl/internal/core"
@@ -62,9 +61,7 @@ func RunCrawl(opts CrawlOptions) {
 		robots = FetchRobotsTxt(origin, opts.UserAgent)
 	}
 
-	semaphore := make(chan struct{}, maxIntValue(opts.MaxConcurrency, 1))
 	rateLimiter := newDomainRateLimiter(parsed.Host, opts.RequestsPerSecond)
-
 	visited := map[string]struct{}{}
 	queueIdx := 0
 	queue := []pendingCrawlItem{{url: opts.Req.URL, depth: 0}}
@@ -86,9 +83,7 @@ func RunCrawl(opts CrawlOptions) {
 			queueIdx++
 		}
 
-		resultsCh := make(chan crawlPageResult, len(frontier))
-		var wg sync.WaitGroup
-
+		var nextQueue []pendingCrawlItem
 		for _, item := range frontier {
 			if len(results) >= int(maxPages) {
 				break
@@ -102,101 +97,68 @@ func RunCrawl(opts CrawlOptions) {
 				continue
 			}
 
-			wg.Add(1)
-			semaphore <- struct{}{}
-			go func(item pendingCrawlItem) {
-				defer wg.Done()
-				defer func() { <-semaphore }()
+			// Pace requests per domain.
+			sleepDur := rateLimiter.NextSleep()
+			if opts.JitterFactor > 0 && sleepDur > 0 {
+				sleepDur = addRandomJitter(sleepDur, opts.JitterFactor)
+			}
+			if sleepDur > 0 {
+				time.Sleep(sleepDur)
+			}
 
-				sleepDur := rateLimiter.NextSleep()
-				if opts.JitterFactor > 0 && sleepDur > 0 {
-					sleepDur = addRandomJitter(sleepDur, opts.JitterFactor)
-				}
-				if sleepDur > 0 {
-					time.Sleep(sleepDur)
-				}
+			var headers map[string]string
+			if opts.StealthStrategy != "" {
+				profile := utils.GetHeaderProfile(opts.StealthStrategy)
+				headers = profile.ToMap()
+			}
 
-				var headers map[string]string
-				if opts.StealthStrategy != "" {
-					profile := utils.GetHeaderProfile(opts.StealthStrategy)
-					headers = profile.ToMap()
-				}
+			mode := opts.Req.RenderMode
+			waitMs := int64(0)
+			if opts.Req.WaitFor != nil {
+				waitMs = *opts.Req.WaitFor
+			}
 
-				mode := opts.Req.RenderMode
-				waitMs := int64(0)
-				if opts.Req.WaitFor != nil {
-					waitMs = *opts.Req.WaitFor
-				}
-
-				fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs)
-				cancel()
-				if fetchErr != nil {
-					resultsCh <- crawlPageResult{item: item, err: fetchErr}
-					return
-				}
-
-				// Non-text asset (image, video, font…): skip this page but keep
-				// crawling the rest of the site.
-				if fetchResult.ContentType != nil && core.IsBinaryContentType(*fetchResult.ContentType) {
-					return
-				}
-
-				data := extractor.Extract(extractor.ExtractOptions{
-					RawHTML:       fetchResult.HTML,
-					RawBytes:      fetchResult.RawBytes,
-					SourceURL:     fetchResult.URL,
-					StatusCode:    int(fetchResult.StatusCode),
-					RenderedMode:  fetchResult.RenderedWith,
-					Formats:       opts.Req.Formats,
-					IncludeTags:   []string{},
-					ExcludeTags:   []string{},
-					CSSSelector:   nil,
-					ExtractorType: extractor.ExtractorTrafilatura,
-				})
-
-				var links []string
-				if item.depth < maxDepth && fetchResult.HTML != "" {
-					links = extractor.ExtractLinks(fetchResult.HTML, fetchResult.URL)
-				}
-
-				resultsCh <- crawlPageResult{
-					item:  item,
-					data:  data,
-					links: links,
-				}
-			}(item)
-		}
-
-		go func() {
-			wg.Wait()
-			close(resultsCh)
-		}()
-
-		var nextQueue []pendingCrawlItem
-		for res := range resultsCh {
-			if res.err != nil || res.data == nil {
+			fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			fetchResult, fetchErr := opts.Scraper.FetchHTML(fetchCtx, item.url, headers, mode, waitMs)
+			cancel()
+			if fetchErr != nil {
 				continue
 			}
 
-			if len(results) < int(maxPages) {
-				results = append(results, *res.data)
-				reportProgress(types.CrawlState{
-					ID:        opts.ID,
-					Success:   true,
-					Status:    types.CrawlStatusInProgress,
-					Total:     uint32(len(visited)),
-					Completed: uint32(len(results)),
-					Data:      nil,
-					Error:     nil,
-				})
-			}
-
-			if res.item.depth >= maxDepth {
+			// Non-text asset (image, video, font…): skip this page.
+			if fetchResult.ContentType != nil && core.IsBinaryContentType(*fetchResult.ContentType) {
 				continue
 			}
 
-			for _, link := range res.links {
+			data := extractor.Extract(extractor.ExtractOptions{
+				RawHTML:       fetchResult.HTML,
+				RawBytes:      fetchResult.RawBytes,
+				SourceURL:     fetchResult.URL,
+				StatusCode:    int(fetchResult.StatusCode),
+				RenderedMode:  fetchResult.RenderedWith,
+				Formats:       opts.Req.Formats,
+				IncludeTags:   []string{},
+				ExcludeTags:   []string{},
+				CSSSelector:   nil,
+				ExtractorType: extractor.ExtractorTrafilatura,
+			})
+
+			results = append(results, *data)
+			reportProgress(types.CrawlState{
+				ID:        opts.ID,
+				Success:   true,
+				Status:    types.CrawlStatusInProgress,
+				Total:     uint32(len(visited)),
+				Completed: uint32(len(results)),
+				Data:      nil,
+				Error:     nil,
+			})
+
+			if item.depth >= maxDepth || fetchResult.HTML == "" {
+				continue
+			}
+
+			for _, link := range extractor.ExtractLinks(fetchResult.HTML, fetchResult.URL) {
 				if len(visited) >= maxDiscoveredURLs || len(results) >= int(maxPages) {
 					break
 				}
@@ -218,7 +180,7 @@ func RunCrawl(opts CrawlOptions) {
 					continue
 				}
 				visited[normalized] = struct{}{}
-				nextQueue = append(nextQueue, pendingCrawlItem{url: link, depth: res.item.depth + 1})
+				nextQueue = append(nextQueue, pendingCrawlItem{url: link, depth: item.depth + 1})
 			}
 		}
 
@@ -260,7 +222,7 @@ func emitCrawlFailure(id string, stateCh chan<- types.CrawlState, errMsg string)
 // The discovery respects robots.txt rules and uses rate limiting per domain.
 // It does NOT scrape content - only collects URLs for later crawling.
 // If ctx is provided and has a deadline, the operation will respect that timeout.
-func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, maxConcurrency int, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *core.QuickCrawlError) {
+func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *core.Scraper, respectRobots bool, requestsPerSecond float64, userAgent string, ctx context.Context) ([]string, *core.QuickCrawlError) {
 	parsed, err := utils.ValidateURL(baseURL)
 	if err != nil || parsed == nil {
 		return nil, core.ErrInvalidRequest.New("Only http/https URLs are allowed")
@@ -311,7 +273,6 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 		}
 	}
 
-	semaphore := make(chan struct{}, maxIntValue(maxConcurrency, 1))
 	rateLimiter := newDomainRateLimiter(parsed.Host, requestsPerSecond)
 	discovered := map[string]struct{}{}
 
@@ -327,64 +288,33 @@ func DiscoverUrls(baseURL string, maxDepth uint32, useSitemap bool, scraper *cor
 			queueIdx++
 		}
 
-		resultsCh := make(chan []string, len(frontier))
-		var wg sync.WaitGroup
-
-		for _, item := range frontier {
-			if currentDepth >= maxDepth {
-				continue
-			}
-			if ctx.Err() != nil {
-				continue
-			}
-			wg.Add(1)
-			semaphore <- struct{}{}
-			go func(item pendingCrawlItem) {
-				defer wg.Done()
-				defer func() { <-semaphore }()
-
-				sleepDur := rateLimiter.NextSleep()
-				if sleepDur > 0 {
-					time.Sleep(sleepDur)
-				}
-
-				if ctx.Err() != nil {
-					return
-				}
-
-				// Check robots.txt before fetching
-				if respectRobots && robots != nil {
-					parsedLink, parseErr := utils.ValidateURL(item.url)
-					if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
-						resultsCh <- nil
-						return
-					}
-				}
-
-				fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0)
-				cancel()
-				if fetchErr != nil || fetchResult == nil {
-					resultsCh <- nil
-					return
-				}
-
-				resultsCh <- extractor.ExtractLinks(fetchResult.HTML, fetchResult.URL)
-			}(item)
-		}
-
-		go func() {
-			wg.Wait()
-			close(resultsCh)
-		}()
-
-		if ctx.Err() != nil {
-			break
-		}
-
 		var nextQueue []pendingCrawlItem
-		for links := range resultsCh {
-			for _, link := range links {
+		for _, item := range frontier {
+			if currentDepth >= maxDepth || ctx.Err() != nil {
+				continue
+			}
+
+			sleepDur := rateLimiter.NextSleep()
+			if sleepDur > 0 {
+				time.Sleep(sleepDur)
+			}
+
+			// Respect robots.txt before fetching.
+			if respectRobots && robots != nil {
+				parsedLink, parseErr := utils.ValidateURL(item.url)
+				if parseErr == nil && !robots.IsAllowed(parsedLink.Path) {
+					continue
+				}
+			}
+
+			fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			fetchResult, fetchErr := scraper.FetchHTML(fetchCtx, item.url, map[string]string{}, nil, 0)
+			cancel()
+			if fetchErr != nil || fetchResult == nil {
+				continue
+			}
+
+			for _, link := range extractor.ExtractLinks(fetchResult.HTML, fetchResult.URL) {
 				if len(discovered) >= maxDiscoveredURLs {
 					break
 				}

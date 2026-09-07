@@ -96,9 +96,6 @@ func applyEnvOverrides(cfg *types.AppConfig) error {
 	if v := envInt64("RENDERER__PAGE_TIMEOUT_MS"); v != nil {
 		cfg.Renderer.PageTimeoutMs = *v
 	}
-	if v := envInt("RENDERER__POOL_SIZE"); v != nil {
-		cfg.Renderer.PoolSize = *v
-	}
 	if v := envString("RENDERER__RENDER_MODE"); v != "" {
 		mode, parseErr := types.ParseRenderMode(v)
 		if parseErr != nil {
@@ -119,9 +116,6 @@ func applyEnvOverrides(cfg *types.AppConfig) error {
 	}
 
 	// Crawler configuration
-	if v := envInt("CRAWLER__MAX_CONCURRENCY"); v != nil {
-		cfg.Crawler.MaxConcurrency = *v
-	}
 	if v := envFloat64("CRAWLER__REQUESTS_PER_SECOND"); v != nil {
 		cfg.Crawler.RequestsPerSecond = *v
 	}
@@ -332,7 +326,7 @@ func ptr[T any](v T) *T {
 // =============================================================================
 // Scraper configuration
 //
-// The types Config, BrowserConfig, PoolConfig live in internal/types
+// The types Config, BrowserConfig live in internal/types
 // (alongside the operator-facing AppConfig they are projected from)
 // to avoid an import cycle: internal/core imports internal/config to
 // build its scraper, and internal/config imports internal/core for
@@ -360,7 +354,7 @@ func ptr[T any](v T) *T {
 //     fail fast.
 //   - cfg.Renderer.Browser ("cloak", "browserless", "lightpanda")
 //     becomes types.BrowserConfig.BrowserType.
-//   - cfg.Renderer.PoolSize / PageTimeoutMs override the defaults.
+//   - cfg.Renderer.PageTimeoutMs overrides the default.
 //   - cfg.Crawler.Stealth.Enabled / InjectHeaders / Strategy feed
 //     into the HTTP fetcher's stealth header profile.
 //   - cfg.Renderer.Chrome.ChromeArgs are appended to the WSURL only
@@ -384,9 +378,6 @@ func NewScraperFromConfig(cfg *types.AppConfig, llm *types.LLMConfig) (*core.Scr
 		}
 	case cfg.Renderer.Chrome != nil && strings.TrimSpace(cfg.Renderer.Chrome.WSURL) == "":
 		scraperCfg.Browser.WSURL = ""
-	}
-	if cfg.Renderer.PoolSize > 0 {
-		scraperCfg.Browser.PoolSize = cfg.Renderer.PoolSize
 	}
 	if cfg.Renderer.PageTimeoutMs > 0 {
 		scraperCfg.Browser.PageTimeout = time.Duration(cfg.Renderer.PageTimeoutMs) * time.Millisecond

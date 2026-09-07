@@ -568,7 +568,6 @@ type BrowserInfo struct {
 // RendererConfig configures the rendering subsystem.
 type RendererConfig struct {
 	PageTimeoutMs int64        `toml:"page_timeout_ms" json:"pageTimeoutMs"` // Page load timeout
-	PoolSize      int          `toml:"pool_size" json:"poolSize"`            // Browser pool size
 	RenderMode    RenderMode   `toml:"render_mode" json:"renderMode"`        // Render mode: auto, http, browser (empty = inherit)
 	Browser       string       `toml:"browser" json:"browser"`               // Browser: cloak, browserless, lightpanda
 	Chrome        *CdpEndpoint `toml:"chrome" json:"chrome"`                 // Chrome config
@@ -580,9 +579,6 @@ type RendererConfig struct {
 func (c *RendererConfig) Defaults() {
 	if c.PageTimeoutMs == 0 {
 		c.PageTimeoutMs = 30000
-	}
-	if c.PoolSize == 0 {
-		c.PoolSize = 4
 	}
 	if c.RenderMode != "" {
 		c.RenderMode = RenderMode(strings.ToLower(strings.TrimSpace(string(c.RenderMode))))
@@ -608,7 +604,6 @@ func (s *StealthConfig) Defaults() {
 
 // CrawlerConfig configures the crawling subsystem.
 type CrawlerConfig struct {
-	MaxConcurrency    int           `toml:"max_concurrency" json:"maxConcurrency"`        // Max concurrent crawls
 	RequestsPerSecond float64       `toml:"requests_per_second" json:"requestsPerSecond"` // Rate limit
 	RespectRobotsTxt  bool          `toml:"respect_robots_txt" json:"respectRobotsTxt"`   // Follow robots.txt
 	UserAgent         string        `toml:"user_agent" json:"userAgent"`                  // User agent string
@@ -620,9 +615,6 @@ type CrawlerConfig struct {
 
 // Defaults sets default values for unset fields.
 func (c *CrawlerConfig) Defaults() {
-	if c.MaxConcurrency == 0 {
-		c.MaxConcurrency = 10
-	}
 	if c.RequestsPerSecond == 0 {
 		c.RequestsPerSecond = 10.0
 	}
@@ -856,28 +848,19 @@ var GetBuiltinUAPool = utils.GetBuiltinUAPool
 // scraper runtime actually uses.
 type ScraperConfig struct {
 	Browser BrowserConfig
-	Pool    PoolConfig
 }
 
 // BrowserConfig is the scraper's view of the renderer subsystem. It
-// carries everything the chromedp allocator and the per-host pool need
-// to know about a browser, plus the render_mode that gates the
-// HTTP-vs-browser branch in FetchOrchestrator.
+// carries everything the chromedp allocator needs to know about a
+// browser, plus the render_mode that gates the HTTP-vs-browser branch
+// in FetchOrchestrator.
 type BrowserConfig struct {
 	Mode           RenderMode
 	BrowserType    string // "browserless", "cloak", "lightpanda"
 	WSURL          string
-	NumBrowsers    int
 	PageTimeout    time.Duration
-	PoolSize       int
 	StealthEnabled bool     // When true, register anti-fingerprint JS on every page. When false, the call is skipped entirely.
 	ChromeArgs     []string // Chrome launch flags for browserless
-}
-
-// PoolConfig is the per-host concurrency pool config.
-type PoolConfig struct {
-	Size    int
-	PerHost int
 }
 
 // DefaultScraperConfig is the scraper-side default. Operator overrides
@@ -888,13 +871,7 @@ func DefaultScraperConfig() ScraperConfig {
 		Browser: BrowserConfig{
 			Mode:        RenderModeAuto,
 			WSURL:       "",
-			NumBrowsers: 4,
 			PageTimeout: 60 * time.Second,
-			PoolSize:    10,
-		},
-		Pool: PoolConfig{
-			Size:    4,
-			PerHost: 10,
 		},
 	}
 }

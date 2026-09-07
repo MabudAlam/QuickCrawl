@@ -6,7 +6,6 @@ rate_limit_rps = 10
 
 [renderer]
 page_timeout_ms = 45000
-pool_size = 4
 # render_mode is the server-wide default for fetch strategy. The
 # per-request "renderMode" field on ScrapeRequest, CrawlRequest, and
 # MapRequest (and the matching MCP tool argument) overrides this
@@ -25,7 +24,6 @@ ws_url = ""
 chrome_args = []
 
 [crawler]
-max_concurrency = 40
 requests_per_second = 40.0
 respect_robots_txt = false
 user_agent = ""

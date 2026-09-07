@@ -29,7 +29,6 @@ rate_limit_rps = 10
 
 [renderer]
 page_timeout_ms = 45000
-pool_size = 4
 render_mode = "auto"
 browser = "cloak"
 
@@ -37,7 +36,6 @@ browser = "cloak"
 ws_url = ""
 
 [crawler]
-max_concurrency = 40
 requests_per_second = 40.0
 respect_robots_txt = false
 default_max_depth = 2
@@ -78,7 +76,6 @@ Environment variables always override TOML values. Use the format `SECTION__KEY`
 | Variable | Description |
 |----------|-------------|
 | `RENDERER__PAGE_TIMEOUT_MS` | Page load timeout |
-| `RENDERER__POOL_SIZE` | Browser pool size |
 | `RENDERER__RENDER_MODE` | Default render mode: `auto`, `browser`, `http` |
 | `RENDERER__BROWSER` | Browser type: `cloak`, `lightpanda`, `browserless` |
 | `RENDERER__CHROME__WS_URL` | Chrome CDP WebSocket URL |
@@ -87,7 +84,6 @@ Environment variables always override TOML values. Use the format `SECTION__KEY`
 
 | Variable | Description |
 |----------|-------------|
-| `CRAWLER__MAX_CONCURRENCY` | Max concurrent crawls |
 | `CRAWLER__REQUESTS_PER_SECOND` | Rate limit |
 | `CRAWLER__RESPECT_ROBOTS_TXT` | Follow robots.txt (`true`/`false`) |
 | `CRAWLER__DEFAULT_MAX_DEPTH` | Default crawl depth |

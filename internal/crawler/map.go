@@ -15,7 +15,6 @@ type MapOptions struct {
 	UseSitemap        bool
 	RespectRobots     bool
 	Scraper           *core.Scraper
-	MaxConcurrency    int
 	RequestsPerSecond float64
 	UserAgent         string
 	Timeout           *int // Timeout in milliseconds
@@ -51,7 +50,6 @@ func Map(opts MapOptions) (*types.MapData, *core.QuickCrawlError) {
 		opts.UseSitemap,
 		opts.Scraper,
 		opts.RespectRobots,
-		opts.MaxConcurrency,
 		opts.RequestsPerSecond,
 		opts.UserAgent,
 		ctx,

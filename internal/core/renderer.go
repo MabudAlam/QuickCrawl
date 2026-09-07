@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"github.com/MabudAlam/quickcrawl/internal/types"
@@ -12,14 +11,12 @@ import (
 // Renderer orchestrates HTTP and browser-based page fetching.
 // It uses a RemoteAllocator connected to a pre-existing Chrome instance
 // via WebSocket, avoiding the cost of spawning a new Chrome process per request.
-// All browser fetches are routed through a hostPool for per-host concurrency limiting.
 //
 // HTTP fetching is delegated to the shared *renderer.HTTPFetcher to avoid
 // duplicating the same logic. Browser (chromedp) code lives in this package.
 type Renderer struct {
 	http        *HTTPFetcher        // Shared HTTP fetcher
 	cfg         types.BrowserConfig // Browser configuration (timeout, WS URL, etc.)
-	pool        *hostPool           // Per-host concurrency limiter
 	allocCtx    context.Context     // Parent context for the RemoteAllocator
 	allocCancel context.CancelFunc  // Cancel function to shut down the allocator
 	mu          sync.Mutex          // Protects closed flag
@@ -39,53 +36,6 @@ type FetchResult struct {
 	RenderedWith string   // "http", "browser", or "pdf"
 	Warning      *string  // Non-fatal warning (e.g. anti-bot detected)
 	BlockedURLs  []string // URLs blocked by the blocklist (browser path only)
-}
-
-// hostPool limits concurrent browser fetches per-host and globally.
-// It uses two semaphore levels: a global pool slot (Pool.Size) and a
-// per-host slot (PerHost). This prevents any single host from
-// monopolizing all browser instances.
-type hostPool struct {
-	mu      sync.Mutex               // Protects the host map
-	pool    map[string]chan struct{} // Per-host semaphore channels
-	sem     chan struct{}            // Global pool slots (size = Pool.Size)
-	perHost int                      // Max concurrent fetches per host
-}
-
-// newHostPool creates a hostPool with a global semaphore of `size` slots
-// and a per-host limit of `perHost` concurrent requests.
-func newHostPool(size, perHost int) *hostPool {
-	return &hostPool{
-		pool:    make(map[string]chan struct{}),
-		sem:     make(chan struct{}, size),
-		perHost: perHost,
-	}
-}
-
-// Acquire reserves a slot in both the global pool and the per-host pool
-// for the given host. It blocks until both slots are available.
-// Returns a release function that must be called when the slot is no longer needed.
-func (p *hostPool) Acquire(host string) func() {
-	// Get or create the per-host semaphore channel for this host.
-	// Each host gets its own buffered channel of size perHost.
-	p.mu.Lock()
-	ch, ok := p.pool[host]
-	if !ok {
-		ch = make(chan struct{}, p.perHost)
-		p.pool[host] = ch
-	}
-	p.mu.Unlock()
-
-	// Acquire global slot first (blocks if pool is exhausted).
-	p.sem <- struct{}{}
-	// Then acquire per-host slot (blocks if host has too many in-flight).
-	ch <- struct{}{}
-
-	// Return a release function that must be called when done.
-	return func() {
-		<-ch    // Release per-host slot
-		<-p.sem // Release global slot
-	}
 }
 
 // NewRenderer creates a Renderer with the given configuration.
@@ -113,26 +63,11 @@ func NewRenderer(cfg types.ScraperConfig, httpFetcher *HTTPFetcher) (*Renderer, 
 	r := &Renderer{
 		http:        httpFetcher,
 		cfg:         cfg.Browser,
-		pool:        newHostPool(cfg.Pool.Size, cfg.Pool.PerHost),
 		allocCtx:    allocCtx,
 		allocCancel: allocCancel,
 	}
 
 	return r, nil
-}
-
-// extractHost pulls the host portion from a URL string.
-// E.g. "https://docs.tinyfish.ai/path?query" -> "docs.tinyfish.ai".
-// The host string is used as the key in the per-host concurrency pool.
-func extractHost(rawURL string) string {
-	if i := strings.Index(rawURL, "://"); i != -1 {
-		rest := rawURL[i+3:]
-		if j := strings.Index(rest, "/"); j != -1 {
-			return rest[:j]
-		}
-		return rest
-	}
-	return rawURL
 }
 
 // Close releases the RemoteAllocator and prevents further browser fetches.

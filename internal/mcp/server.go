@@ -169,7 +169,6 @@ func (s *Server) HandleCrawl(ctx context.Context, req mcp.CallToolRequest, args 
 			ID:                id,
 			Req:               crawlReq,
 			Scraper:           scraper,
-			MaxConcurrency:    s.config.Crawler.MaxConcurrency,
 			RespectRobots:     s.config.Crawler.RespectRobotsTxt,
 			RequestsPerSecond: s.config.Crawler.RequestsPerSecond,
 			UserAgent:         s.config.Crawler.UserAgent,
@@ -262,7 +261,6 @@ func (s *Server) HandleMap(ctx context.Context, req mcp.CallToolRequest, args Ma
 		useSitemap,
 		scraper,
 		s.config.Crawler.RespectRobotsTxt,
-		s.config.Crawler.MaxConcurrency,
 		s.config.Crawler.RequestsPerSecond,
 		s.config.Crawler.UserAgent,
 		crawlCtx,
@@ -534,7 +532,7 @@ func AddTools(mcpServer *server.MCPServer, s *Server) {
 	), mcp.NewTypedToolHandler[BrandArgs](s.HandleBrand))
 
 	mcpServer.AddTool(mcp.NewTool("search",
-		mcp.WithDescription("Search SearXNG and scrape results in parallel with 10 concurrent workers"),
+		mcp.WithDescription("Search SearXNG and optionally scrape each result"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("The search query"), mcp.MinLength(1)),
 		mcp.WithString("region", mcp.Description("Region code (e.g., us-en)")),
 		mcp.WithString("timeRange", mcp.Description("Time range filter: day, week, month, year")),

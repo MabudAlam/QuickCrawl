@@ -61,11 +61,7 @@ CloakBrowser supports routing browser traffic through a SOCKS5 proxy. Pass the p
 
 ```bash
 # With an authenticated SOCKS5 proxy
-docker run -d --name cloak \
-  -p 9222:9222 \
-  -e PROXY_ENABLED=true \
-  -e PROXY_SERVER="socks5://user:pass@proxy.example.com:1080" \
-  quickcrawl-cloak
+docker run -d --name cloak -p 9222:9222 -e PROXY_ENABLED=true -e PROXY_SERVER="socks5://user:pass@proxy.example.com:1080" quickcrawl-cloak # pragma: allowlist secret
 
 # With an unauthenticated SOCKS5 proxy
 docker run -d --name cloak \
@@ -164,7 +160,6 @@ The env key is the TOML section name in **uppercase**, followed by `__`, followe
 | `server.port` | `SERVER__PORT` |
 | `renderer.render_mode` | `RENDERER__RENDER_MODE` |
 | `renderer.chrome.ws_url` | `RENDERER__CHROME__WS_URL` |
-| `crawler.max_concurrency` | `CRAWLER__MAX_CONCURRENCY` |
 | `crawler.stealth.enabled` | `CRAWLER__STEALTH__ENABLED` |
 | `extraction.llm.api_key` | `EXTRACTION__LLM__API_KEY` |
 | `search.base_url` | `SEARCH__BASE_URL` |
@@ -176,8 +171,7 @@ The env key is the TOML section name in **uppercase**, followed by `__`, followe
 # Use a different SearXNG instance locally
 SEARCH__BASE_URL=http://localhost:8888/
 
-# Bump concurrency for benchmarking
-CRAWLER__MAX_CONCURRENCY=80
+# Raise the crawl request rate locally
 CRAWLER__REQUESTS_PER_SECOND=80.0
 
 # Disable cache during development

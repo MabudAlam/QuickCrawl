@@ -32,10 +32,6 @@ func normalizeURL(raw string) string {
 	return strings.ToLower(trimmed)
 }
 
-func maxIntValue(a, b int) int {
-	return utils.MaxInt(a, b)
-}
-
 func newDomainRateLimiter(domain string, rps float64) *RateLimiter {
 	return NewRateLimiter(rps)
 }

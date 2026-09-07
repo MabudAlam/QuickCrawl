@@ -655,10 +655,6 @@ func (renderer *Renderer) fetchBrandDesignTokens(ctx context.Context, rawURL str
 		return nil, ErrBrowserNotAvailable.New("no browser WS URL configured")
 	}
 
-	host := extractHost(rawURL)
-	release := renderer.pool.Acquire(host)
-	defer release()
-
 	allocCtx := renderer.allocCtx
 
 	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)

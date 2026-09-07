@@ -19,17 +19,12 @@ import (
 //
 // It reuses one persistent Chrome instance (the RemoteAllocator) and just opens
 // a fresh tab per request, which is far cheaper than spawning a browser process
-// each time. A per-host concurrency slot stops any single origin from hogging
-// the browser.
+// each time.
 func (renderer *Renderer) fetchWithCDPBrowser(ctx context.Context, rawURL string, headers map[string]string, waitMs int64) (*FetchResult, *QuickCrawlError) {
 	// No browser configured (no CDP WS URL) → nothing to do.
 	if renderer.allocCtx == nil {
 		return nil, ErrBrowserNotAvailable.New("no browser WS URL configured")
 	}
-
-	// Limit concurrent browser loads per host.
-	release := renderer.pool.Acquire(extractHost(rawURL))
-	defer release()
 
 	// Open a tab on the shared Chrome and give this request a hard deadline.
 	browserCtx, cancelTab := chromedp.NewContext(renderer.allocCtx)
