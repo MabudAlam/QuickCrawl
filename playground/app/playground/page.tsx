@@ -628,7 +628,15 @@ export default function PlaygroundPage({
       )
     }
 
-    if (!response) return null
+    if (!response) {
+      return error ? (
+        <div className="flex h-full min-h-0 items-start gap-4 overflow-y-auto p-4">
+          <div className="w-full shrink-0 rounded-base border-2 border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        </div>
+      ) : null
+    }
 
     const isMapResponse =
       endpoint === "map" &&
@@ -682,7 +690,7 @@ export default function PlaygroundPage({
             />
           </div>
         ) : (
-          <pre className="min-h-0 flex-1 overflow-auto rounded-base border-2 border-border bg-white p-4 font-mono text-sm">
+          <pre className="text-foreground min-h-0 flex-1 overflow-auto rounded-base border-2 border-border bg-secondary-background p-4 font-mono text-sm">
             {JSON.stringify(response, null, 2)}
           </pre>
         )}
